@@ -107,6 +107,38 @@ def ingest_browse_cmd(ctx, url):
         console.print(f"[green]✓[/green] Ingested via browser to: {doc_path}")
 
 
+@ingest.command("ctext-book")
+@click.argument("book_name")
+@click.argument("book_path")
+@click.option("--delay", type=float, default=1.5, help="Delay between requests (seconds)")
+@click.option("--browser", is_flag=True, help="Use opencli browser instead of HTTP (handles anti-scraping)")
+@click.pass_context
+def ingest_ctext_book_cmd(ctx, book_name, book_path, delay, browser):
+    """Ingest a book from ctext.org. Example: llmbase ingest ctext-book 论语 /analects/zh"""
+    from .ctext import ingest_book
+    method = "opencli browser" if browser else "HTTP"
+    console.print(f"[cyan]Ingesting {book_name} via {method}...[/cyan]")
+    paths = ingest_book(book_name, book_path, delay, ctx.obj["base_dir"], browser)
+    console.print(f"[green]✓[/green] Ingested {len(paths)} chapters from {book_name}")
+
+
+@ingest.command("ctext-catalog")
+@click.argument("catalog", type=click.Choice(["confucianism", "daoism", "mohism", "legalism", "military", "histories", "medicine"]))
+@click.option("--delay", type=float, default=1.5, help="Delay between requests (seconds)")
+@click.option("--browser", is_flag=True, help="Use opencli browser instead of HTTP")
+@click.pass_context
+def ingest_ctext_catalog_cmd(ctx, catalog, delay, browser):
+    """Ingest an entire catalog from ctext.org (e.g. confucianism, daoism)."""
+    from .ctext import ingest_catalog
+    method = "opencli browser" if browser else "HTTP"
+    console.print(f"[cyan]Ingesting catalog '{catalog}' via {method}...[/cyan]")
+    results = ingest_catalog(catalog, delay, ctx.obj["base_dir"], browser)
+    total = sum(len(v) for v in results.values())
+    console.print(f"\n[green]✓[/green] Ingested {total} chapters from {len(results)} books:")
+    for book, paths in results.items():
+        console.print(f"  • {book}: {len(paths)} chapters")
+
+
 @ingest.command("list")
 @click.pass_context
 def ingest_list_cmd(ctx):
