@@ -36,10 +36,13 @@ def run_worker(base_dir: Path | None = None):
     learn_batch = worker_cfg.get("learn_batch_size", 10)
     learn_source = worker_cfg.get("learn_source", "cbeta")
 
+    taxonomy_interval = worker_cfg.get("taxonomy_interval_hours", 12) * 3600
+
     logger.info(f"Worker started: learn every {learn_interval/3600:.0f}h, compile every {compile_interval/3600:.0f}h")
 
     last_learn = 0
     last_compile = 0
+    last_taxonomy = 0
 
     while True:
         now = time.time()
@@ -53,6 +56,11 @@ def run_worker(base_dir: Path | None = None):
         if now - last_compile >= compile_interval:
             _task_compile(base)
             last_compile = now
+
+        # Regenerate taxonomy periodically
+        if now - last_taxonomy >= taxonomy_interval:
+            _task_taxonomy(base)
+            last_taxonomy = now
 
         time.sleep(60)  # Check every minute
 
@@ -85,6 +93,18 @@ def _task_compile(base: Path):
             logger.debug("[compile] Nothing to compile")
     except Exception as e:
         logger.error(f"[compile] Error: {e}")
+
+
+def _task_taxonomy(base: Path):
+    """Regenerate taxonomy from current articles."""
+    logger.info("[taxonomy] Regenerating category taxonomy...")
+    try:
+        from .taxonomy import generate_taxonomy
+        taxonomy = generate_taxonomy(base)
+        cats = len(taxonomy.get("categories", []))
+        logger.info(f"[taxonomy] Generated {cats} categories")
+    except Exception as e:
+        logger.error(f"[taxonomy] Error: {e}")
 
 
 def start_worker_thread(base_dir: Path | None = None):

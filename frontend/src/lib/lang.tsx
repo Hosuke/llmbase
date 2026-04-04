@@ -17,7 +17,7 @@ const LangContext = createContext<{
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     if (typeof window === 'undefined') return 'zh';
-    return (localStorage.getItem('llmbase-lang') as Lang) || 'zh';
+    return (localStorage.getItem('llmbase-lang') as Lang) || 'zh-en';
   });
 
   const setLang = (l: Lang) => {
