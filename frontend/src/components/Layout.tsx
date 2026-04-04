@@ -39,7 +39,7 @@ export function Layout() {
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-16'} bg-surface-container border-r border-outline-variant/30 flex flex-col flex-shrink-0 transition-all duration-200 card-shadow`}>
         {/* Logo */}
-        <div className="p-5 border-b border-outline-variant/30">
+        <div className="p-5 border-b border-outline-variant/30 cursor-pointer" onClick={() => navigate('/')}>
           {sidebarOpen ? (
             <>
               <h1 className="text-lg font-bold text-primary tracking-tight font-headline">{branding.name}</h1>
