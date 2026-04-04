@@ -20,7 +20,20 @@ Rules:
 - Categorize content into clear concepts
 - Maintain factual accuracy - do not invent information not in the source
 - Use backlinks to connect related concepts
-- Output valid markdown with YAML frontmatter"""
+- Output valid markdown with YAML frontmatter
+
+IMPORTANT — Trilingual output:
+- Write each article in THREE languages: English, 中文, 日本語
+- Structure each article with three sections using h2 headers:
+  ## English
+  (full article content in English)
+  ## 中文
+  (完整中文内容，不是翻译，而是用中文学术风格重新撰写)
+  ## 日本語
+  (日本語による完全な記事内容)
+- The summary field in frontmatter should be in English
+- The title field should include both: "English Title / 中文标题"
+- Keep [[wiki-links]] consistent across all three languages (use the same slug)"""
 
 
 def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> list[str]:
@@ -69,25 +82,35 @@ Existing concepts in the wiki: {', '.join(existing_concepts) if existing_concept
 
 Please:
 1. Identify the key concepts from this document (1-5 concepts)
-2. For each concept, produce a wiki article in this exact format:
+2. For each concept, produce a TRILINGUAL wiki article in this exact format:
 
 ===ARTICLE===
 slug: concept-name-here
-title: Concept Title
-summary: One-line summary
+title: English Title / 中文标题
+summary: One-line summary in English
 tags: tag1, tag2, tag3
 ---
-Full article content in markdown here. Use [[Other Concept]] for cross-references.
+## English
+
+Full article content in English. Use [[Other Concept]] for cross-references.
+
+## 中文
+
+完整的中文文章内容。使用中文学术风格撰写，不是简单翻译。使用 [[Other Concept]] 进行交叉引用。
+
+## 日本語
+
+完全な日本語の記事内容。学術的な日本語で記述する。[[Other Concept]] でクロスリファレンスを使用する。
 ===END===
 
 If a concept already exists in the wiki, instead output:
 ===UPDATE===
 slug: existing-concept-slug
 append: |
-  Additional content to add from this source.
+  Additional trilingual content to add from this source.
 ===END===
 
-Focus on extracting knowledge, not just summarizing."""
+Focus on extracting knowledge, not just summarizing. Each language section should be substantive, not a mere translation."""
 
         response = chat(prompt, system=SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
 
