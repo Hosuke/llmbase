@@ -337,8 +337,10 @@ def _find_duplicate_candidates(articles: list[dict]) -> list[tuple[str, str]]:
             a, b = articles[i], articles[j]
             score = 0
 
-            # Slug similarity: one is substring of the other
-            if a["slug"] in b["slug"] or b["slug"] in a["slug"]:
+            # Slug similarity: one is substring of the other (min 4 chars to avoid false positives like "ren" in "renzhe")
+            if len(a["slug"]) >= 4 and a["slug"] in b["slug"]:
+                score += 2
+            elif len(b["slug"]) >= 4 and b["slug"] in a["slug"]:
                 score += 2
 
             # Tag Jaccard similarity
