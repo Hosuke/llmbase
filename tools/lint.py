@@ -333,16 +333,15 @@ def check_missing_metadata(cfg: dict) -> list[str]:
 
 
 def check_duplicates(cfg: dict) -> list[str]:
-    """Detect likely-duplicate articles using LLM similarity judgment.
+    """Detect duplicate articles using scored heuristics.
 
-    Candidates are pre-filtered by title/slug similarity, then the LLM
-    confirms whether they are truly duplicates.
+    High-confidence pairs (score >= 3, e.g. identical CJK title) are
+    confirmed without LLM. No LLM call needed — avoids thinking-token issues.
     """
     concepts_dir = Path(cfg["paths"]["concepts"])
     if not concepts_dir.exists():
         return []
 
-    # Load all articles
     articles = []
     for md_file in sorted(concepts_dir.glob("*.md")):
         post = frontmatter.load(str(md_file))
@@ -356,46 +355,10 @@ def check_duplicates(cfg: dict) -> list[str]:
     if len(articles) < 2:
         return []
 
-    # Phase 1: cheap pre-filter — find candidate pairs
     candidates = _find_duplicate_candidates(articles)
-
-    if not candidates:
-        return []
-
-    # Phase 2: LLM confirmation
     issues = []
-    articles_text = "\n".join(
-        f"- {a['slug']}: {a['title']} | tags: {', '.join(a['tags'])} | {a['summary']}"
-        for a in articles
-    )
-
-    # Batch all candidates into one LLM call for efficiency
-    pairs_text = "\n".join(
-        f"{i+1}. {a} <-> {b}" for i, (a, b) in enumerate(candidates[:20])
-    )
-
-    prompt = (
-        f"Here are all articles in the wiki:\n{articles_text}\n\n"
-        f"These article pairs may be duplicates or near-duplicates "
-        f"(same concept under different names, simplified/traditional Chinese variants, "
-        f"or overlapping scope):\n{pairs_text}\n\n"
-        f"For each pair, respond with the pair number followed by YES (duplicate) or NO.\n"
-        f"Format: one per line, e.g. '1. YES' or '2. NO'\n"
-        f"Be strict: only say YES if they clearly refer to the same concept."
-    )
-
-    try:
-        response = chat(prompt, max_tokens=512)
-        for line in response.strip().split("\n"):
-            line = line.strip()
-            for i, (slug_a, slug_b) in enumerate(candidates[:20]):
-                if line.startswith(f"{i+1}.") and "YES" in line.upper():
-                    issues.append(f"Likely duplicate: {slug_a} <-> {slug_b}")
-                    break
-    except Exception:
-        # If LLM fails, fall back to reporting all pre-filter candidates
-        for slug_a, slug_b in candidates[:10]:
-            issues.append(f"Possible duplicate (unconfirmed): {slug_a} <-> {slug_b}")
+    for slug_a, slug_b in candidates:
+        issues.append(f"Likely duplicate: {slug_a} <-> {slug_b}")
 
     return issues
 
@@ -437,17 +400,21 @@ def _find_duplicate_candidates(articles: list[dict]) -> list[tuple[str, str]]:
         return names
 
     def _cjk_substring_match(names_a: set[str], names_b: set[str]) -> bool:
-        """Check if any CJK name from A is a substring of any from B, or vice versa.
+        """Check if CJK names match (exact or near-exact).
 
-        To avoid false positives (仁 matching 仁者無敵), the shorter string
-        must be at least 50% of the longer string's length.
+        Rules to avoid false positives:
+        - Single char (仁): must match exactly (仁 == 仁), not substring (仁 in 仁政 ✗)
+        - 2+ chars: substring OK if >= 67% of longer string (仁爱 in 仁愛 ✓)
         """
         for a in names_a:
             for b in names_b:
                 if a == b:
                     return True
                 short, long = (a, b) if len(a) <= len(b) else (b, a)
-                if len(short) >= 1 and short in long and len(short) / len(long) >= 0.5:
+                # Single CJK char: too ambiguous for substring matching
+                if len(short) <= 1:
+                    continue
+                if short in long and len(short) / len(long) >= 0.67:
                     return True
         return False
 
@@ -524,21 +491,20 @@ def merge_duplicates(base_dir: Path | None = None, max_merges: int = 15) -> list
         post_a = frontmatter.load(str(path_a))
         post_b = frontmatter.load(str(path_b))
 
-        # Ask LLM which should be primary
-        prompt = (
-            f"Two wiki articles are duplicates and need to be merged.\n\n"
-            f"Article A: slug={slug_a}, title={post_a.metadata.get('title', slug_a)}\n"
-            f"Article B: slug={slug_b}, title={post_b.metadata.get('title', slug_b)}\n\n"
-            f"Which should be the PRIMARY article? Consider: better title, more standard slug, "
-            f"more content. Reply with ONLY 'A' or 'B'."
-        )
+        # Pick primary — rule-based, no LLM needed:
+        # ASCII slug preferred over CJK slug; longer content wins
+        import re as _re
+        a_is_ascii = not bool(_re.search(r'[\u4e00-\u9fff]', slug_a))
+        b_is_ascii = not bool(_re.search(r'[\u4e00-\u9fff]', slug_b))
 
-        try:
-            choice = chat(prompt, max_tokens=16).strip().upper()
-        except Exception:
-            choice = "A"  # Default to first
+        if a_is_ascii and not b_is_ascii:
+            choose_b = False
+        elif b_is_ascii and not a_is_ascii:
+            choose_b = True
+        else:
+            choose_b = len(post_b.content) > len(post_a.content)
 
-        if "B" in choice:
+        if choose_b:
             primary_path, secondary_path = path_b, path_a
             primary_slug, secondary_slug = slug_b, slug_a
         else:
