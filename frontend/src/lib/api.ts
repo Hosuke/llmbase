@@ -81,6 +81,7 @@ export const api = {
   search: (q: string, topK = 10) => get<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(q)}&top_k=${topK}`).then(d => d.results),
   ask: (question: string, deep = false, fileBack = true, tone = 'default') => post<{ answer: string }>('/api/ask', { question, deep, file_back: fileBack, tone }),
   getTones: () => get<{ tones: { id: string; label: string; label_zh: string; icon: string }[] }>('/api/tones').then(d => d.tones),
+  getAliases: () => get<{ aliases: Record<string, string> }>('/api/aliases').then(d => d.aliases),
   getSources: () => get<{ documents: RawDoc[] }>('/api/sources').then(d => d.documents),
   ingest: (source: string) => post<{ status: string; path: string }>('/api/ingest', { source }),
   compile: () => post<{ status: string; articles_created: number }>('/api/compile', {}),

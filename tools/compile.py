@@ -203,7 +203,12 @@ def rebuild_index(base_dir: Path | None = None):
     index_md_path = meta_dir / "_index.md"
     index_md_path.write_text(index_md, encoding="utf-8")
 
-    # Write backlinks map
+    # Build alias map (must come before backlinks)
+    from .resolve import build_aliases, save_aliases
+    aliases = build_aliases(concepts_dir)
+    save_aliases(aliases, meta_dir)
+
+    # Write backlinks map (uses aliases for correct resolution)
     _build_backlinks(concepts_dir, meta_dir)
 
     return index_entries
@@ -367,8 +372,15 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
 
 
 def _build_backlinks(concepts_dir: Path, meta_dir: Path):
-    """Build a backlinks map from wiki-link references."""
+    """Build a backlinks map from wiki-link references.
+
+    Uses alias resolution so that [[参禅]] correctly maps to the
+    canonical slug 'can-chan' instead of the raw Chinese text.
+    """
     import re
+    from .resolve import load_aliases, resolve_link
+
+    aliases = load_aliases(meta_dir)
     backlinks: dict[str, list[str]] = {}
     link_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
@@ -376,10 +388,13 @@ def _build_backlinks(concepts_dir: Path, meta_dir: Path):
         content = md_file.read_text()
         slug = md_file.stem
         for match in link_pattern.finditer(content):
-            target = match.group(1).strip().lower().replace(" ", "-")
-            backlinks.setdefault(target, [])
-            if slug not in backlinks[target]:
-                backlinks[target].append(slug)
+            raw_target = match.group(1).strip()
+            # Resolve via aliases; fall back to old normalization
+            resolved = resolve_link(raw_target, aliases)
+            target_key = resolved or raw_target.lower().replace(" ", "-")
+            backlinks.setdefault(target_key, [])
+            if slug not in backlinks[target_key]:
+                backlinks[target_key].append(slug)
 
     backlinks_path = meta_dir / "backlinks.json"
     backlinks_path.write_text(json.dumps(backlinks, indent=2, ensure_ascii=False), encoding="utf-8")

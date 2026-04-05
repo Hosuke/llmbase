@@ -19,9 +19,22 @@ export function ArticleDetail() {
     if (!slug) return;
     setLoading(true);
     Promise.all([
-      api.getArticle(slug),
+      api.getArticle(slug).catch(async () => {
+        // If direct slug fails, try alias resolution via backend
+        // (backend /api/articles/<slug> already resolves aliases,
+        // but URL-encoded CJK might need decoding)
+        const decoded = decodeURIComponent(slug);
+        if (decoded !== slug) {
+          return api.getArticle(decoded).catch(() => null);
+        }
+        return null;
+      }),
       api.getArticles(),
     ]).then(([a, all]) => {
+      if (a && 'slug' in a && a.slug !== slug) {
+        // Backend resolved to a different slug — redirect
+        navigate(`/wiki/${a.slug}`, { replace: true });
+      }
       setArticle(a);
       setAllArticles(all);
       setLoading(false);

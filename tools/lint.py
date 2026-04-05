@@ -107,18 +107,33 @@ def check_structural(cfg: dict) -> list[str]:
 
 
 def check_broken_links(cfg: dict) -> list[str]:
-    """Find broken wiki-links [[target]] that don't have corresponding articles."""
+    """Find broken wiki-links [[target]] that don't have corresponding articles.
+
+    Uses alias resolution so that [[参禅]] correctly resolves to can-chan.md
+    instead of being falsely flagged as broken.
+    """
+    from .resolve import load_aliases, resolve_link
+
     issues = []
     concepts_dir = Path(cfg["paths"]["concepts"])
+    meta_dir = Path(cfg["paths"]["meta"])
     link_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
     existing_slugs = {f.stem.lower() for f in concepts_dir.glob("*.md")}
+    aliases = load_aliases(meta_dir)
 
     for md_file in concepts_dir.glob("*.md"):
         content = md_file.read_text()
         for match in link_pattern.finditer(content):
-            target = match.group(1).strip().lower().replace(" ", "-")
-            if target not in existing_slugs:
-                issues.append(f"Broken link in {md_file.stem}: [[{match.group(1)}]]")
+            raw_target = match.group(1).strip()
+            # Try alias resolution first
+            resolved = resolve_link(raw_target, aliases)
+            if resolved and resolved in existing_slugs:
+                continue
+            # Fall back to old normalization
+            simple = raw_target.lower().replace(" ", "-")
+            if simple in existing_slugs:
+                continue
+            issues.append(f"Broken link in {md_file.stem}: [[{match.group(1)}]]")
 
     return issues
 
@@ -406,15 +421,20 @@ def fix_uncategorized(base_dir: Path | None = None) -> list[str]:
 def fix_broken_links(base_dir: Path | None = None, max_stubs: int = 10) -> list[str]:
     """Generate stub articles for broken wiki-link targets.
 
+    Only creates stubs for truly unresolvable links (after alias resolution).
     Strategy A: Use LLM to generate a trilingual stub from referencing context.
     Strategy B: If LLM fails, create a minimal placeholder stub.
     Returns list of fix descriptions.
     """
+    from .resolve import load_aliases, resolve_link
+
     cfg = load_config(base_dir)
     ensure_dirs(cfg)
     concepts_dir = Path(cfg["paths"]["concepts"])
+    meta_dir = Path(cfg["paths"]["meta"])
     link_pattern = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
     existing_slugs = {f.stem.lower() for f in concepts_dir.glob("*.md")}
+    aliases = load_aliases(meta_dir)
 
     # Collect broken links grouped by target slug
     # target_slug -> [(source_slug, context_snippet)]
@@ -424,9 +444,15 @@ def fix_broken_links(base_dir: Path | None = None, max_stubs: int = 10) -> list[
         content = md_file.read_text()
         for match in link_pattern.finditer(content):
             raw_target = match.group(1).strip()
-            target_slug = raw_target.lower().replace(" ", "-")
-            if target_slug in existing_slugs:
+            # Skip if resolvable via aliases
+            resolved = resolve_link(raw_target, aliases)
+            if resolved and resolved in existing_slugs:
                 continue
+            # Also skip if simple normalization works
+            simple = raw_target.lower().replace(" ", "-")
+            if simple in existing_slugs:
+                continue
+            target_slug = simple
             # Extract context around the link (200 chars each side)
             start = max(0, match.start() - 200)
             end = min(len(content), match.end() + 200)

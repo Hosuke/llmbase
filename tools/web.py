@@ -119,13 +119,22 @@ def create_web_app(base_dir: Path | None = None):
                 })
         return jsonify({"articles": arts})
 
-    @app.route("/api/articles/<slug>")
+    @app.route("/api/articles/<path:slug>")
     def api_article(slug):
+        from .resolve import load_aliases, resolve_link
         cfg = load_config(base)
         concepts_dir = Path(cfg["paths"]["concepts"])
+        meta_dir = Path(cfg["paths"]["meta"])
         article_path = concepts_dir / f"{slug}.md"
+        # If not found by slug, try alias resolution
         if not article_path.exists():
-            return jsonify({"status": "error", "message": f"Article not found: {slug}"})
+            aliases = load_aliases(meta_dir)
+            resolved = resolve_link(slug, aliases)
+            if resolved:
+                article_path = concepts_dir / f"{resolved}.md"
+                slug = resolved
+        if not article_path.exists():
+            return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
         post = frontmatter.load(str(article_path))
         return jsonify({
             "status": "ok",
@@ -135,6 +144,13 @@ def create_web_app(base_dir: Path | None = None):
             "tags": post.metadata.get("tags", []),
             "content": post.content,
         })
+
+    @app.route("/api/aliases")
+    def api_aliases():
+        from .resolve import load_aliases
+        cfg = load_config(base)
+        aliases = load_aliases(Path(cfg["paths"]["meta"]))
+        return jsonify({"aliases": aliases})
 
     @app.route("/api/search")
     def api_search():
