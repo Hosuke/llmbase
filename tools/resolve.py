@@ -152,8 +152,12 @@ def _normalize(text: str) -> str:
 
 
 def _fuzzy_normalize(text: str) -> str:
-    """Aggressive normalization: remove all punctuation, spaces, case."""
-    return re.sub(r'[^\w\u4e00-\u9fff\u3400-\u4dbf]', '', text.strip().lower())
+    """Aggressive normalization: remove punctuation, spaces, stopwords, case."""
+    t = re.sub(r'[^\w\u4e00-\u9fff\u3400-\u4dbf]', '', text.strip().lower())
+    # Remove English articles/prepositions that cause false mismatches
+    for stop in ('the', 'of', 'in', 'on', 'and', 'for', 'its'):
+        t = t.replace(stop, '')
+    return t
 
 
 def _register(aliases: dict[str, str], name: str, slug: str):

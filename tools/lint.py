@@ -399,19 +399,31 @@ def _find_duplicate_candidates(articles: list[dict]) -> list[tuple[str, str]]:
             names.add(slug_cjk)
         return names
 
-    def _cjk_substring_match(names_a: set[str], names_b: set[str]) -> bool:
-        """Check if CJK names match (exact or near-exact).
+    def _simplify(text: str) -> str:
+        """Convert traditional Chinese to simplified for comparison."""
+        try:
+            from opencc import OpenCC
+            return OpenCC('t2s').convert(text)
+        except ImportError:
+            return text
 
-        Rules to avoid false positives:
-        - Single char (仁): must match exactly (仁 == 仁), not substring (仁 in 仁政 ✗)
-        - 2+ chars: substring OK if >= 67% of longer string (仁爱 in 仁愛 ✓)
+    def _cjk_substring_match(names_a: set[str], names_b: set[str]) -> bool:
+        """Check if CJK names match (exact, simplified/traditional, or near-exact).
+
+        Rules:
+        - Exact match (including after simplification): always match
+        - Single char (仁): exact only, no substring
+        - 2+ chars: substring OK if >= 67% of longer string
         """
-        for a in names_a:
-            for b in names_b:
+        # Expand both sets with simplified variants
+        expanded_a = names_a | {_simplify(n) for n in names_a}
+        expanded_b = names_b | {_simplify(n) for n in names_b}
+
+        for a in expanded_a:
+            for b in expanded_b:
                 if a == b:
                     return True
                 short, long = (a, b) if len(a) <= len(b) else (b, a)
-                # Single CJK char: too ambiguous for substring matching
                 if len(short) <= 1:
                     continue
                 if short in long and len(short) / len(long) >= 0.67:
