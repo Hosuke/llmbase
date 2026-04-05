@@ -37,6 +37,7 @@ def lint(base_dir: Path | None = None) -> dict:
         "broken_links": check_broken_links(cfg),
         "orphans": check_orphans(cfg),
         "missing_metadata": check_missing_metadata(cfg),
+        "dirty_tags": check_dirty_tags(cfg),
         "duplicates": check_duplicates(cfg),
         "stubs": check_stubs(cfg),
         "uncategorized": check_uncategorized(cfg, base_dir),
@@ -158,6 +159,88 @@ def check_orphans(cfg: dict) -> list[str]:
             issues.append(f"Orphan article (no incoming links): {md_file.stem}")
 
     return issues
+
+
+def check_dirty_tags(cfg: dict) -> list[str]:
+    """Find articles with malformed tags (LLM prompt leaks, sentences, etc.).
+
+    Valid tags should be short (< 30 chars), lowercase, no sentences.
+    Dirty tags look like: "2-4 tags. we need to interpret the article's content"
+    """
+    issues = []
+    concepts_dir = Path(cfg["paths"]["concepts"])
+
+    for md_file in concepts_dir.glob("*.md"):
+        post = frontmatter.load(str(md_file))
+        tags = post.metadata.get("tags", [])
+        slug = md_file.stem
+
+        dirty = []
+        for tag in tags:
+            if not isinstance(tag, str):
+                dirty.append(str(tag))
+            elif len(tag) > 40:
+                dirty.append(tag[:40] + "...")
+            elif " " in tag and len(tag.split()) > 4:
+                # More than 4 words — probably a sentence, not a tag
+                dirty.append(tag)
+            elif any(phrase in tag.lower() for phrase in [
+                "we need", "the user", "output", "list ", "tags:",
+                "tag1", "tag2", "interpret", "based on",
+            ]):
+                dirty.append(tag)
+
+        if dirty:
+            issues.append(f"Dirty tags in {slug}: {dirty}")
+
+    return issues
+
+
+def fix_dirty_tags(base_dir: Path | None = None) -> list[str]:
+    """Clean up dirty tags by removing bad ones and regenerating via LLM."""
+    cfg = load_config(base_dir)
+    ensure_dirs(cfg)
+    concepts_dir = Path(cfg["paths"]["concepts"])
+
+    dirty_articles = check_dirty_tags(cfg)
+    if not dirty_articles:
+        return []
+
+    fixes = []
+    for issue in dirty_articles:
+        slug = issue.split("Dirty tags in ")[1].split(":")[0]
+        path = concepts_dir / f"{slug}.md"
+        if not path.exists():
+            continue
+
+        post = frontmatter.load(str(path))
+        old_tags = post.metadata.get("tags", [])
+
+        # Keep only clean tags
+        clean = [t for t in old_tags if isinstance(t, str) and len(t) <= 40
+                 and len(t.split()) <= 4
+                 and not any(p in t.lower() for p in [
+                     "we need", "the user", "output", "list ", "tags:",
+                     "tag1", "tag2", "interpret", "based on",
+                 ])]
+
+        if len(clean) < 2:
+            # Too few clean tags remaining — ask LLM for new ones
+            title = post.metadata.get("title", slug)
+            prompt = f"List 2-4 relevant tags for this article (comma-separated, lowercase, short keywords only):\n\n# {title}\n\n{post.content[:2000]}"
+            try:
+                response = chat(prompt, max_tokens=128)
+                new_tags = [t.strip().lower() for t in response.split(",") if t.strip() and len(t.strip()) <= 40]
+                clean = list(set(clean + new_tags))
+            except Exception:
+                pass
+
+        if set(clean) != set(old_tags):
+            post.metadata["tags"] = sorted(clean)
+            path.write_text(frontmatter.dumps(post), encoding="utf-8")
+            fixes.append(f"Cleaned tags for {slug}: {old_tags} → {clean}")
+
+    return fixes
 
 
 def check_stubs(cfg: dict) -> list[str]:
@@ -669,7 +752,11 @@ def auto_fix(base_dir: Path | None = None) -> list[str]:
     if garbage:
         fixes.append(f"Cleaned {len(garbage)} garbage article(s): {', '.join(garbage[:5])}")
 
-    # 2. Fix missing metadata
+    # 2. Fix dirty tags (prompt leaks, sentences in tag fields)
+    tag_clean = fix_dirty_tags(base_dir)
+    fixes.extend(tag_clean)
+
+    # 3. Fix missing metadata
     for md_file in concepts_dir.glob("*.md"):
         post = frontmatter.load(str(md_file))
         needs_fix = False
