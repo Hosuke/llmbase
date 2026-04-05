@@ -159,7 +159,7 @@ def _sync_taxonomy_to_tags(tree: list[dict], concepts_dir: Path, path: list[str]
     For each article assigned in the taxonomy tree, adds a `category:xxx`
     tag reflecting its position. This unifies taxonomy and wiki tags.
 
-    Example: an article under Buddhism > Practice gets:
+    Example: an article under "Science > Physics" gets:
       tags: [...existing..., "category:buddhism", "category:buddhism/practice"]
     """
     if path is None:

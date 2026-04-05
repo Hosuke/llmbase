@@ -98,9 +98,8 @@ EXISTING ARTICLES (you MUST reuse these — DO NOT create new articles for conce
 
 CRITICAL DEDUPLICATION RULES:
 - If a concept ALREADY EXISTS above (even under a different name, translation, or variant), you MUST use ===UPDATE=== with the EXISTING slug
-- 四端 and 四端说 are the SAME concept — use UPDATE, not new ARTICLE
-- 仁 and Benevolence are the SAME concept — use UPDATE
-- 阿罗汉 and 阿罗汉位 are the SAME concept — use UPDATE
+- A concept with a suffix (e.g., "X说", "X论", "X位") is usually the SAME as the base concept "X" — use UPDATE
+- A concept in one language (e.g., Chinese title) that matches an existing concept in another language (e.g., English slug) is the SAME — use UPDATE
 - When in doubt, UPDATE an existing article rather than creating a new one
 - New articles should only be created for genuinely NEW concepts not covered above
 
@@ -403,7 +402,7 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
                 _merge_into(existing_path, article)
                 return existing_path
 
-    # Layer 3: CJK substring scan — catches 四端说 matching 四端, 仁 matching 仁
+    # Layer 3: CJK substring scan — catches variant titles (e.g., "X说" matching "X")
     new_cjk = _re.sub(r'[^\u4e00-\u9fff\u3400-\u4dbf]', '', title)
     if new_cjk:
         for md_file in concepts_dir.glob("*.md"):
@@ -416,7 +415,7 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
             if new_cjk == existing_cjk:
                 _merge_into(md_file, article)
                 return md_file
-            # Substring match for 2+ chars (四端 in 四端说, ratio >= 60%)
+            # Substring match for 2+ chars with 60% length ratio
             short, long = (new_cjk, existing_cjk) if len(new_cjk) <= len(existing_cjk) else (existing_cjk, new_cjk)
             if len(short) >= 2 and short in long and len(short) / len(long) >= 0.6:
                 _merge_into(md_file, article)

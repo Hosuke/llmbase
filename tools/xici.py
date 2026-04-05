@@ -1,6 +1,6 @@
 """Xi Ci (系辞) — LLM-generated guided introduction for the knowledge base.
 
-Like Confucius writing the Commentary on the I Ching, this module
+Like a master librarian writing a guided introduction, this module
 generates a living overview that ties together all articles into a
 coherent intellectual framework. It adapts to the user's language
 and regenerates as the knowledge base evolves.
