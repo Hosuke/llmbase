@@ -37,6 +37,19 @@ def _defaults() -> dict:
         "compile": {"batch_size": 10, "backlinks": True},
         "search": {"port": 5555},
         "lint": {"web_search": False},
+        "worker": {
+            "enabled": False,
+            "learn_interval_hours": 6,
+            "compile_interval_hours": 1,
+            "taxonomy_interval_hours": 12,
+            "health_check_interval_hours": 24,
+            "learn_batch_size": 10,
+            "learn_source": "cbeta",
+        },
+        "health": {
+            "auto_fix_broken_links": True,
+            "max_stubs_per_run": 10,
+        },
     }
 
 

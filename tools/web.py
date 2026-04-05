@@ -149,11 +149,25 @@ def create_web_app(base_dir: Path | None = None):
         q = data.get("question", "")
         deep = data.get("deep", False)
         file_back = data.get("file_back", True)
+        tone = data.get("tone", "default")
         if deep:
-            answer = query_with_search(q, base)
+            answer = query_with_search(q, base, tone=tone)
         else:
-            answer = query(q, file_back=file_back, base_dir=base)
+            answer = query(q, file_back=file_back, base_dir=base, tone=tone)
         return jsonify({"answer": answer})
+
+    @app.route("/api/tones", methods=["GET"])
+    def api_tones():
+        """List available response tone modes."""
+        from .query import TONE_INSTRUCTIONS
+        tones = [
+            {"id": "default", "label": "Default", "label_zh": "默认", "icon": "chat"},
+            {"id": "caveman", "label": "Caveman", "label_zh": "原始人", "icon": "pets"},
+            {"id": "wenyan", "label": "文言文", "label_zh": "文言文", "icon": "history_edu"},
+            {"id": "scholar", "label": "Scholar", "label_zh": "学术", "icon": "school"},
+            {"id": "eli5", "label": "ELI5", "label_zh": "幼儿园", "icon": "child_care"},
+        ]
+        return jsonify({"tones": [t for t in tones if t["id"] in TONE_INSTRUCTIONS]})
 
     @app.route("/api/sources")
     def api_sources():

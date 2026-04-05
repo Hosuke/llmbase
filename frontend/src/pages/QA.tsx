@@ -1,24 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '../components/Icon';
 import { Markdown } from '../components/Markdown';
 import { Shimmer } from '../components/Loading';
 import { api } from '../lib/api';
+import { useLang } from '../lib/lang';
 
 interface QAPair { question: string; answer: string; }
+interface ToneOption { id: string; label: string; label_zh: string; icon: string; }
+
+const FALLBACK_TONES: ToneOption[] = [
+  { id: 'default', label: 'Default', label_zh: '默认', icon: 'chat' },
+  { id: 'caveman', label: 'Caveman', label_zh: '原始人', icon: 'pets' },
+  { id: 'wenyan', label: '文言文', label_zh: '文言文', icon: 'history_edu' },
+  { id: 'scholar', label: 'Scholar', label_zh: '学术', icon: 'school' },
+  { id: 'eli5', label: 'ELI5', label_zh: '幼儿园', icon: 'child_care' },
+];
 
 export function QA() {
+  const { lang } = useLang();
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [fileBack, setFileBack] = useState(true);
+  const [tone, setTone] = useState('default');
+  const [tones, setTones] = useState<ToneOption[]>(FALLBACK_TONES);
   const [history, setHistory] = useState<QAPair[]>([]);
+
+  useEffect(() => {
+    api.getTones().then(setTones).catch(() => setTones(FALLBACK_TONES));
+  }, []);
 
   async function ask(deep: boolean) {
     if (!question.trim() || loading) return;
     setLoading(true);
     setAnswer('');
     try {
-      const res = await api.ask(question, deep, fileBack);
+      const res = await api.ask(question, deep, fileBack, tone);
       setAnswer(res.answer);
       setHistory(prev => [{ question, answer: res.answer }, ...prev]);
     } catch (e) {
@@ -45,15 +62,35 @@ export function QA() {
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(false); } }}
         />
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-variant/20">
-          <label className="flex items-center gap-2 text-sm text-on-surface-variant cursor-pointer">
-            <input
-              type="checkbox"
-              checked={fileBack}
-              onChange={e => setFileBack(e.target.checked)}
-              className="rounded border-outline-variant"
-            />
-            File answer to wiki
-          </label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-on-surface-variant cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fileBack}
+                onChange={e => setFileBack(e.target.checked)}
+                className="rounded border-outline-variant"
+              />
+              File to wiki
+            </label>
+            {/* Tone selector */}
+            <div className="flex items-center gap-1">
+              {tones.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTone(t.id)}
+                  title={(lang === 'zh' || lang === 'zh-en') ? t.label_zh : t.label}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                    tone === t.id
+                      ? 'bg-primary/15 text-primary font-medium'
+                      : 'text-on-surface-variant hover:bg-surface-container-highest/50'
+                  }`}
+                >
+                  <Icon name={t.icon} className="text-[14px]" />
+                  <span className="hidden sm:inline">{(lang === 'zh' || lang === 'zh-en') ? t.label_zh : t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => ask(true)}

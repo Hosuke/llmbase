@@ -37,12 +37,18 @@ def run_worker(base_dir: Path | None = None):
     learn_source = worker_cfg.get("learn_source", "cbeta")
 
     taxonomy_interval = worker_cfg.get("taxonomy_interval_hours", 12) * 3600
+    health_interval = worker_cfg.get("health_check_interval_hours", 24) * 3600
 
-    logger.info(f"Worker started: learn every {learn_interval/3600:.0f}h, compile every {compile_interval/3600:.0f}h")
+    logger.info(
+        f"Worker started: learn every {learn_interval/3600:.0f}h, "
+        f"compile every {compile_interval/3600:.0f}h, "
+        f"health every {health_interval/3600:.0f}h"
+    )
 
     last_learn = 0
     last_compile = 0
     last_taxonomy = 0
+    last_health = 0
 
     while True:
         now = time.time()
@@ -61,6 +67,11 @@ def run_worker(base_dir: Path | None = None):
         if now - last_taxonomy >= taxonomy_interval:
             _task_taxonomy(base)
             last_taxonomy = now
+
+        # Health checks and auto-repair
+        if now - last_health >= health_interval:
+            _task_health_check(base)
+            last_health = now
 
         time.sleep(60)  # Check every minute
 
@@ -115,6 +126,49 @@ def _task_taxonomy(base: Path):
         logger.info(f"[taxonomy] Generated {cats} categories")
     except Exception as e:
         logger.error(f"[taxonomy] Error: {e}")
+
+
+def _task_health_check(base: Path):
+    """Run lint checks and auto-fix broken links."""
+    logger.info("[health] Running health checks...")
+    try:
+        from .lint import lint, auto_fix
+        import json
+
+        # Run checks
+        results = lint(base)
+        total = results.get("total_issues", 0)
+        logger.info(f"[health] Found {total} issues")
+
+        # Auto-fix
+        fixes = []
+        if total > 0:
+            fixes = auto_fix(base)
+            logger.info(f"[health] Applied {len(fixes)} fixes")
+
+        # Persist health report
+        _save_health_report(base, results, fixes)
+
+    except Exception as e:
+        logger.error(f"[health] Error: {e}")
+
+
+def _save_health_report(base: Path, results: dict, fixes: list[str]):
+    """Save health check results to wiki/_meta/health.json."""
+    import json
+
+    cfg = load_config(base)
+    meta_dir = Path(cfg["paths"]["meta"])
+    meta_dir.mkdir(parents=True, exist_ok=True)
+
+    report = {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "results": results,
+        "fixes_applied": fixes,
+    }
+    health_path = meta_dir / "health.json"
+    health_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    logger.info(f"[health] Report saved to {health_path}")
 
 
 def start_worker_thread(base_dir: Path | None = None):

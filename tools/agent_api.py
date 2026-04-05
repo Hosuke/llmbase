@@ -15,7 +15,7 @@ from .ingest import ingest_url, ingest_file, list_raw
 from .compile import compile_new, compile_all, rebuild_index
 from .query import query, query_with_search
 from .search import search
-from .lint import lint, lint_deep
+from .lint import lint, lint_deep, auto_fix
 
 
 class KnowledgeBase:
@@ -42,12 +42,12 @@ class KnowledgeBase:
             articles = compile_new(self.base_dir)
         return {"status": "ok", "articles_created": len(articles), "articles": articles}
 
-    def ask(self, question: str, deep: bool = False, file_back: bool = True) -> dict:
+    def ask(self, question: str, deep: bool = False, file_back: bool = True, tone: str = "default") -> dict:
         """Ask a question against the knowledge base."""
         if deep:
-            answer = query_with_search(question, self.base_dir)
+            answer = query_with_search(question, self.base_dir, tone=tone)
         else:
-            answer = query(question, file_back=file_back, base_dir=self.base_dir)
+            answer = query(question, file_back=file_back, base_dir=self.base_dir, tone=tone)
         return {"status": "ok", "answer": answer}
 
     def search(self, query_text: str, top_k: int = 10) -> dict:
@@ -63,6 +63,20 @@ class KnowledgeBase:
         else:
             results = lint(self.base_dir)
             return {"status": "ok", "results": results}
+
+    def lint_fix(self) -> dict:
+        """Run auto-fix on lint issues (metadata + broken links)."""
+        fixes = auto_fix(self.base_dir)
+        return {"status": "ok", "fixes": fixes, "fix_count": len(fixes)}
+
+    def health_report(self) -> dict:
+        """Return the last persisted health report."""
+        meta_dir = Path(self.cfg["paths"]["meta"])
+        health_path = meta_dir / "health.json"
+        if not health_path.exists():
+            return {"status": "ok", "report": None, "message": "No health check has run yet"}
+        report = json.loads(health_path.read_text())
+        return {"status": "ok", "report": report}
 
     def list_sources(self) -> dict:
         """List all ingested raw documents."""
@@ -130,6 +144,7 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
             data["question"],
             deep=data.get("deep", False),
             file_back=data.get("file_back", True),
+            tone=data.get("tone", "default"),
         ))
 
     @app.route("/api/search", methods=["GET"])
@@ -142,6 +157,14 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
     def api_lint():
         data = request.json or {}
         return jsonify(kb.lint_check(deep_check=data.get("deep", False)))
+
+    @app.route("/api/lint/fix", methods=["POST"])
+    def api_lint_fix():
+        return jsonify(kb.lint_fix())
+
+    @app.route("/api/health", methods=["GET"])
+    def api_health():
+        return jsonify(kb.health_report())
 
     @app.route("/api/sources", methods=["GET"])
     def api_sources():

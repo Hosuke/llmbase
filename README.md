@@ -35,14 +35,16 @@ raw/  ──LLM compile──>  wiki/  ──query/lint──>  wiki/ (enhanced)
 
 **Phase 3: Query & Enhance** — Ask questions against the wiki. Answers get filed back, strengthening the knowledge base. Every exploration adds up.
 
-**Phase 4: Lint** — LLM health checks: find inconsistencies, broken links, orphan articles, suggest new connections. Auto-fix metadata.
+**Phase 4: Lint & Heal** — LLM health checks: find inconsistencies, broken links, orphan articles. Auto-generates stub articles for missing concepts, fixes metadata, rebuilds index. The worker runs this cycle every 24h.
 
 ## Key Features
 
 | Feature | Description |
 |---------|-------------|
 | **Trilingual Output** | Every article compiled in English, 中文, and 日本語 with global language switcher |
-| **Autonomous Learning** | Background worker continuously ingests and compiles from configured sources |
+| **Autonomous Learning** | Background worker continuously ingests, compiles, and self-heals from configured sources |
+| **Self-Healing Wiki** | Periodic health checks auto-generate stubs for broken links, fix metadata, rebuild index |
+| **Voice/Tone Modes** | Query in different styles: caveman 🦴, 文言文 📜, scholar 🎓, ELI5 👶, or default |
 | **Model Fallback** | Primary LLM fails? Auto-falls back to secondary models. Knowledge base keeps growing. |
 | **PDF Ingestion** | `llmbase ingest pdf ./book.pdf` — auto-chunks and converts to markdown |
 | **Explorations Add Up** | Q&A answers file back into the wiki. Lint passes suggest new articles. Knowledge compounds. |
@@ -98,10 +100,16 @@ llmbase compile all          # Full rebuild
 llmbase compile index        # Rebuild index only
 llmbase lint check           # Structural health check
 llmbase lint deep            # LLM-powered deep analysis
+llmbase lint fix             # Auto-fix metadata + broken links
+llmbase lint heal            # Full cycle: check → fix → recheck → report
 
 # Query & search
 llmbase query "What are the key concepts?"
 llmbase query "Compare X and Y" --format marp --file-back
+llmbase query "Explain emptiness" --tone caveman    # 🦴 Ugg. Empty good.
+llmbase query "何为空性" --tone wenyan               # 📜 佛者，覺也...
+llmbase query "What is karma?" --tone scholar        # 🎓 Academic style
+llmbase query "What is nirvana?" --tone eli5         # 👶 Simple explanation
 llmbase search query "topic"
 
 # Serve
@@ -132,13 +140,18 @@ Deploy once, and the server learns on its own:
 # config.yaml
 worker:
   enabled: true
-  learn_source: cbeta          # auto-ingest from CBETA Buddhist canon
-  learn_interval_hours: 6      # every 6 hours
-  learn_batch_size: 10         # 10 new texts per batch
-  compile_interval_hours: 1    # compile new docs every hour
+  learn_source: cbeta              # auto-ingest from CBETA Buddhist canon
+  learn_interval_hours: 6          # every 6 hours
+  learn_batch_size: 10             # 10 new texts per batch
+  compile_interval_hours: 1        # compile new docs every hour
+  health_check_interval_hours: 24  # self-heal every 24 hours
+
+health:
+  auto_fix_broken_links: true      # generate stubs for broken [[wiki-links]]
+  max_stubs_per_run: 10            # cap LLM calls per health cycle
 ```
 
-The worker runs alongside the web server — no separate process needed.
+The worker runs alongside the web server — no separate process needed. Health checks auto-generate stub articles for broken links and persist reports to `wiki/_meta/health.json`.
 
 ## Deployment
 
@@ -161,11 +174,12 @@ from tools.agent_api import KnowledgeBase
 kb = KnowledgeBase("./")
 kb.ingest("https://example.com/article")
 kb.compile()
-result = kb.ask("What is X?", deep=True)
+result = kb.ask("What is X?", deep=True, tone="wenyan")
 results = kb.search("keyword")
+health = kb.health_report()
 ```
 
-HTTP endpoints: `/api/articles`, `/api/ask`, `/api/search`, `/api/ingest`, `/api/compile`, `/api/upload`, `/api/wiki/export`, `/api/taxonomy`
+HTTP endpoints: `/api/articles`, `/api/ask`, `/api/search`, `/api/ingest`, `/api/compile`, `/api/upload`, `/api/wiki/export`, `/api/taxonomy`, `/api/tones`, `/api/lint/fix`, `/api/health`
 
 ## Design Philosophy
 
@@ -223,15 +237,17 @@ LLMBase 是一个 **LLM 驱动的个人知识库系统**，灵感来自 [Karpath
 1. **摄入 (Ingest)** — 从 URL、PDF、本地文件、或数据源插件（CBETA、ctext.org）收集原始文档
 2. **编译 (Compile)** — LLM 阅读原始文档，提取概念，撰写三语文章，构建索引。已有概念自动合并更新
 3. **查询与增强 (Query & Enhance)** — 基于 wiki 的智能问答，答案归档回 wiki。每次查询都让知识库更强
-4. **检查与维护 (Lint)** — 断链检测、孤立文章发现、元数据补全、LLM 深度分析建议新连接
+4. **检查与自愈 (Lint & Heal)** — 断链检测 → 自动生成 stub 文章、孤立文章发现、元数据补全、LLM 深度分析。Worker 每 24h 自动执行
 
 ### 核心功能
 
 | 功能 | 说明 |
 |------|------|
 | **三语输出** | 每篇文章自动生成 English / 中文 / 日本語 三个版本，顶栏全局语言切换，支持中英双语模式 |
-| **自治学习** | 后台 Worker 自动从配置的数据源持续摄入和编译，部署后无需人工干预 |
-| **模型容错** | 主模型失败自动切换备选模型（如 MiniMax-M2.7 → M2.5 → deepseek），知识库持续增长不中断 |
+| **自治学习** | 后台 Worker 自动摄入、编译、自愈，部署后无需人工干预 |
+| **自愈系统** | 定期健康检查，自动为断链生成 stub 文章，修复元数据，重建索引 |
+| **语气模式** | 问答支持多种风格：原始人 🦴、文言文 📜、学术 🎓、幼儿园 👶 |
+| **模型容错** | 主模型失败自动切换备选模型，知识库持续增长不中断 |
 | **PDF 摄入** | `llmbase ingest pdf ./book.pdf` 自动切分为 20 页/块的 markdown，支持中英文 PDF |
 | **知识叠加** | Q&A 答案归档回 wiki，Lint 建议新连接，重复概念合并而非覆盖。温故而知新 |
 | **分类体系** | LLM 自动生成层级分类（参考四库全书分类法），左栏按分类浏览 |
@@ -267,10 +283,13 @@ llmbase ingest ctext-book 论语 /analects/zh       # ctext 经典抓取
 llmbase compile new       # 增量编译新文档
 llmbase lint check        # 结构健康检查
 llmbase lint deep         # LLM 深度分析
+llmbase lint heal         # 全自愈周期：检查 → 修复 → 复查 → 报告
 
-# 查询
-llmbase query "什么是般若？"              # 基于知识库问答
-llmbase query "比较儒道佛的核心思想" --file-back  # 答案归档回 wiki
+# 查询（支持语气模式）
+llmbase query "什么是般若？"                       # 默认风格
+llmbase query "何为空性" --tone wenyan              # 📜 文言文风格
+llmbase query "什么是因果" --tone caveman           # 🦴 原始人风格
+llmbase query "比较儒道佛的核心思想" --file-back     # 答案归档回 wiki
 
 # 部署
 llmbase web               # Web UI (localhost:5555)
@@ -286,10 +305,15 @@ worker:
   learn_source: cbeta        # 数据源（CBETA 大藏经）
   learn_interval_hours: 6    # 每 6 小时自动学习一批
   learn_batch_size: 10       # 每批 10 部经文
-  compile_interval_hours: 1  # 每小时自动编译
+  compile_interval_hours: 1        # 每小时自动编译
+  health_check_interval_hours: 24  # 每 24 小时自愈检查
+
+health:
+  auto_fix_broken_links: true      # 自动为断链生成 stub 文章
+  max_stubs_per_run: 10            # 每次自愈最多生成 10 篇 stub
 ```
 
-部署后服务器会自己学、自己编译、自己建索引。你只需要偶尔上传新 PDF 或调整学习方向。
+部署后服务器会自己学、自己编译、自己建索引、自己修复断链。你只需要偶尔上传新 PDF 或调整学习方向。
 
 ### 数据源插件
 

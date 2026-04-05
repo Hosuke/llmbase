@@ -300,18 +300,20 @@ def compile_index_cmd(ctx):
 @cli.command()
 @click.argument("question")
 @click.option("--format", "output_format", type=click.Choice(["markdown", "marp", "chart"]), default="markdown")
+@click.option("--tone", type=click.Choice(["default", "caveman", "wenyan", "scholar", "eli5"]), default="default",
+              help="Response tone: caveman (primitive), wenyan (文言文), scholar (academic), eli5 (simple)")
 @click.option("--file-back", is_flag=True, help="Save the answer back into the wiki")
 @click.option("--deep", is_flag=True, help="Use multi-step search for complex queries")
 @click.pass_context
-def query(ctx, question, output_format, file_back, deep):
+def query(ctx, question, output_format, tone, file_back, deep):
     """Ask a question against the knowledge base."""
     from .query import query as do_query, query_with_search
 
     with console.status("Researching..."):
         if deep:
-            answer = query_with_search(question, ctx.obj["base_dir"])
+            answer = query_with_search(question, ctx.obj["base_dir"], tone=tone)
         else:
-            answer = do_query(question, output_format, file_back, ctx.obj["base_dir"])
+            answer = do_query(question, output_format, file_back, ctx.obj["base_dir"], tone=tone)
 
     console.print(Panel(Markdown(answer), title="Answer", border_style="green"))
 
@@ -418,6 +420,65 @@ def lint_fix_cmd(ctx):
             console.print(f"[green]✓[/green] {fix}")
     else:
         console.print("[green]Nothing to fix.[/green]")
+
+
+@lint.command("heal")
+@click.pass_context
+def lint_heal_cmd(ctx):
+    """Full health cycle: check -> fix -> recheck -> report."""
+    from .lint import lint as do_lint, auto_fix
+    import json
+    from datetime import datetime, timezone
+
+    # Phase 1: Check
+    console.print("[cyan]Phase 1: Checking...[/cyan]")
+    results = do_lint(ctx.obj["base_dir"])
+    total_before = results["total_issues"]
+    for category, issues in results.items():
+        if category == "total_issues" or not issues:
+            continue
+        console.print(f"  {category}: {len(issues)} issues")
+    console.print(f"  Total: {total_before} issues")
+
+    if total_before == 0:
+        console.print("[green]No issues found. Knowledge base is healthy.[/green]")
+        return
+
+    # Phase 2: Fix
+    console.print("\n[cyan]Phase 2: Fixing...[/cyan]")
+    with console.status("Auto-fixing issues..."):
+        fixes = auto_fix(ctx.obj["base_dir"])
+    if fixes:
+        for fix in fixes:
+            console.print(f"  [green]✓[/green] {fix}")
+    else:
+        console.print("  No auto-fixes available")
+
+    # Phase 3: Recheck
+    console.print("\n[cyan]Phase 3: Rechecking...[/cyan]")
+    results_after = do_lint(ctx.obj["base_dir"])
+    total_after = results_after["total_issues"]
+
+    # Phase 4: Persist report
+    cfg = load_config(ctx.obj["base_dir"])
+    meta_dir = Path(cfg["paths"]["meta"])
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    report = {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "issues_before": total_before,
+        "issues_after": total_after,
+        "results": results_after,
+        "fixes_applied": fixes,
+    }
+    health_path = meta_dir / "health.json"
+    health_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # Summary
+    resolved = total_before - total_after
+    console.print(f"\n[bold]Summary:[/bold] {resolved} resolved, {total_after} remaining")
+    if total_after == 0:
+        console.print("[green]Knowledge base is now healthy.[/green]")
+    console.print(f"[dim]Report saved to {health_path}[/dim]")
 
 
 # ─── Stats command ─────────────────────────────────────────────────

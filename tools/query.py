@@ -19,11 +19,47 @@ When citing sources, reference the article titles. Use markdown formatting for y
 If asked to create visualizations, output matplotlib code blocks that can be executed."""
 
 
+# Voice/tone modes: each maps to an instruction appended to the system prompt
+TONE_INSTRUCTIONS = {
+    "default": "",
+    "caveman": (
+        "IMPORTANT TONE OVERRIDE: You are a caveman. Speak in broken, primitive language. "
+        "Use simple words. No fancy grammar. Short sentences. "
+        "Example: 'Fire hot. Book say thing about Buddha. Brain think: empty = good. "
+        "No-self mean no worry. Caveman like.' "
+        "Still convey the actual knowledge accurately, but wrap it in caveman speech. "
+        "Use grunts (Ugg, Hmm, Ooga) for emphasis."
+    ),
+    "wenyan": (
+        "重要語氣覆蓋：請以文言文風格作答。全文須用古典漢語（文言文）書寫，"
+        "仿先秦兩漢之文風，用字簡練，句式古雅。"
+        "可用「者」「也」「矣」「焉」「乎」「哉」等語氣詞，"
+        "用「蓋」「夫」「且」「然則」等發語詞及連詞。"
+        "引經據典時宜用原文。切勿用白話文。"
+        "範例：'佛者，覺也。覺諸法空，離一切相，是為正覺。"
+        "《心經》云：色不異空，空不異色。此之謂也。'"
+    ),
+    "scholar": (
+        "TONE OVERRIDE: Respond in the style of a careful academic scholar. "
+        "Use precise terminology, cite sources with page references where possible, "
+        "note areas of scholarly debate, and distinguish between established consensus "
+        "and your own interpretation. Write in formal academic prose."
+    ),
+    "eli5": (
+        "TONE OVERRIDE: Explain Like I'm 5. Use the simplest possible language. "
+        "Use analogies to everyday things a child would know. "
+        "Short paragraphs. No jargon at all. If you must use a big word, "
+        "explain it right away in parentheses."
+    ),
+}
+
+
 def query(
     question: str,
     output_format: str = "markdown",
     file_back: bool = False,
     base_dir: Path | None = None,
+    tone: str = "default",
 ) -> str:
     """Ask a question against the wiki and return the answer."""
     cfg = load_config(base_dir)
@@ -35,10 +71,13 @@ def query(
     if not context_files:
         return "No articles found in the wiki. Run `llmbase compile` first to build the wiki from raw documents."
 
-    # Build the prompt based on output format
+    # Build the prompt based on output format and tone
     format_instruction = _format_instruction(output_format)
+    tone_instruction = TONE_INSTRUCTIONS.get(tone, "")
 
     system = SYSTEM_PROMPT + f"\n\n{format_instruction}"
+    if tone_instruction:
+        system += f"\n\n{tone_instruction}"
 
     answer = chat_with_context(
         question,
@@ -57,6 +96,7 @@ def query(
 def query_with_search(
     question: str,
     base_dir: Path | None = None,
+    tone: str = "default",
 ) -> str:
     """Multi-step query: first search for relevant articles, then answer."""
     cfg = load_config(base_dir)
@@ -98,10 +138,16 @@ Which articles (by title) are most relevant? List up to 10, one per line, just t
     if not context_files:
         return "Could not find relevant articles for this question."
 
+    # Build system prompt with tone
+    system = SYSTEM_PROMPT
+    tone_instruction = TONE_INSTRUCTIONS.get(tone, "")
+    if tone_instruction:
+        system += f"\n\n{tone_instruction}"
+
     return chat_with_context(
         question,
         context_files,
-        system=SYSTEM_PROMPT,
+        system=system,
         max_tokens=cfg["llm"]["max_tokens"],
     )
 
