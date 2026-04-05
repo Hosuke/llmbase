@@ -78,6 +78,17 @@ class KnowledgeBase:
         report = json.loads(health_path.read_text())
         return {"status": "ok", "report": report}
 
+    def get_xici(self, lang: str = "zh") -> dict:
+        """Get the Xi Ci (guided introduction) for the knowledge base."""
+        from .xici import get_xici
+        return {"status": "ok", **get_xici(self.base_dir, lang)}
+
+    def generate_xici(self, lang: str = "zh") -> dict:
+        """Regenerate the Xi Ci."""
+        from .xici import generate_xici
+        result = generate_xici(self.base_dir, lang)
+        return {"status": "ok", **result}
+
     def list_sources(self) -> dict:
         """List all ingested raw documents."""
         docs = list_raw(self.base_dir)

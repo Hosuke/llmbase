@@ -53,11 +53,33 @@ def create_web_app(base_dir: Path | None = None):
             for f in concepts_dir.glob("*.md"):
                 total_words += len(f.read_text().split())
 
+        # Count wiki-links
+        import re
+        link_count = 0
+        if concepts_dir.exists():
+            link_re = re.compile(r'\[\[[^\]]+\]\]')
+            for f in concepts_dir.glob("*.md"):
+                link_count += len(link_re.findall(f.read_text()))
+
+        # Health score
+        try:
+            health_path = Path(cfg["paths"]["meta"]) / "health.json"
+            if health_path.exists():
+                health = json.loads(health_path.read_text())
+                total_issues = health.get("results", {}).get("total_issues", 0)
+                health_score = max(0, 100 - total_issues) if article_count > 0 else 0
+            else:
+                health_score = 100 if article_count > 0 else 0
+        except Exception:
+            health_score = 0
+
         return jsonify({
             "raw_count": raw_count,
             "article_count": article_count,
             "output_count": output_count,
             "total_words": total_words,
+            "link_count": link_count,
+            "health_score": health_score,
         })
 
     @app.route("/api/taxonomy")
@@ -151,6 +173,22 @@ def create_web_app(base_dir: Path | None = None):
         cfg = load_config(base)
         aliases = load_aliases(Path(cfg["paths"]["meta"]))
         return jsonify({"aliases": aliases})
+
+    @app.route("/api/xici")
+    def api_xici():
+        """Get the cached Xi Ci (guided introduction). ?lang=zh|en|ja|zh-en"""
+        from .xici import get_xici
+        lang = request.args.get("lang", "zh")
+        return jsonify(get_xici(base, lang))
+
+    @app.route("/api/xici/generate", methods=["POST"])
+    def api_xici_generate():
+        """Regenerate Xi Ci for a given language."""
+        from .xici import generate_xici
+        data = request.json or {}
+        lang = data.get("lang", "zh")
+        result = generate_xici(base, lang)
+        return jsonify(result)
 
     @app.route("/api/search")
     def api_search():

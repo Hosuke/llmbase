@@ -117,7 +117,7 @@ def _task_compile(base: Path):
 
 
 def _task_taxonomy(base: Path):
-    """Regenerate taxonomy from current articles."""
+    """Regenerate taxonomy and Xi Ci from current articles."""
     logger.info("[taxonomy] Regenerating category taxonomy...")
     try:
         from .taxonomy import generate_taxonomy
@@ -126,6 +126,16 @@ def _task_taxonomy(base: Path):
         logger.info(f"[taxonomy] Generated {cats} categories")
     except Exception as e:
         logger.error(f"[taxonomy] Error: {e}")
+
+    # Regenerate Xi Ci for all languages
+    logger.info("[xici] Regenerating guided introductions...")
+    try:
+        from .xici import generate_xici
+        for lang in ("zh", "en", "ja", "zh-en"):
+            generate_xici(base, lang)
+        logger.info("[xici] Generated Xi Ci for all languages")
+    except Exception as e:
+        logger.error(f"[xici] Error: {e}")
 
 
 def _task_health_check(base: Path):

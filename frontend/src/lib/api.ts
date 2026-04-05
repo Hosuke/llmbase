@@ -22,6 +22,16 @@ export interface Stats {
   article_count: number;
   output_count: number;
   total_words: number;
+  link_count: number;
+  health_score: number;
+}
+
+export interface XiCi {
+  text: string;
+  themes: string[];
+  lang: string;
+  generated_at: string | null;
+  article_count: number;
 }
 
 export interface RawDoc {
@@ -82,6 +92,8 @@ export const api = {
   ask: (question: string, deep = false, fileBack = true, tone = 'default') => post<{ answer: string }>('/api/ask', { question, deep, file_back: fileBack, tone }),
   getTones: () => get<{ tones: { id: string; label: string; label_zh: string; icon: string }[] }>('/api/tones').then(d => d.tones),
   getAliases: () => get<{ aliases: Record<string, string> }>('/api/aliases').then(d => d.aliases),
+  getXiCi: (lang: string) => get<XiCi>(`/api/xici?lang=${lang}`),
+  generateXiCi: (lang: string) => post<XiCi>('/api/xici/generate', { lang }),
   getSources: () => get<{ documents: RawDoc[] }>('/api/sources').then(d => d.documents),
   ingest: (source: string) => post<{ status: string; path: string }>('/api/ingest', { source }),
   compile: () => post<{ status: string; articles_created: number }>('/api/compile', {}),
