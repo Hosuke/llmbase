@@ -59,10 +59,25 @@ def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> 
     index = _load_index(meta_dir)
     existing_concepts = _list_existing_concepts(concepts_dir)
 
+    # Load compiled-sources log to avoid recompiling on volume reset
+    compiled_log_path = meta_dir / "compiled_sources.json"
+    if compiled_log_path.exists():
+        compiled_sources = set(json.loads(compiled_log_path.read_text()))
+    else:
+        compiled_sources = set()
+
     for doc_path in batch:
         post = frontmatter.load(str(doc_path))
         title = post.metadata.get("title", doc_path.parent.name)
         content = post.content
+
+        # Check if this source was already compiled (survives volume reset)
+        source_key = post.metadata.get("source", "") or title
+        if source_key in compiled_sources:
+            # Already compiled before — mark and skip
+            post.metadata["compiled"] = True
+            doc_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+            continue
 
         if not content.strip():
             # Check for non-md files in the directory
@@ -128,6 +143,13 @@ Focus on extracting knowledge, not just summarizing. Each language section shoul
         post.metadata["compiled"] = True
         post.metadata["compiled_at"] = datetime.now(timezone.utc).isoformat()
         doc_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+
+        # Log to compiled_sources (survives volume reset)
+        source_key = post.metadata.get("source", "") or title
+        compiled_sources.add(source_key)
+
+    # Persist compiled sources log
+    compiled_log_path.write_text(json.dumps(sorted(compiled_sources), ensure_ascii=False), encoding="utf-8")
 
     # Rebuild index
     rebuild_index(base_dir)
