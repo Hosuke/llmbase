@@ -218,9 +218,28 @@ def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]
         articles = _load_articles(concepts_dir)
         raw_tree = _fallback_taxonomy(articles)
 
+    # Deduplicate: each slug appears only once (first occurrence wins)
+    _dedup_tree(raw_tree)
+
     # Localize labels and resolve article_slugs → {slug, title}
     title_map = _build_title_map(concepts_dir)
     return _localize_tree(raw_tree, lang, title_map)
+
+
+def _dedup_tree(nodes: list[dict], seen: set | None = None):
+    """Remove duplicate article_slugs across the tree. First occurrence wins."""
+    if seen is None:
+        seen = set()
+    for node in nodes:
+        # Dedup children first (deeper = more specific, keep those)
+        _dedup_tree(node.get("children", []), seen)
+        # Then dedup this node's slugs
+        unique = []
+        for s in node.get("article_slugs", []):
+            if s not in seen:
+                seen.add(s)
+                unique.append(s)
+        node["article_slugs"] = unique
 
 
 def load_taxonomy(base_dir: Path | None = None) -> dict:
