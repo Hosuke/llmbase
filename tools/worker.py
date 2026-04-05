@@ -45,8 +45,10 @@ def run_worker(base_dir: Path | None = None):
         f"health every {health_interval/3600:.0f}h"
     )
 
-    last_learn = 0
-    last_compile = 0
+    # Start timestamps: learn waits for interval, others run immediately
+    now = time.time()
+    last_learn = now  # Don't learn immediately on startup — wait for interval
+    last_compile = 0  # Compile immediately (process any pending raw docs)
     last_taxonomy = 0
     last_health = 0
 
