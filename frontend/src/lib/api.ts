@@ -98,5 +98,8 @@ export const api = {
   ingest: (source: string) => post<{ status: string; path: string }>('/api/ingest', { source }),
   compile: () => post<{ status: string; articles_created: number }>('/api/compile', {}),
   lint: (deep = false) => post<{ results?: LintResults; report?: string }>('/api/lint', { deep }),
+  lintFix: () => post<{ fixes: string[]; fix_count: number }>('/api/lint/fix', {}),
+  cleanWiki: () => post<{ removed: number; slugs: string[] }>('/api/wiki/clean', {}),
+  getHealth: () => get<{ report: { checked_at: string; results: LintResults; fixes_applied: string[] } | null }>('/api/health'),
   rebuildIndex: () => post<{ article_count: number }>('/api/index/rebuild', {}),
 };
