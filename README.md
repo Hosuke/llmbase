@@ -42,15 +42,20 @@ raw/  ──LLM compile──>  wiki/  ──query/lint──>  wiki/ (enhanced)
 | Feature | Description |
 |---------|-------------|
 | **Trilingual Output** | Every article compiled in English, 中文, and 日本語 with global language switcher |
-| **Autonomous Learning** | Background worker continuously ingests, compiles, and self-heals from configured sources |
-| **Self-Healing Wiki** | Periodic health checks auto-generate stubs for broken links, fix metadata, rebuild index |
-| **Voice/Tone Modes** | Query in different styles: caveman 🦴, 文言文 📜, scholar 🎓, ELI5 👶, or default |
-| **Model Fallback** | Primary LLM fails? Auto-falls back to secondary models. Knowledge base keeps growing. |
-| **PDF Ingestion** | `llmbase ingest pdf ./book.pdf` — auto-chunks and converts to markdown |
-| **Explorations Add Up** | Q&A answers file back into the wiki. Lint passes suggest new articles. Knowledge compounds. |
-| **Agent-First API** | HTTP API + Python SDK for LLM agents to query and contribute to the knowledge base |
-| **Knowledge Graph** | D3.js force-directed visualization of concept connections |
-| **Deploy Anywhere** | Docker, Railway, Render, or any VPS. One-command cloud deploy. |
+| **Autonomous Learning** | Background worker continuously ingests, compiles, and self-heals. [Guide →](docs/autonomous-learning.md) |
+| **Self-Healing Wiki** | 7-step auto-fix: clean garbage → fix tags → normalize → metadata → broken links → dedup → taxonomy. [Guide →](docs/self-healing.md) |
+| **Guided Reading** | LLM-generated 导读 (literary introduction) that evolves with your knowledge base |
+| **Voice/Tone Modes** | Query in different styles: 文言文 📜 (default for Chinese), scholar 🎓, caveman 🦴, ELI5 👶 |
+| **Emergent Taxonomy** | LLM generates domain-appropriate categories — no hardcoded domains. Works for any field |
+| **Alias Resolution** | Multilingual wiki-links resolve correctly: `[[参禅]]` → `can-chan.md` with simplified/traditional auto-conversion |
+| **Duplicate Detection** | CJK-aware dedup: merges `benevolence` + `ren` + `仁爱` into one article (叠加进化) |
+| **Reference Sources** | Pluggable citation system: articles show verifiable links to CBETA, Wikisource, ctext.org. [Guide →](docs/reference-sources.md) |
+| **Research Trails** | Rabbithole-style exploration paths — auto-generated from deep research queries |
+| **Entity Extraction** | Opt-in: LLM extracts people, events, places → Timeline, People, Map views |
+| **Knowledge Graph** | D3.js force-directed graph with density control slider, tag filtering, adaptive layout |
+| **Agent-First API** | HTTP API + Python SDK for LLM agents to query and contribute. [Reference →](docs/api-reference.md) |
+| **Model Fallback** | Primary LLM fails? Auto-falls back to secondary models. Handles thinking-mode output. |
+| **Deploy Anywhere** | Docker, Railway, Render, or any VPS. Auto-generates API secret for cloud security. |
 
 ## Quick Start
 
@@ -83,39 +88,45 @@ LLMBase is designed for anyone building a personal or domain-specific knowledge 
 ## CLI Reference
 
 ```bash
-# Ingest from various sources
+# ─── Ingest ───────────────────────────────────────
 llmbase ingest url https://example.com/article
 llmbase ingest pdf ./book.pdf --chunk-pages 20
 llmbase ingest file ./notes.md
 llmbase ingest dir ./research-papers/
 
 # Data source plugins
-llmbase ingest cbeta-learn --batch 10         # Buddhist canon (CBETA)
-llmbase ingest cbeta-work T0235               # Specific sutra (Heart Sutra)
-llmbase ingest ctext-book 论语 /analects/zh   # Chinese classics (ctext.org)
+llmbase ingest cbeta-learn --batch 10         # Buddhist canon
+llmbase ingest ctext-book 论语 /analects/zh   # Chinese classics
+llmbase ingest wikisource-learn --batch 5     # Wikisource
 
-# Compile & maintain
-llmbase compile new          # Incremental compilation
+# ─── Compile ──────────────────────────────────────
+llmbase compile new          # Incremental (3-layer dedup)
 llmbase compile all          # Full rebuild
-llmbase compile index        # Rebuild index only
-llmbase lint check           # Structural health check
-llmbase lint deep            # LLM-powered deep analysis
-llmbase lint fix             # Auto-fix metadata + broken links
-llmbase lint heal            # Full cycle: check → fix → recheck → report
+llmbase compile index        # Rebuild index + aliases
 
-# Query & search
+# ─── Health & Repair ─────────────────────────────
+llmbase lint check           # All checks (8 categories)
+llmbase lint clean           # Remove garbage stubs
+llmbase lint dedup           # Detect + merge duplicates
+llmbase lint normalize-tags  # Merge synonymous tags
+llmbase lint fix             # Full auto-fix pipeline
+llmbase lint heal            # Check → fix → recheck → report
+llmbase lint deep            # LLM deep quality analysis
+
+# ─── Query ────────────────────────────────────────
 llmbase query "What are the key concepts?"
-llmbase query "Compare X and Y" --format marp --file-back
-llmbase query "Explain emptiness" --tone caveman    # 🦴 Ugg. Empty good.
-llmbase query "何为空性" --tone wenyan               # 📜 佛者，覺也...
-llmbase query "What is karma?" --tone scholar        # 🎓 Academic style
-llmbase query "What is nirvana?" --tone eli5         # 👶 Simple explanation
-llmbase search query "topic"
+llmbase query "何为空性" --tone wenyan       # 📜 Classical Chinese
+llmbase query "Explain X" --tone scholar     # 🎓 Academic
+llmbase query "What is Y" --tone eli5        # 👶 Simple
+llmbase query "Z?" --tone caveman            # 🦴 Primitive
+llmbase query "Compare A and B" --file-back  # Save to wiki
 
-# Serve
-llmbase web                  # Full web UI (localhost:5555)
-llmbase serve                # Agent HTTP API (localhost:5556)
+# ─── Serve ────────────────────────────────────────
+llmbase web                  # Web UI (localhost:5555)
+llmbase serve                # Agent API (localhost:5556)
 ```
+
+**Web UI pages**: Dashboard (导读), Wiki, Search, Q&A, Graph, Explore (timeline/people/map), Trails (research paths), Ingest, Health
 
 ## LLM Provider
 
@@ -199,17 +210,37 @@ kb.compile()
 result = kb.ask("What is X?", deep=True, tone="wenyan")
 results = kb.search("keyword")
 health = kb.health_report()
+xici = kb.get_xici("zh")         # Guided reading
 ```
 
-HTTP endpoints: `/api/articles`, `/api/ask`, `/api/search`, `/api/ingest`, `/api/compile`, `/api/upload`, `/api/wiki/export`, `/api/taxonomy`, `/api/tones`, `/api/lint/fix`, `/api/health`
+See [full API reference →](docs/api-reference.md)
+
+Key endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/articles` | List all articles |
+| GET | `/api/articles/<slug>` | Get article (with backlinks + sources) |
+| POST | `/api/ask` | Query (deep research by default) |
+| GET | `/api/taxonomy?lang=zh` | Hierarchical categories |
+| GET | `/api/xici?lang=zh` | Guided reading (导读) |
+| GET | `/api/entities` | People, events, places |
+| GET | `/api/trails` | Research exploration paths |
+| POST | `/api/lint/fix` | Auto-fix pipeline |
+| GET | `/api/health` | Last health report |
+| GET | `/api/aliases` | Wiki-link alias map |
+| GET | `/api/refs/plugins` | Reference source plugins |
 
 ## Design Philosophy
 
+- **Domain-agnostic** — No hardcoded domains. Taxonomy, categories, and structure emerge from content via LLM
 - **No vector DB** — Index files + LLM context window are sufficient at personal scale
 - **Explorations add up** — Every query, every lint pass, every batch ingestion compounds the knowledge
 - **LLM writes, you curate** — The LLM maintains the wiki; you direct what to learn
-- **Incremental, not batch** — New data merges into existing articles, never starts from scratch
-- **Trilingual by default** — Built for international scholarship
+- **Incremental, not batch** — New data merges into existing articles (叠加进化), never starts from scratch
+- **Trilingual by default** — Built for international scholarship with alias resolution across scripts
+- **Agent-native** — Every feature is accessible via API. Humans and agents are equal users
+- **Self-healing** — The system detects and repairs its own issues: broken links, duplicates, dirty tags, miscategorization
 
 ---
 
@@ -351,27 +382,36 @@ health:
 llmbase/
 ├── frontend/              # React + TypeScript + Tailwind CSS
 │   └── src/
-│       ├── pages/         # Dashboard, Wiki, Search, Q&A, Graph, Ingest, Health
-│       ├── components/    # Layout, Markdown, ArticleCard, Tag, Icon
-│       └── lib/           # API 客户端, 主题管理, 语言管理, 品牌配置
+│       ├── pages/         # Dashboard, Wiki, Search, Q&A, Graph, Explore, Trails, Ingest, Health
+│       ├── components/    # Layout, Markdown, ArticleCard, TrailRecorder, CategoryNode
+│       └── lib/           # API, theme, lang, trail context, branding
 ├── tools/                 # Python 后端
 │   ├── cli.py             # Click CLI 入口
-│   ├── ingest.py          # 文档摄入（URL/文件/目录）
-│   ├── compile.py         # LLM 三语编译 + 去重合并
-│   ├── query.py           # Q&A 引擎
-│   ├── search.py          # TF-IDF 全文搜索 + Web UI
-│   ├── lint.py            # 健康检查 + 自动修复
-│   ├── worker.py          # 自治学习后台 Worker
-│   ├── cbeta.py           # CBETA 大藏经插件
-│   ├── ctext.py           # ctext.org 经典插件
-│   ├── pdf.py             # PDF → Markdown 转换
-│   ├── taxonomy.py        # LLM 自动分类体系生成
+│   ├── ingest.py          # 文档摄入（URL/文件/目录）+ SSRF 防护
+│   ├── compile.py         # LLM 三语编译 + 三层去重合并
+│   ├── query.py           # Q&A 引擎（deep research + tone modes）
+│   ├── search.py          # TF-IDF 全文搜索
+│   ├── lint.py            # 7 步自动修复 pipeline
+│   ├── resolve.py         # 多语言 wiki-link 别名解析
+│   ├── taxonomy.py        # LLM 涌现式分类（两阶段生成）
+│   ├── entities.py        # 人物/事件/地点实体提取
+│   ├── xici.py            # 导读生成（文言文为基底）
+│   ├── worker.py          # 自治学习 Worker（job lock + dedup）
+│   ├── atomic.py          # 原子文件写入（防损坏）
+│   ├── refs/              # 引用源插件系统
+│   │   ├── __init__.py    # 插件自动发现
+│   │   ├── cbeta.py       # CBETA 引用
+│   │   ├── wikisource.py  # 维基文库引用
+│   │   └── ctext.py       # ctext.org 引用
+│   ├── cbeta.py           # CBETA 数据源
+│   ├── ctext.py           # ctext.org 数据源
+│   ├── wikisource.py      # 维基文库数据源
 │   ├── agent_api.py       # Agent HTTP API + Python SDK
-│   ├── web.py             # Flask Web 服务器
-│   └── llm.py             # LLM 客户端（多模型容错）
+│   ├── web.py             # Flask Web 服务器（auth + 全 API）
+│   └── llm.py             # LLM 客户端（容错 + thinking mode 处理）
+├── docs/                  # 详细文档
 ├── config.yaml            # 配置文件
-├── .env.example           # LLM API 配置模板
-├── Dockerfile             # Docker 部署
+├── CLAUDE.md              # AI 辅助开发规范
 └── pyproject.toml
 ```
 
