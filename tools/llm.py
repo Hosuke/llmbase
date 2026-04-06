@@ -52,19 +52,78 @@ def get_fallback_models() -> list[str]:
 
 
 def _call_llm(messages: list, model: str, max_tokens: int) -> str:
-    """Single LLM call with response extraction."""
+    """Single LLM call with response extraction.
+
+    Handles models with thinking mode: if content is empty but
+    reasoning_content exists, uses that as content.
+    """
     client = get_client()
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         max_tokens=max_tokens,
     )
-    content = response.choices[0].message.content
-    if not content:
-        reasoning = getattr(response.choices[0].message, "reasoning_content", None)
-        if reasoning:
-            content = reasoning
-    return content or ""
+    msg = response.choices[0].message
+    content = msg.content or ""
+    reasoning = getattr(msg, "reasoning_content", None) or ""
+
+    # If content is empty, model might have put everything in reasoning
+    if not content.strip() and reasoning:
+        content = reasoning
+
+    return content
+
+
+def extract_json(text: str) -> str:
+    """Extract valid JSON from mixed thinking+content LLM output.
+
+    Call this explicitly when you expect JSON — not applied globally.
+    Searches from the END of the text to find the last valid JSON
+    block (thinking comes first, JSON output last).
+    Returns the original text if no valid JSON found.
+    """
+    import json as _json
+
+    stripped = text.strip()
+
+    # Quick validation if it already looks like JSON
+    if stripped.startswith(("[", "{")):
+        try:
+            _json.loads(stripped)
+            return stripped
+        except _json.JSONDecodeError:
+            pass  # Might be incomplete, try extraction below
+
+    # Search from the end — try whichever closing bracket is rightmost first
+    pairs = [("[", "]"), ("{", "}")]
+    pairs.sort(key=lambda p: text.rfind(p[1]), reverse=True)
+
+    for start_char, end_char in pairs:
+        end_pos = text.rfind(end_char)
+        if end_pos == -1:
+            continue
+        # Find the matching opening bracket before it
+        start_pos = text.rfind(start_char, 0, end_pos)
+        if start_pos == -1:
+            continue
+        candidate = text[start_pos:end_pos + 1]
+        try:
+            _json.loads(candidate)
+            return candidate
+        except _json.JSONDecodeError:
+            # Try progressively earlier opening brackets
+            while True:
+                start_pos = text.rfind(start_char, 0, start_pos)
+                if start_pos == -1:
+                    break
+                candidate = text[start_pos:end_pos + 1]
+                try:
+                    _json.loads(candidate)
+                    return candidate
+                except _json.JSONDecodeError:
+                    continue
+
+    return text  # No valid JSON found
 
 
 def chat(

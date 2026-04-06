@@ -156,7 +156,9 @@ def _generate_single_pass(articles: list[dict], cfg: dict) -> list[dict] | None:
         article_lines.append(f'- {a["slug"]} | {a["title"]} | {tags_str}')
     articles_text = "\n".join(article_lines)
     prompt = TAXONOMY_PROMPT_TEMPLATE.format(count=len(articles), articles=articles_text)
-    response = chat(prompt, system=TAXONOMY_SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
+    # Use 2x max_tokens for taxonomy — thinking models need extra room
+    tax_tokens = min(cfg["llm"]["max_tokens"] * 2, 16384)
+    response = chat(prompt, system=TAXONOMY_SYSTEM_PROMPT, max_tokens=tax_tokens)
     return _parse_taxonomy_response(response)
 
 
@@ -230,7 +232,8 @@ match_title_keywords = keywords in article TITLES that indicate this category.
 Output ONLY the JSON array."""
 
     logger.info(f"[taxonomy] Phase 1: generating category structure from {len(tag_counter)} tags...")
-    response = chat(phase1_prompt, system=TAXONOMY_SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
+    tax_tokens = min(cfg["llm"]["max_tokens"] * 2, 16384)
+    response = chat(phase1_prompt, system=TAXONOMY_SYSTEM_PROMPT, max_tokens=tax_tokens)
     category_tree = _parse_taxonomy_response(response)
 
     if not category_tree:
@@ -526,7 +529,8 @@ def load_taxonomy(base_dir: Path | None = None) -> dict:
 
 def _parse_taxonomy_response(response: str) -> list[dict] | None:
     """Parse LLM JSON response into taxonomy tree."""
-    text = response.strip()
+    from .llm import extract_json
+    text = extract_json(response)  # Handle thinking mode output
     # Strip markdown fences if present
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]

@@ -149,7 +149,8 @@ def get_entities(base_dir: Path | None = None) -> dict:
 
 def _parse_entity_response(response: str) -> dict:
     """Parse LLM JSON response into entity dict."""
-    text = response.strip()
+    from .llm import extract_json
+    text = extract_json(response)  # Handle thinking mode output
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
     if text.endswith("```"):
