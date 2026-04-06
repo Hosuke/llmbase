@@ -5,8 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "llmbase"
 version = "0.1.0"
-description = "LLM-powered personal knowledge base, inspired by Karpathy"
+description = "LLM-powered personal knowledge base — raw data goes in, an LLM compiles it into a structured, interlinked wiki"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.11"
+authors = [{name = "Huang Geyang", email = "Sukebeta@outlook.com"}]
+keywords = ["llm", "knowledge-base", "wiki", "mcp", "karpathy"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
 dependencies = [
     "openai>=1.30.0",
     "python-dotenv>=1.0.0",
@@ -28,6 +42,12 @@ dependencies = [
 [project.optional-dependencies]
 cjk = ["opencc-python-reimplemented>=0.1.7"]
 all = ["llmbase[cjk]"]
+
+[project.urls]
+Homepage = "https://github.com/Hosuke/llmbase"
+Documentation = "https://github.com/Hosuke/llmbase/tree/main/docs"
+Repository = "https://github.com/Hosuke/llmbase"
+Demo = "https://huazangge-production.up.railway.app"
 
 [project.scripts]
 llmbase = "tools.cli:main"
