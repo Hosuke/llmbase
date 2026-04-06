@@ -612,6 +612,17 @@ def web(ctx, port):
     app.run(host="0.0.0.0", port=port, debug=False)
 
 
+@cli.command()
+@click.pass_context
+def mcp(ctx):
+    """Start the MCP (Model Context Protocol) server for AI client integration."""
+    import asyncio
+    from .mcp_server import main as mcp_main
+    console.print("[green]Starting LLMBase MCP server (stdio)...[/green]")
+    console.print("[dim]Register in your AI client settings to connect.[/dim]")
+    asyncio.run(mcp_main())
+
+
 def main():
     cli()
 
