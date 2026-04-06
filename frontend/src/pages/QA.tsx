@@ -19,11 +19,12 @@ const FALLBACK_TONES: ToneOption[] = [
 
 export function QA() {
   const { lang } = useLang();
+  const zh = lang === 'zh' || lang === 'zh-en';
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [fileBack, setFileBack] = useState(true);
-  const [tone, setTone] = useState('default');
+  const [tone, setTone] = useState(() => (lang === 'zh' || lang === 'zh-en') ? 'wenyan' : 'default');
   const [tones, setTones] = useState<ToneOption[]>(FALLBACK_TONES);
   const [history, setHistory] = useState<QAPair[]>([]);
 
@@ -83,7 +84,7 @@ export function QA() {
           rows={3}
           value={question}
           onChange={e => setQuestion(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(false); } }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(true); } }}
         />
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-variant/20">
           <div className="flex items-center gap-4">
@@ -115,22 +116,14 @@ export function QA() {
               ))}
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => ask(true)}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-4 py-2 bg-secondary-container/20 text-secondary rounded-lg text-sm hover:bg-secondary-container/30 transition-colors disabled:opacity-50"
-            >
-              <Icon name="psychology" className="text-[16px]" /> Deep Research
-            </button>
-            <button
-              onClick={() => ask(false)}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              Ask
-            </button>
-          </div>
+          <button
+            onClick={() => ask(true)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Icon name="psychology" className="text-[16px]" />
+            {loading ? (zh ? '研究中...' : 'Researching...') : (zh ? '提问' : 'Ask')}
+          </button>
         </div>
       </div>
 
