@@ -34,17 +34,21 @@ def create_web_app(base_dir: Path | None = None):
         import logging
         logging.getLogger("llmbase.auth").info(f"Auto-generated API secret: {API_SECRET[:8]}...")
 
+    # Generate a session token derived from the secret (never expose the secret itself)
+    import hashlib, hmac
+    SESSION_TOKEN = hashlib.sha256(f"session:{API_SECRET}".encode()).hexdigest()[:48] if API_SECRET else ""
+
     def require_auth(f):
         """Protect write endpoints when LLMBASE_API_SECRET is set."""
         @wraps(f)
         def decorated(*args, **kwargs):
             if not API_SECRET:
                 return f(*args, **kwargs)  # No secret = open (local/dev mode)
-            auth = request.headers.get("Authorization", "")
+            auth = request.headers.get("Authorization", "").replace("Bearer ", "")
             cookie = request.cookies.get("llmbase_auth", "")
-            if (auth == f"Bearer {API_SECRET}"
-                    or request.args.get("secret") == API_SECRET
-                    or cookie == API_SECRET):
+            # Constant-time comparison to prevent timing attacks
+            if (hmac.compare_digest(auth, API_SECRET)
+                    or hmac.compare_digest(cookie, SESSION_TOKEN)):
                 return f(*args, **kwargs)
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
         return decorated
@@ -175,13 +179,18 @@ def create_web_app(base_dir: Path | None = None):
         cfg = load_config(base)
         concepts_dir = Path(cfg["paths"]["concepts"])
         meta_dir = Path(cfg["paths"]["meta"])
-        article_path = concepts_dir / f"{slug}.md"
+        article_path = (concepts_dir / f"{slug}.md").resolve()
+        # Path traversal guard
+        if not str(article_path).startswith(str(concepts_dir.resolve())):
+            return jsonify({"status": "error", "message": "Invalid slug"}), 400
         # If not found by slug, try alias resolution
         if not article_path.exists():
             aliases = load_aliases(meta_dir)
             resolved = resolve_link(slug, aliases)
             if resolved:
-                article_path = concepts_dir / f"{resolved}.md"
+                article_path = (concepts_dir / f"{resolved}.md").resolve()
+                if not str(article_path).startswith(str(concepts_dir.resolve())):
+                    return jsonify({"status": "error", "message": "Invalid slug"}), 400
                 slug = resolved
         if not article_path.exists():
             return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
@@ -219,6 +228,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify(get_entities(base))
 
     @app.route("/api/entities/extract", methods=["POST"])
+    @require_auth
     def api_extract_entities():
         """Trigger entity extraction."""
         from .entities import extract_entities
@@ -239,6 +249,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify(get_xici(base, lang))
 
     @app.route("/api/xici/generate", methods=["POST"])
+    @require_auth
     def api_xici_generate():
         """Regenerate Xi Ci for a given language."""
         from .xici import generate_xici
@@ -485,11 +496,12 @@ def create_web_app(base_dir: Path | None = None):
         file_path = static_dir / path
         if path and file_path.exists():
             return send_from_directory(str(static_dir), path)
-        # Set auth cookie so frontend can call write endpoints
+        # Set auth cookie with derived session token (never expose the raw secret)
         from flask import make_response
         resp = make_response(send_from_directory(str(static_dir), "index.html"))
-        if API_SECRET:
-            resp.set_cookie("llmbase_auth", API_SECRET, httponly=False, samesite="Strict")
+        if SESSION_TOKEN:
+            resp.set_cookie("llmbase_auth", SESSION_TOKEN,
+                            httponly=True, samesite="Strict", secure=False)
         return resp
 
     return app

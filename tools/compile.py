@@ -409,7 +409,15 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
     from .resolve import build_aliases, resolve_link
 
     slug = article["slug"]
-    article_path = concepts_dir / f"{slug}.md"
+    # Sanitize slug: prevent path traversal and invalid filenames
+    slug = slug.replace("/", "-").replace("\\", "-").replace("..", "").strip(".-_ ")
+    if not slug:
+        return None
+    article["slug"] = slug
+    article_path = (concepts_dir / f"{slug}.md").resolve()
+    # Path traversal guard
+    if not str(article_path).startswith(str(concepts_dir.resolve())):
+        return None
 
     # Layer 1: exact slug match
     if article_path.exists():
