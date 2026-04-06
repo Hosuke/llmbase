@@ -16,10 +16,28 @@ from .lint import lint
 
 def create_web_app(base_dir: Path | None = None):
     """Create the full web application."""
+    import os
+    from functools import wraps
+
     base = Path(base_dir) if base_dir else Path.cwd()
     static_dir = Path(__file__).resolve().parent.parent / "static" / "dist"
 
     app = Flask(__name__, static_folder=None)
+
+    # ─── Auth middleware for write endpoints ───────────────────
+    API_SECRET = os.getenv("LLMBASE_API_SECRET", "")
+
+    def require_auth(f):
+        """Protect write endpoints when LLMBASE_API_SECRET is set."""
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not API_SECRET:
+                return f(*args, **kwargs)  # No secret = open (local/dev mode)
+            auth = request.headers.get("Authorization", "")
+            if auth == f"Bearer {API_SECRET}" or request.args.get("secret") == API_SECRET:
+                return f(*args, **kwargs)
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        return decorated
 
     # ─── API Routes ────────────────────────────────────────────
 
@@ -267,6 +285,7 @@ def create_web_app(base_dir: Path | None = None):
         })
 
     @app.route("/api/ingest", methods=["POST"])
+    @require_auth
     def api_ingest():
         data = request.json
         source = data.get("source", "")
@@ -274,6 +293,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"status": "ok", "path": str(path)})
 
     @app.route("/api/upload", methods=["POST"])
+    @require_auth
     def api_upload():
         """Upload a PDF/markdown file for ingestion."""
         if "file" not in request.files:
@@ -306,6 +326,7 @@ def create_web_app(base_dir: Path | None = None):
             return jsonify({"status": "ok", "path": str(path), "filename": f.filename})
 
     @app.route("/api/articles/<slug>", methods=["DELETE"])
+    @require_auth
     def api_delete_article(slug):
         """Delete a wiki article by slug."""
         cfg = load_config(base)
@@ -317,6 +338,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"status": "error", "message": "Not found"})
 
     @app.route("/api/wiki/clean", methods=["POST"])
+    @require_auth
     def api_clean_wiki():
         """Remove garbage/empty stub articles and update taxonomy."""
         cfg = load_config(base)
@@ -343,6 +365,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"status": "ok", "removed": len(removed), "slugs": removed})
 
     @app.route("/api/taxonomy/update", methods=["POST"])
+    @require_auth
     def api_update_taxonomy():
         """Upload a new taxonomy.json. Automatically locked to prevent worker overwrite."""
         data = request.json
@@ -357,6 +380,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"status": "ok", "categories": len(data["categories"]), "locked": True})
 
     @app.route("/api/compile", methods=["POST"])
+    @require_auth
     def api_compile():
         articles = compile_new(base)
         return jsonify({"status": "ok", "articles_created": len(articles)})
@@ -373,6 +397,7 @@ def create_web_app(base_dir: Path | None = None):
             return jsonify({"results": results})
 
     @app.route("/api/lint/fix", methods=["POST"])
+    @require_auth
     def api_lint_fix():
         """Run the full auto-fix pipeline in background thread."""
         import threading
@@ -426,6 +451,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"articles": articles, "count": len(articles)})
 
     @app.route("/api/index/rebuild", methods=["POST"])
+    @require_auth
     def api_rebuild_index():
         entries = rebuild_index(base)
         return jsonify({"status": "ok", "article_count": len(entries)})
