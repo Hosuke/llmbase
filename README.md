@@ -9,6 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/llmwiki.svg)](https://pypi.org/project/llmwiki/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io/)
+[![ClawHub Skill](https://img.shields.io/badge/ClawHub-llmwiki-orange.svg)](https://clawhub.ai)
 [![Deploy on Railway](https://img.shields.io/badge/Deploy-Railway-blueviolet.svg)](https://railway.app)
 
 Inspired by [Karpathy's LLM Knowledge Base pattern](https://x.com/karpathy/status/2039805659525644595) ([detailed design](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) — raw data goes in, an LLM compiles it into a structured, interlinked wiki, and you query & enhance it over time.
@@ -63,6 +64,14 @@ raw/  ──LLM compile──>  wiki/  ──query/lint──>  wiki/ (enhanced)
 | **Agent-First API** | HTTP API + Python SDK for LLM agents to query and contribute. [Reference →](docs/api-reference.md) |
 | **Model Fallback** | Primary LLM fails? Auto-falls back to secondary models. Handles thinking-mode output. |
 | **Deploy Anywhere** | Docker, Railway, Render, or any VPS. Auto-generates API secret for cloud security. |
+
+## Install
+
+```bash
+pip install llmwiki                          # PyPI
+npx clawhub install llmwiki                  # ClawHub (AI agent skill)
+# or: git clone + pip install -e .           # from source
+```
 
 ## Quick Start
 
