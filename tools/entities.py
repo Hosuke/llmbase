@@ -110,6 +110,11 @@ def extract_entities(base_dir: Path | None = None) -> dict:
         logger.error(f"[entities] Extraction failed: {e}")
         result = {"people": [], "events": [], "places": []}
 
+    # Deduplicate entities (LLM often generates duplicates for large KBs)
+    result["people"] = _dedup_entities(result.get("people", []))
+    result["events"] = _dedup_entities(result.get("events", []))
+    result["places"] = _dedup_entities(result.get("places", []))
+
     # Add metadata
     result["article_count"] = len(articles)
     result["extracted_at"] = __import__("datetime").datetime.now(
@@ -125,6 +130,89 @@ def extract_entities(base_dir: Path | None = None) -> dict:
     )
 
     return result
+
+
+def _dedup_entities(entities: list[dict]) -> list[dict]:
+    """Merge duplicate entities by name/name_local.
+
+    Entities with the same name (case-insensitive) or same name_local
+    are merged: articles lists combined, longest dates/role kept.
+    """
+    if not entities:
+        return []
+
+    merged: dict[str, dict] = {}
+
+    # Build lookup indices for transitive matching
+    name_index: dict[str, str] = {}    # lowercase name → merge key
+    local_index: dict[str, str] = {}   # name_local → merge key
+
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        name = (entity.get("name") or "").strip().lower()
+        name_local = (entity.get("name_local") or "").strip()
+
+        # Find existing match by name OR name_local (transitive via indices)
+        key_by_name = name_index.get(name) if name else None
+        key_by_local = local_index.get(name_local) if name_local else None
+
+        # If both indices point to different entities, merge them first
+        if (key_by_name and key_by_local
+                and key_by_name != key_by_local
+                and key_by_name in merged and key_by_local in merged):
+            # Union: merge key_by_local into key_by_name
+            target = merged[key_by_name]
+            source = merged.pop(key_by_local)
+            target_articles = set(target.get("articles") or [])
+            target_articles.update(source.get("articles") or [])
+            target["articles"] = sorted(target_articles)
+            for field in ("dates", "date", "role", "description"):
+                if len(source.get(field) or "") > len(target.get(field) or ""):
+                    target[field] = source[field]
+            # Repoint local_index entries
+            for k, v in list(local_index.items()):
+                if v == key_by_local:
+                    local_index[k] = key_by_name
+            for k, v in list(name_index.items()):
+                if v == key_by_local:
+                    name_index[k] = key_by_name
+
+        match_key = key_by_name or key_by_local
+
+        if match_key and match_key in merged:
+            # Merge into existing
+            existing = merged[match_key]
+            # Combine article lists (guard against null)
+            existing_articles = set(existing.get("articles") or [])
+            existing_articles.update(entity.get("articles") or [])
+            existing["articles"] = sorted(existing_articles)
+            # Keep longer dates/date string
+            for field in ("dates", "date"):
+                if len(entity.get(field) or "") > len(existing.get(field) or ""):
+                    existing[field] = entity[field]
+            # Keep longer role/description
+            for field in ("role", "description"):
+                if len(entity.get(field) or "") > len(existing.get(field) or ""):
+                    existing[field] = entity[field]
+            # Update indices for transitive closure
+            if name:
+                name_index[name] = match_key
+            if name_local:
+                local_index[name_local] = match_key
+        else:
+            # New entity — ensure articles is always a list
+            key = name or name_local or str(len(merged))
+            entry = dict(entity)
+            if not isinstance(entry.get("articles"), list):
+                entry["articles"] = []
+            merged[key] = entry
+            if name:
+                name_index[name] = key
+            if name_local:
+                local_index[name_local] = key
+
+    return list(merged.values())
 
 
 def _save_entities(meta_dir: Path, result: dict):
