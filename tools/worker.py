@@ -225,7 +225,12 @@ _file_lock_fd = None
 def _try_acquire_file_lock(base_dir: Path) -> bool:
     """Try to acquire an exclusive file lock (prevents duplicate workers across gunicorn processes)."""
     global _file_lock_fd
-    import fcntl
+    try:
+        import fcntl
+    except ImportError:
+        # fcntl not available on non-POSIX platforms (Windows); skip file locking
+        logger.debug("fcntl not available, skipping file lock")
+        return True
     lock_path = base_dir / ".worker.lock"
     try:
         _file_lock_fd = open(lock_path, "w")
@@ -258,6 +263,14 @@ def start_worker_thread(base_dir: Path | None = None):
             return None
         _worker_started = True
 
-    t = threading.Thread(target=run_worker, args=(base_dir,), daemon=True)
-    t.start()
-    return t
+    try:
+        t = threading.Thread(target=run_worker, args=(base_dir,), daemon=True)
+        t.start()
+        return t
+    except Exception:
+        # Reset state so future calls can retry
+        with _worker_start_lock:
+            _worker_started = False
+        if _file_lock_fd:
+            _file_lock_fd.close()
+        raise
