@@ -245,6 +245,30 @@ def create_web_app(base_dir: Path | None = None):
         aliases = load_aliases(Path(cfg["paths"]["meta"]))
         return jsonify({"aliases": aliases})
 
+    # ─── Structured Export ─────────────────────────────────
+
+    @app.route("/api/export/article/<path:slug>")
+    def api_export_article(slug):
+        from .export import export_article
+        result = export_article(slug, base)
+        if not result:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        return jsonify(result)
+
+    @app.route("/api/export/tag/<tag>")
+    def api_export_tag(tag):
+        from .export import export_by_tag
+        return jsonify(export_by_tag(tag, base))
+
+    @app.route("/api/export/graph/<path:slug>")
+    def api_export_graph(slug):
+        from .export import export_graph
+        try:
+            depth = max(0, min(int(request.args.get("depth", 2)), 5))
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "depth must be integer 0-5"}), 400
+        return jsonify(export_graph(slug, depth, base))
+
     @app.route("/api/entities")
     def api_entities():
         """Return extracted entities (people, events, places)."""

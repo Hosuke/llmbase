@@ -623,9 +623,49 @@ def mcp(ctx):
     asyncio.run(mcp_main())
 
 
+@cli.group()
+def export():
+    """Export structured data for downstream projects."""
+    pass
+
+
+@export.command("article")
+@click.argument("slug")
+@click.pass_context
+def export_article_cmd(ctx, slug):
+    """Export a single article with full context."""
+    from .export import export_article
+    import json
+    result = export_article(slug, ctx.obj["base_dir"])
+    if not result:
+        console.print(f"[red]Article not found: {slug}[/red]")
+        return
+    click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@export.command("tag")
+@click.argument("tag")
+@click.pass_context
+def export_tag_cmd(ctx, tag):
+    """Export all articles with a given tag."""
+    from .export import export_by_tag
+    import json
+    click.echo(json.dumps(export_by_tag(tag, ctx.obj["base_dir"]), indent=2, ensure_ascii=False))
+
+
+@export.command("graph")
+@click.argument("slug")
+@click.option("--depth", type=int, default=2)
+@click.pass_context
+def export_graph_cmd(ctx, slug, depth):
+    """Export article subgraph (N levels of connections)."""
+    from .export import export_graph
+    import json
+    click.echo(json.dumps(export_graph(slug, depth, ctx.obj["base_dir"]), indent=2, ensure_ascii=False))
+
+
 def main():
     cli()
-
 
 if __name__ == "__main__":
     main()
