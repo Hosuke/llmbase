@@ -52,5 +52,8 @@ Demo = "https://huazangge-production.up.railway.app"
 [project.scripts]
 llmbase = "tools.cli:main"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.setuptools.packages.find]
 include = ["tools*"]
