@@ -130,6 +130,19 @@ TOOLS = [
         },
     ),
     Tool(
+        name="kb_export",
+        description="Export structured data: article with full context, articles by tag, or subgraph",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "description": "Export type: article, tag, graph", "enum": ["article", "tag", "graph"]},
+                "slug": {"type": "string", "description": "Article slug or tag name"},
+                "depth": {"type": "integer", "description": "Graph traversal depth (default 2)", "default": 2},
+            },
+            "required": ["type", "slug"],
+        },
+    ),
+    Tool(
         name="kb_xici",
         description="Get the guided reading (导读) — an LLM-generated introduction to the knowledge base",
         inputSchema={
@@ -302,6 +315,20 @@ def _dispatch_tool(name: str, arguments: dict, base_dir: Path) -> str:
                 if k != "total_issues" and isinstance(v, list) and v:
                     lines.append(f"  {k}: {len(v)}")
             return "\n".join(lines)
+
+    elif name == "kb_export":
+        from .export import export_article, export_by_tag, export_graph
+        export_type = arguments.get("type", "article")
+        slug = arguments.get("slug", "")
+        if export_type == "article":
+            result = export_article(slug, base_dir)
+            return json.dumps(result, ensure_ascii=False, indent=2) if result else f"Article not found: {slug}"
+        elif export_type == "tag":
+            return json.dumps(export_by_tag(slug, base_dir), ensure_ascii=False, indent=2)
+        elif export_type == "graph":
+            depth = arguments.get("depth", 2)
+            return json.dumps(export_graph(slug, depth, base_dir), ensure_ascii=False, indent=2)
+        return f"Unknown export type: {export_type}"
 
     elif name == "kb_xici":
         from .xici import get_xici

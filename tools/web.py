@@ -245,6 +245,32 @@ def create_web_app(base_dir: Path | None = None):
         aliases = load_aliases(Path(cfg["paths"]["meta"]))
         return jsonify({"aliases": aliases})
 
+    # ─── Structured Export ─────────────────────────────────
+
+    @app.route("/api/export/article/<path:slug>")
+    def api_export_article(slug):
+        from .export import export_article
+        result = export_article(slug, base)
+        if not result:
+            return jsonify({"status": "error", "message": "Not found"}), 404
+        return jsonify(result)
+
+    @app.route("/api/export/tag/<tag>")
+    def api_export_tag(tag):
+        from .export import export_by_tag
+        return jsonify(export_by_tag(tag, base))
+
+    @app.route("/api/export/graph/<path:slug>")
+    def api_export_graph(slug):
+        from .export import export_graph
+        try:
+            depth = max(0, min(int(request.args.get("depth", 2)), 5))
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "depth must be integer 0-5"}), 400
+        return jsonify(export_graph(slug, depth, base))
+
+    # ─── Entities ─────────────────────────────────────────
+
     @app.route("/api/entities")
     def api_entities():
         """Return extracted entities (people, events, places)."""
@@ -577,6 +603,38 @@ def create_web_app(base_dir: Path | None = None):
             return jsonify({"report": None})
         report = json.loads(health_path.read_text())
         return jsonify({"report": report})
+
+    # ─── Worker Status API ──────────────────────────────────────
+
+    @app.route("/api/worker/status")
+    def api_worker_status():
+        """Task queue stats, source health, recent runs."""
+        from .taskdb import get_task_stats
+        return jsonify(get_task_stats(base_dir=base))
+
+    @app.route("/api/worker/retry", methods=["POST"])
+    @require_auth
+    def api_worker_retry():
+        """Reset all failed tasks back to queued."""
+        from .taskdb import get_db
+        db = get_db(base)
+        result = db.execute(
+            "UPDATE tasks SET status='queued', retries=0, error_msg=NULL WHERE status='failed'"
+        )
+        db.commit()
+        return jsonify({"status": "ok", "retried": result.rowcount})
+
+    @app.route("/api/worker/trigger", methods=["POST"])
+    @require_auth
+    def api_worker_trigger():
+        """Trigger an immediate learn+compile cycle."""
+        from .taskdb import set_worker_state
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        # Set next_run to now so the worker picks it up on next tick
+        for task in ("learn", "compile"):
+            set_worker_state(task, now, now, base_dir=base)
+        return jsonify({"status": "ok", "message": "Learn+compile triggered for next worker tick"})
 
     @app.route("/api/wiki/export")
     def api_wiki_export():

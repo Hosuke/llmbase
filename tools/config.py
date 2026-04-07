@@ -16,7 +16,7 @@ def load_config(base_dir: Path | None = None) -> dict:
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
     # Resolve relative paths against base_dir
-    for key in ("raw", "wiki", "outputs", "meta", "concepts"):
+    for key in ("raw", "wiki", "outputs", "meta", "concepts", "data"):
         p = cfg.get("paths", {}).get(key)
         if p:
             cfg["paths"][key] = str((base_dir / p).resolve())
