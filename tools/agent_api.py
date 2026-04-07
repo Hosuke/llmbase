@@ -116,6 +116,24 @@ class KnowledgeBase:
             "content": post.content,
         }
 
+    def export_article(self, slug: str) -> dict:
+        """Export article with full context (backlinks, sources, related)."""
+        from .export import export_article
+        result = export_article(slug, self.base_dir)
+        if not result:
+            return {"status": "error", "message": f"Article not found: {slug}"}
+        return {"status": "ok", **result}
+
+    def export_by_tag(self, tag: str) -> dict:
+        """Export all articles with a given tag."""
+        from .export import export_by_tag
+        return {"status": "ok", **export_by_tag(tag, self.base_dir)}
+
+    def export_graph(self, slug: str, depth: int = 2) -> dict:
+        """Export article subgraph (N levels of connections)."""
+        from .export import export_graph
+        return {"status": "ok", **export_graph(slug, depth, self.base_dir)}
+
     def list_articles(self) -> dict:
         """List all wiki articles with metadata."""
         import frontmatter as fm

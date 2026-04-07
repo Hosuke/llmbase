@@ -12,6 +12,7 @@ paths:
   outputs: "./wiki/outputs"
   meta: "./wiki/_meta"
   concepts: "./wiki/concepts"
+  data: "./data"
 
 compile:
   batch_size: 10

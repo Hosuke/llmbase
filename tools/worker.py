@@ -220,17 +220,57 @@ def _save_health_report(base: Path, results: dict, fixes: list[str]):
     logger.info(f"[health] Report saved to {health_path}")
 
 
-def start_worker_thread(base_dir: Path | None = None):
-    """Start worker as a background daemon thread (only once per process).
+_file_lock_fd = None
 
-    Guards against multi-process WSGI spawning duplicate workers.
+def _try_acquire_file_lock(base_dir: Path) -> bool:
+    """Try to acquire an exclusive file lock (prevents duplicate workers across gunicorn processes)."""
+    global _file_lock_fd
+    try:
+        import fcntl
+    except ImportError:
+        # fcntl not available on non-POSIX platforms (Windows); skip file locking
+        logger.debug("fcntl not available, skipping file lock")
+        return True
+    lock_path = base_dir / ".worker.lock"
+    try:
+        _file_lock_fd = open(lock_path, "w")
+        fcntl.flock(_file_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _file_lock_fd.write(str(threading.get_ident()))
+        _file_lock_fd.flush()
+        return True
+    except (IOError, OSError):
+        if _file_lock_fd:
+            _file_lock_fd.close()
+            _file_lock_fd = None
+        return False
+
+
+def start_worker_thread(base_dir: Path | None = None):
+    """Start worker as a background daemon thread (only once across all processes).
+
+    Uses both a thread-local flag and a file lock to prevent duplicates
+    across gunicorn's prefork worker processes.
     """
     global _worker_started
+    base = Path(base_dir) if base_dir else Path.cwd()
+
     with _worker_start_lock:
         if _worker_started:
             logger.debug("Worker already started in this process, skipping")
             return None
+        if not _try_acquire_file_lock(base):
+            logger.info("Another process holds the worker lock, skipping")
+            return None
         _worker_started = True
-    t = threading.Thread(target=run_worker, args=(base_dir,), daemon=True)
-    t.start()
-    return t
+
+    try:
+        t = threading.Thread(target=run_worker, args=(base_dir,), daemon=True)
+        t.start()
+        return t
+    except Exception:
+        # Reset state so future calls can retry
+        with _worker_start_lock:
+            _worker_started = False
+        if _file_lock_fd:
+            _file_lock_fd.close()
+        raise
