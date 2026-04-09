@@ -1,17 +1,18 @@
 """Background worker — autonomous learning, compilation, and maintenance.
 
 Runs alongside the web server. Periodically:
-1. Ingests new content from configured sources (CBETA, etc.)
+1. Ingests new content from configured sources
 2. Compiles unprocessed raw documents into wiki
 3. Rebuilds index
 4. Runs health checks
 
-Configure via config.yaml `worker:` section.
+Configure via config.yaml ``worker:`` section.
 """
 
 import logging
 import time
 import threading
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -220,10 +221,29 @@ def _save_health_report(base: Path, results: dict, fixes: list[str]):
     logger.info(f"[health] Report saved to {health_path}")
 
 
+def _run_worker_guarded(base_dir: Path | None):
+    """Run the worker loop with a top-level crash guard.
+
+    Without this, an unhandled exception kills the daemon thread silently
+    and all background work stops with no log trail. Logging the traceback
+    at error level makes the failure visible in container logs.
+    """
+    try:
+        run_worker(base_dir)
+    except Exception:
+        logger.error(
+            "[worker] Daemon thread crashed:\n%s",
+            traceback.format_exc(),
+        )
+        raise
+
+
 def start_worker_thread(base_dir: Path | None = None):
     """Start worker as a background daemon thread (only once per process).
 
-    Guards against multi-process WSGI spawning duplicate workers.
+    Guards against multi-thread re-entry via ``_worker_started``.
+    For cross-process dedup (e.g. gunicorn ``--workers > 1``), downstream
+    deployments can add their own locking before calling this function.
     """
     global _worker_started
     with _worker_start_lock:
@@ -231,6 +251,7 @@ def start_worker_thread(base_dir: Path | None = None):
             logger.debug("Worker already started in this process, skipping")
             return None
         _worker_started = True
-    t = threading.Thread(target=run_worker, args=(base_dir,), daemon=True)
+
+    t = threading.Thread(target=_run_worker_guarded, args=(base_dir,), daemon=True)
     t.start()
     return t

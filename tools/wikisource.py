@@ -165,10 +165,18 @@ def learn(
     """Progressive learning from Wikisource.
 
     Each call picks the next batch of works not yet ingested.
+
+    Local progress is validated against on-disk raw doc presence so a
+    volume wipe cannot leave stale entries in the skip-set. After each
+    successful ingest an ``ingested`` hook is emitted — downstream can
+    register callbacks (e.g. remote sync) via ``tools.hooks.register``.
     """
+    from .hooks import emit
+
     base = Path(base_dir) if base_dir else Path.cwd()
     cfg = load_config(base)
     meta_dir = Path(cfg["paths"]["meta"])
+    raw_dir = Path(cfg["paths"]["raw"])
     meta_dir.mkdir(parents=True, exist_ok=True)
 
     # Load progress
@@ -178,7 +186,42 @@ def learn(
     else:
         progress = {"ingested_works": []}
 
-    ingested = set(progress["ingested_works"])
+    local_ingested = set(progress["ingested_works"])
+
+    def _raw_exists(title: str) -> bool:
+        """True iff any raw file for the work exists on disk.
+
+        Wikisource works can be single-page or multi-chapter:
+        - single-page: ``raw/wikisource-<slug(title)>/index.md``
+        - multi-chapter: ``raw/wikisource-<slug(title)>-<chapter>/index.md``
+
+        Check both shapes; prefix match must end at a dash to avoid
+        ``論`` matching ``論語``-prefixed directories.
+        """
+        slug = re.sub(r"[^\w]+", "-", title).strip("-")
+        if not slug:
+            return False
+        if (raw_dir / f"wikisource-{slug}" / "index.md").exists():
+            return True
+        if not raw_dir.exists():
+            return False
+        prefix = f"wikisource-{slug}-"
+        for entry in raw_dir.iterdir():
+            if entry.is_dir() and entry.name.startswith(prefix):
+                if (entry / "index.md").exists():
+                    return True
+        return False
+
+    # Drop stale local entries (file gone but progress claims ingested)
+    stale_local = {t for t in local_ingested if not _raw_exists(t)}
+    if stale_local:
+        local_ingested -= stale_local
+        progress["ingested_works"] = sorted(local_ingested)
+        progress_path.write_text(
+            json.dumps(progress, indent=2, ensure_ascii=False)
+        )
+
+    ingested = local_ingested
 
     # Build work list
     if reading_list and reading_list in READING_LISTS:
@@ -205,12 +248,13 @@ def learn(
             if paths:
                 results.append(title)
                 ingested.add(title)
+                emit("ingested", source="wikisource", work_id=title, title=title)
         except Exception:
             pass
         time.sleep(1)
 
     # Save progress
-    progress["ingested_works"] = list(ingested)
+    progress["ingested_works"] = sorted(ingested)
     progress["last_run"] = datetime.now(timezone.utc).isoformat()
     progress_path.write_text(json.dumps(progress, indent=2, ensure_ascii=False))
 

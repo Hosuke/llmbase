@@ -10,6 +10,18 @@ from .config import load_config, ensure_dirs
 from .llm import chat
 
 
+# Maps a raw doc's `type` field (set by ingest plugins) to the canonical
+# plugin id used in source refs and remote sync rows. Plugins not listed
+# here pass through unchanged (so the registry stays open and llmbase
+# never needs to know about every domain a downstream may add).
+_RAW_TYPE_TO_PLUGIN = {
+    "buddhist_sutra": "cbeta",
+    "wikisource": "wikisource",
+    "classical_text": "ctext",
+    "ctext": "ctext",
+}
+
+
 SYSTEM_PROMPT = """You are a knowledge base compiler. Your job is to read raw source documents
 and produce structured wiki articles in markdown format.
 
@@ -138,14 +150,10 @@ Focus on extracting knowledge, not just summarizing. Each language section shoul
         response = chat(prompt, system=SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
 
         # Build source reference from raw doc metadata
-        # Map raw doc type to ref plugin ID
-        type_to_plugin = {
-            "buddhist_sutra": "cbeta", "wikisource": "wikisource",
-            "classical_text": "ctext", "ctext": "ctext",
-        }
         raw_type = post.metadata.get("type", "unknown")
+        source_id = _RAW_TYPE_TO_PLUGIN.get(raw_type, raw_type)
         source_ref = {
-            "plugin": type_to_plugin.get(raw_type, raw_type),
+            "plugin": source_id,
             "url": post.metadata.get("source", ""),
             "title": title,
         }
@@ -171,6 +179,23 @@ Focus on extracting knowledge, not just summarizing. Each language section shoul
         # Log to compiled_sources (survives volume reset)
         source_key = post.metadata.get("source", "") or title
         compiled_sources.add(source_key)
+
+        # Emit compiled hook — downstream can register callbacks for remote
+        # sync, notifications, etc. via tools.hooks.register("compiled", ...)
+        from .hooks import emit
+        compile_work_id = (
+            post.metadata.get("work_id")
+            or post.metadata.get("work")
+            or post.metadata.get("book")
+        )
+        emit(
+            "compiled",
+            source=source_id,
+            work_id=compile_work_id,
+            raw_type=raw_type,
+            title=title,
+            metadata=dict(post.metadata),
+        )
 
     # Persist compiled sources log
     compiled_log_path.write_text(json.dumps(sorted(compiled_sources), ensure_ascii=False), encoding="utf-8")

@@ -55,6 +55,17 @@ def create_web_app(base_dir: Path | None = None):
 
     # ─── API Routes ────────────────────────────────────────────
 
+    @app.route("/api/healthz")
+    def api_healthz():
+        """Liveness probe — must return instantly with no I/O.
+
+        Used by Railway healthchecks (and any monitoring) to detect when
+        the web layer wedges. Deliberately does NOT touch the filesystem,
+        the LLM, the worker daemon, or any external service. If gunicorn
+        can route a request to a worker thread at all, this returns 200.
+        """
+        return jsonify({"status": "ok"}), 200
+
     @app.route("/api/branding")
     def api_branding():
         cfg = load_config(base)
@@ -399,10 +410,38 @@ def create_web_app(base_dir: Path | None = None):
         deep = data.get("deep", False)
         file_back = data.get("file_back", True)
         tone = data.get("tone", "default")
+        promote = data.get("promote", False)
+        # promote=True is a write operation (writes to wiki/concepts +
+        # rebuilds index). When API_SECRET is configured, require auth for
+        # promotion specifically; reading the wiki stays open.
+        if promote and API_SECRET:
+            auth = request.headers.get("Authorization", "").replace("Bearer ", "")
+            cookie = request.cookies.get("llmbase_auth", "")
+            if not (
+                hmac.compare_digest(auth, API_SECRET)
+                or hmac.compare_digest(cookie, SESSION_TOKEN)
+            ):
+                return jsonify({
+                    "status": "error",
+                    "message": "promote=true requires authentication",
+                }), 401
         if deep:
-            result = query_with_search(q, base, tone=tone, file_back=file_back, return_context=True)
+            result = query_with_search(
+                q,
+                base,
+                tone=tone,
+                file_back=file_back,
+                return_context=True,
+                promote=promote,
+            )
             if isinstance(result, dict):
-                return jsonify({"answer": result["answer"], "consulted": result.get("consulted", [])})
+                payload = {
+                    "answer": result["answer"],
+                    "consulted": result.get("consulted", []),
+                }
+                if "promotion" in result:
+                    payload["promotion"] = result["promotion"]
+                return jsonify(payload)
             return jsonify({"answer": result})
         else:
             answer = query(q, file_back=file_back, base_dir=base, tone=tone)

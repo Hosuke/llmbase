@@ -268,10 +268,31 @@ def learn(
 
     Each call picks the next `batch_size` works not yet ingested.
     Call repeatedly to incrementally absorb the entire canon.
+
+    Local progress is validated against on-disk raw doc presence so a
+    volume wipe cannot leave stale entries in the skip-set. After each
+    successful ingest an ``ingested`` hook is emitted — downstream can
+    register callbacks (e.g. remote sync) via ``tools.hooks.register``.
     """
+    from .hooks import emit
+
     base = Path(base_dir) if base_dir else Path.cwd()
+    cfg = load_config(base)
+    raw_dir = Path(cfg["paths"]["raw"])
     progress = load_progress(base)
     ingested_set = set(progress["ingested_works"])
+
+    def _raw_exists(work_id: str) -> bool:
+        return (raw_dir / f"cbeta-{work_id.lower()}" / "index.md").exists()
+
+    # Validate local progress against disk — volume reset / partial wipes
+    # may leave stale progress entries pointing at files that no longer exist.
+    stale_local = {w for w in ingested_set if not _raw_exists(w)}
+    if stale_local:
+        ingested_set -= stale_local
+        progress["ingested_works"] = sorted(ingested_set)
+        progress["total_ingested"] = len(ingested_set)
+        save_progress(base, progress)
 
     # Get works to process
     if category:
@@ -307,11 +328,12 @@ def learn(
         if path:
             results.append(work_id)
             ingested_set.add(work_id)
+            emit("ingested", source="cbeta", work_id=work_id, title=label)
 
         time.sleep(1)  # Be respectful to GitHub
 
     # Save progress
-    progress["ingested_works"] = list(ingested_set)
+    progress["ingested_works"] = sorted(ingested_set)
     progress["total_ingested"] = len(ingested_set)
     progress["last_run"] = datetime.now(timezone.utc).isoformat()
     save_progress(base, progress)
