@@ -132,7 +132,7 @@ def push_ingested(source: str, work_id: str, title: str = "") -> bool:
             "ingested_at": datetime.now(timezone.utc).isoformat(),
         }
         resp = requests.post(
-            f"{base_url}/rest/v1/{table}",
+            f"{base_url}/rest/v1/{table}?on_conflict=source,work_id",
             json=body,
             headers=upsert_headers,
             timeout=_TIMEOUT,
@@ -175,7 +175,7 @@ def push_ingested_batch(rows: Iterable[dict]) -> int:
             for r in rows
         ]
         resp = requests.post(
-            f"{base_url}/rest/v1/{table}",
+            f"{base_url}/rest/v1/{table}?on_conflict=source,work_id",
             json=body,
             headers=upsert_headers,
             timeout=_TIMEOUT * 2,
@@ -213,7 +213,7 @@ def mark_compiled(source: str, work_id: str) -> bool:
             "compiled_at": now_iso,
         }
         resp = requests.post(
-            f"{base_url}/rest/v1/{table}",
+            f"{base_url}/rest/v1/{table}?on_conflict=source,work_id",
             json=body,
             headers=upsert_headers,
             timeout=_TIMEOUT,

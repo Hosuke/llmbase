@@ -20,7 +20,7 @@ def create_web_app(base_dir: Path | None = None):
     from functools import wraps
 
     base = Path(base_dir) if base_dir else Path.cwd()
-    static_dir = Path(__file__).resolve().parent.parent / "static" / "dist"
+    static_dir = base / "static" / "dist"
 
     app = Flask(__name__, static_folder=None)
 
