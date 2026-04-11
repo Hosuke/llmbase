@@ -16,7 +16,9 @@ Inspired by [Karpathy's LLM Knowledge Base pattern](https://x.com/karpathy/statu
 
 No vector database. No embeddings pipeline. Just markdown, an LLM, and a clean UI.
 
-**[Live Demo](https://huazangge-production.up.railway.app)** — 華藏閣, an autonomous knowledge base that continuously learns Chinese and Buddhist classics
+**Live Demos:**
+- **[華藏閣](https://huazangge-production.up.railway.app)** — Autonomous Buddhist studies KB that continuously learns from CBETA canon (trilingual EN/中/日)
+- **[斯文](https://siwen.ink)** — Classical Chinese (文言) knowledge base of Confucian, Daoist & Buddhist classics, with a single-language 文言 frontend
 
 [English](#how-it-works) | [中文](#中文说明)
 
@@ -306,9 +308,13 @@ See [MCP Server Guide →](docs/mcp-server.md)
 
 LLMBase 是一个 **LLM 驱动的个人知识库系统**，灵感来自 [Karpathy 的 LLM Knowledge Base 设计](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)。
 
-核心理念：**原始文档输入 → LLM 编译成三语结构化 wiki → 持续查询增强 → 知识不断叠加，温故而知新。**
+核心理念：**原始文档输入 → LLM 编译成结构化 wiki → 持续查询增强 → 知识不断叠加，温故而知新。**
 
 不需要向量数据库，不需要 embedding pipeline。只需要 markdown 文件、一个 LLM、和一套干净的 Web UI。
+
+**线上示例：**
+- **[華藏閣](https://huazangge-production.up.railway.app)** — 自治佛学知识库，持续从 CBETA 大藏经自动学习（三语 EN/中/日）
+- **[斯文](https://siwen.ink)** — 文言知識庫，收录儒释道经典，纯文言前端
 
 ### 架构设计
 
