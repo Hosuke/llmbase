@@ -35,6 +35,7 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/xici.py        | LANG_STYLES               | Dict of lang → style instruction         |
 | tools/entities.py    | ENTITY_SYSTEM_PROMPT      | LLM system for entity extraction         |
 | tools/entities.py    | ENTITY_PROMPT             | User prompt template for entities        |
+| tools/entities.py    | ENTITY_ARTICLE_FORMATTER  | Callable to format article list for LLM  |
 | tools/export.py      | (uses SECTION_HEADERS)    | Language sections from compile module    |
 | tools/web.py         | derive_session_token()    | Public function: secret → cookie token   |
 

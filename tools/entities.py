@@ -25,6 +25,12 @@ logger = logging.getLogger("llmbase.entities")
 #     ent.ENTITY_PROMPT = "... custom format ..."
 #
 
+# Callable that formats article dicts into text lines for the LLM prompt.
+# Signature: (articles: list[dict]) -> list[str]
+# Default: sends summary for small KBs, tags-only for large ones.
+# Override for custom formatting (e.g. always include summary, add custom fields).
+ENTITY_ARTICLE_FORMATTER = None
+
 ENTITY_SYSTEM_PROMPT = """You are a knowledge base analyst. Extract structured entities
 (people, events, places) from wiki article metadata.
 
@@ -96,17 +102,28 @@ def extract_entities(base_dir: Path | None = None) -> dict:
         return empty
 
     # Build compact article list (avoid token overflow)
-    if len(articles) <= 80:
-        article_lines = [
-            f'- {a["slug"]}: {a["title"]} | {a["summary"]}'
-            for a in articles
-        ]
+    # Use custom formatter if provided, otherwise default logic
+    if callable(ENTITY_ARTICLE_FORMATTER):
+        try:
+            article_lines = list(ENTITY_ARTICLE_FORMATTER(articles))
+        except Exception as e:
+            logger.warning(f"[entities] Custom formatter failed: {e}, using default")
+            article_lines = None
     else:
-        # Large KB: only send titles + tags (no summaries)
-        article_lines = [
-            f'- {a["slug"]}: {a["title"]} | tags: {", ".join(a["tags"][:3])}'
-            for a in articles
-        ]
+        article_lines = None
+
+    if article_lines is None:
+        if len(articles) <= 80:
+            article_lines = [
+                f'- {a["slug"]}: {a["title"]} | {a["summary"]}'
+                for a in articles
+            ]
+        else:
+            # Large KB: only send titles + tags (no summaries)
+            article_lines = [
+                f'- {a["slug"]}: {a["title"]} | tags: {", ".join(a["tags"][:3])}'
+                for a in articles
+            ]
 
     articles_text = "\n".join(article_lines)
     prompt = ENTITY_PROMPT.format(count=len(articles), articles=articles_text)
