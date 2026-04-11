@@ -29,13 +29,49 @@ def derive_session_token(secret: str) -> str:
     return hashlib.sha256(f"session:{secret}".encode()).hexdigest()[:48]
 
 
+# ─── Customizable constants ──────────────────────────────────────
+# Downstream can override to extend the web layer without forking.
+#
+#     import tools.web as web
+#     web.EXTRA_ROUTES.append(("/api/my-endpoint", my_handler, {"methods": ["GET"]}))
+#     web.BEFORE_REQUEST_HOOKS.append(my_auth_middleware)
+#     web.AFTER_REQUEST_HOOKS.append(my_logging_middleware)
+#
+
+# List of (rule, view_func, options_dict) tuples registered before app returns.
+EXTRA_ROUTES: list[tuple] = []
+
+# Callables invoked as Flask before_request / after_request hooks.
+BEFORE_REQUEST_HOOKS: list = []
+AFTER_REQUEST_HOOKS: list = []
+
+
 def create_web_app(base_dir: Path | None = None):
     """Create the full web application."""
     import os
     from functools import wraps
 
     base = Path(base_dir) if base_dir else Path.cwd()
-    static_dir = base / "static" / "dist"
+    cfg = load_config(base)
+    # static_dir: configurable via config.yaml web.static_dir
+    # Must resolve under base_dir to prevent serving arbitrary filesystem paths.
+    static_dir_cfg = cfg.get("web", {}).get("static_dir")
+    if static_dir_cfg:
+        static_dir = Path(static_dir_cfg)
+        if not static_dir.is_absolute():
+            static_dir = (base / static_dir_cfg).resolve()
+        else:
+            static_dir = static_dir.resolve()
+        # Guard: must be under base (path-aware check)
+        try:
+            static_dir.relative_to(base.resolve())
+        except ValueError:
+            import logging as _log
+            _log.getLogger("llmbase.web").warning(
+                f"web.static_dir '{static_dir}' is outside project root, ignoring")
+            static_dir = base / "static" / "dist"
+    else:
+        static_dir = base / "static" / "dist"
 
     app = Flask(__name__, static_folder=None)
 
@@ -710,5 +746,18 @@ def create_web_app(base_dir: Path | None = None):
             resp.set_cookie("llmbase_auth", SESSION_TOKEN,
                             httponly=True, samesite="Strict", secure=False)
         return resp
+
+    # ─── Extension points ────────────────────────────────────────
+    # Register extra routes from EXTRA_ROUTES
+    for route_entry in EXTRA_ROUTES:
+        rule, view_func = route_entry[0], route_entry[1]
+        options = route_entry[2] if len(route_entry) > 2 else {}
+        app.route(rule, **options)(view_func)
+
+    # Register before/after request hooks
+    for hook in BEFORE_REQUEST_HOOKS:
+        app.before_request(hook)
+    for hook in AFTER_REQUEST_HOOKS:
+        app.after_request(hook)
 
     return app

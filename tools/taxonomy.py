@@ -243,9 +243,8 @@ Sample article titles:
 {titles_text}
 
 Create a DEEP hierarchical taxonomy. CRITICAL RULES:
-- Each DISTINCT school of thought, tradition, or topic MUST be its own top-level category
-  (e.g., Confucianism, Buddhism, Daoism, Mohism, Legalism should be SEPARATE categories)
-- Do NOT lump different traditions together — an article about Mozi belongs in Mohism, not Confucianism
+- Each DISTINCT tradition, school, discipline, or topic MUST be its own top-level category
+- Do NOT lump different traditions or subjects together — keep them SEPARATE
 - Create subcategories within each top-level category
 - Include a catch-all category for articles that don't fit elsewhere
 

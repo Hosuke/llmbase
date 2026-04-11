@@ -38,6 +38,13 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/entities.py    | ENTITY_ARTICLE_FORMATTER  | Callable to format article list for LLM  |
 | tools/export.py      | (uses SECTION_HEADERS)    | Language sections from compile module    |
 | tools/web.py         | derive_session_token()    | Public function: secret → cookie token   |
+| tools/web.py         | EXTRA_ROUTES              | List of (rule, handler, options) tuples  |
+| tools/web.py         | BEFORE/AFTER_REQUEST_HOOKS| Request middleware lists                  |
+| tools/worker.py      | LEARN_SOURCES             | Dict of source_name → learn handler      |
+| tools/worker.py      | CUSTOM_JOBS               | List of custom background jobs           |
+| tools/worker.py      | register_learn_source()   | Register custom learn source handler     |
+| tools/worker.py      | register_job()            | Register custom background job           |
+| config.yaml          | web.static_dir            | Custom frontend build path               |
 
 ## Lifecycle Hooks (tools/hooks.py)
 Downstream registers callbacks via `tools.hooks.register(event, callback)`.

@@ -7,6 +7,25 @@ Runs alongside the web server. Periodically:
 4. Runs health checks
 
 Configure via config.yaml ``worker:`` section.
+
+Customization contract
+======================
+Downstream projects can register custom learn sources and background jobs
+without forking this module:
+
+  LEARN_SOURCES   – dict of source_name → callable(batch_size, base_dir)
+  CUSTOM_JOBS     – list of {"id", "interval_hours", "handler"} dicts
+
+Example::
+
+    import tools.worker as w
+
+    def my_corpus_learn(batch_size, base_dir):
+        ...  # ingest from custom source
+        return ["ingested-1", "ingested-2"]
+
+    w.register_learn_source("my_corpus", my_corpus_learn)
+    w.register_job("my_sync", interval_hours=2, handler=my_sync_fn)
 """
 
 import logging
@@ -25,6 +44,35 @@ logger = logging.getLogger("llmbase.worker")
 job_lock = threading.Lock()
 _worker_started = False
 _worker_start_lock = threading.Lock()
+
+# ─── Pluggable learn sources ─────────────────────────────────────
+# Built-in sources are registered at module load time below.
+# Downstream calls register_learn_source() to add custom ones.
+LEARN_SOURCES: dict[str, callable] = {}
+
+
+def register_learn_source(name: str, handler) -> None:
+    """Register a learn source handler.
+
+    handler signature: (batch_size: int, base_dir: Path) -> list
+    """
+    LEARN_SOURCES[name] = handler
+
+
+# ─── Custom background jobs ──────────────────────────────────────
+CUSTOM_JOBS: list[dict] = []
+
+
+def register_job(job_id: str, interval_hours: float, handler) -> None:
+    """Register a custom background job.
+
+    handler signature: (base_dir: Path) -> None
+    """
+    CUSTOM_JOBS.append({
+        "id": job_id,
+        "interval_hours": interval_hours,
+        "handler": handler,
+    })
 
 
 def run_worker(base_dir: Path | None = None):
@@ -56,6 +104,7 @@ def run_worker(base_dir: Path | None = None):
     last_compile = 0
     last_taxonomy = 0
     last_health = 0
+    custom_job_times = {}
 
     while True:
         now = time.time()
@@ -92,29 +141,58 @@ def run_worker(base_dir: Path | None = None):
                 job_lock.release()
             last_health = now
 
+        # Custom jobs registered via register_job()
+        for job in CUSTOM_JOBS:
+            job_id = job["id"]
+            try:
+                interval = float(job["interval_hours"]) * 3600
+            except (TypeError, ValueError):
+                continue
+            if interval <= 0:
+                continue
+            last_key = f"_last_{job_id}"
+            last_run = custom_job_times.get(last_key, 0)
+            if now - last_run >= interval and job_lock.acquire(blocking=False):
+                try:
+                    logger.info(f"[custom:{job_id}] Running...")
+                    job["handler"](base)
+                    logger.info(f"[custom:{job_id}] Done")
+                except Exception as e:
+                    logger.error(f"[custom:{job_id}] Error: {e}")
+                finally:
+                    job_lock.release()
+                custom_job_times[last_key] = now
+
         time.sleep(60)  # Check every minute
 
 
 def _task_learn(base: Path, source: str, batch_size: int):
-    """Ingest a batch from the configured source."""
+    """Ingest a batch from the configured source via LEARN_SOURCES registry."""
     logger.info(f"[learn] Starting batch of {batch_size} from {source}")
     try:
-        if source == "cbeta":
-            from .cbeta import learn
-            results = learn(batch_size=batch_size, base_dir=base)
-            logger.info(f"[learn] CBETA: ingested {len(results)} new works")
-        elif source == "wikisource":
-            from .wikisource import learn
-            results = learn(batch_size=batch_size, base_dir=base)
-            logger.info(f"[learn] Wikisource: ingested {len(results)} new works: {results}")
-        elif source == "both":
-            from .cbeta import learn as cbeta_learn
-            from .wikisource import learn as ws_learn
-            r1 = cbeta_learn(batch_size=batch_size // 2, base_dir=base)
-            r2 = ws_learn(batch_size=batch_size // 2, base_dir=base)
-            logger.info(f"[learn] CBETA: {len(r1)}, Wikisource: {len(r2)}")
+        if source == "both":
+            # Split batch across all registered sources (or cbeta+wikisource)
+            sources = [s for s in ("cbeta", "wikisource") if s in LEARN_SOURCES]
+            if not sources:
+                logger.warning("[learn] 'both' requested but no sources registered")
+                return
+            per_source = batch_size // len(sources) or 1
+            # Cap total to not exceed configured batch_size
+            remaining = batch_size
+            for src_name in sources:
+                if remaining <= 0:
+                    break
+                this_batch = min(per_source, remaining)
+                handler = LEARN_SOURCES[src_name]
+                results = handler(batch_size=this_batch, base_dir=base)
+                remaining -= this_batch
+                logger.info(f"[learn] {src_name}: ingested {len(results)} new works")
+        elif source in LEARN_SOURCES:
+            handler = LEARN_SOURCES[source]
+            results = handler(batch_size=batch_size, base_dir=base)
+            logger.info(f"[learn] {source}: ingested {len(results)} new works")
         else:
-            logger.warning(f"[learn] Unknown source: {source}")
+            logger.warning(f"[learn] Unknown source: {source} (registered: {list(LEARN_SOURCES.keys())})")
     except Exception as e:
         logger.error(f"[learn] Error: {e}")
 
@@ -255,3 +333,21 @@ def start_worker_thread(base_dir: Path | None = None):
     t = threading.Thread(target=_run_worker_guarded, args=(base_dir,), daemon=True)
     t.start()
     return t
+
+
+# ─── Built-in learn sources ─────────────────────────────────────
+# Registered lazily: the actual import happens only when the handler runs,
+# so missing optional deps (e.g. no cbeta module) don't break import.
+
+def _cbeta_learn(batch_size, base_dir):
+    from .cbeta import learn
+    return learn(batch_size=batch_size, base_dir=base_dir)
+
+
+def _wikisource_learn(batch_size, base_dir):
+    from .wikisource import learn
+    return learn(batch_size=batch_size, base_dir=base_dir)
+
+
+register_learn_source("cbeta", _cbeta_learn)
+register_learn_source("wikisource", _wikisource_learn)
