@@ -2,6 +2,12 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.4.0] — 2026-04-12
+
+### Added
+- **`require_auth` module-level decorator** — downstream EXTRA_ROUTES handlers and blueprints can now wrap custom views with the same `LLMBASE_API_SECRET` / session-cookie check used by built-in write endpoints. Import via `from tools.web import require_auth`.
+- **`app.config["llmbase"]` namespace** — `create_web_app` now publishes `base_dir`, `cfg`, `api_secret`, and `session_token` under a single config key. Extension handlers reach runtime paths via `current_app.config["llmbase"]` instead of `Path.cwd()` or re-loading config.
+
 ## [0.3.0] — 2026-04-12
 
 ### Added
