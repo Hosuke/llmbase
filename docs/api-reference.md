@@ -38,10 +38,17 @@ DELETE /api/articles/<slug>
 ```
 POST /api/ask
 { "question": "What is X?", "deep": true, "tone": "wenyan", "file_back": true }
-→ { "answer": "...", "consulted": [{"slug", "title"}] }
+→ { "answer": "...", "consulted": [{"slug", "title"}], "output_path": "wiki/outputs/..." }
 ```
 
 Tones: `default`, `caveman`, `wenyan`, `scholar`, `eli5`
+
+`output_path` is returned only when `file_back=true`. It is project-root
+relative when the configured outputs dir lies under the project (the
+common case), and falls back to a bare filename if the outputs dir is
+configured outside the project base. Either way it is never an absolute
+filesystem path, so it can be safely shown to clients. Use it to link a
+research trail to its filed answer without fuzzy-matching by title.
 
 ### Search
 ```

@@ -242,6 +242,29 @@ token = derive_session_token(secret)
 
 ---
 
+## LLM Layer (env vars)
+
+Since 0.5.0 the LLM call layer takes no implicit fallback. All behavior is
+explicit via env vars:
+
+| Env var | Default | Notes |
+|---------|---------|-------|
+| `LLMBASE_API_KEY` | — | Required. Falls back to `OPENAI_API_KEY`. |
+| `LLMBASE_BASE_URL` | OpenAI | Any OpenAI-compatible endpoint. |
+| `LLMBASE_MODEL` | `gpt-4o` | Primary model. |
+| `LLMBASE_FALLBACK_MODELS` | (empty = none) | Comma-separated. Empty/unset means **no fallback** — only the primary model is retried. Set explicitly if you want a chain (e.g. `gpt-4o-mini,deepseek-chat`). |
+| `LLMBASE_PRIMARY_RETRIES` | `3` | Per-model retry budget for the primary. |
+| `LLMBASE_FALLBACK_RETRIES` | `1` | Per-model retry budget for each fallback. |
+| `LLMBASE_API_SECRET` | (empty) | When set, write endpoints require Bearer/cookie auth. |
+
+> **Migration from ≤0.4**: earlier versions auto-generated a fallback
+> chain (`gpt-4o → gpt-4o-mini → gpt-3.5-turbo`, `MiniMax-M2.7 → M2.5
+> → deepseek-chat`, etc.). On aggregator deployments where the API
+> token only had rights to the primary model, this caused silent 403
+> loops. 0.5.0 removes the autogen — your existing
+> `LLMBASE_FALLBACK_MODELS` setting (if any) keeps working unchanged;
+> empty/unset now means what it says.
+
 ## Configuration Options
 
 New config.yaml options added in recent releases:

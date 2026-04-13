@@ -20,8 +20,14 @@ Edit `.env` with any OpenAI-compatible API:
 LLMBASE_API_KEY=sk-...
 LLMBASE_BASE_URL=https://api.openai.com/v1
 LLMBASE_MODEL=gpt-4o
-LLMBASE_FALLBACK_MODELS=gpt-4o-mini,deepseek-chat
+LLMBASE_FALLBACK_MODELS=gpt-4o-mini,deepseek-chat   # optional; empty = no fallback
 ```
+
+> Since 0.5.0, `LLMBASE_FALLBACK_MODELS` is *not* auto-generated. Leave it
+> empty and only the primary model will be retried — recommended for
+> aggregator deployments where your token may not have rights to other
+> providers. Tune `LLMBASE_PRIMARY_RETRIES` (default 3) /
+> `LLMBASE_FALLBACK_RETRIES` (default 1) if you need a different budget.
 
 ## First Run
 

@@ -156,8 +156,12 @@ LLMBASE_API_KEY=sk-...
 LLMBASE_BASE_URL=https://api.openai.com/v1
 LLMBASE_MODEL=gpt-4o
 
-# Auto-fallback when primary model fails
+# Optional fallback chain (empty = no fallback, only the primary is retried)
 LLMBASE_FALLBACK_MODELS=gpt-4o-mini,deepseek-chat
+
+# Optional retry budget (defaults: primary=3, fallback=1)
+# LLMBASE_PRIMARY_RETRIES=3
+# LLMBASE_FALLBACK_RETRIES=1
 ```
 
 Supports: OpenAI, OpenRouter (200+ models), Ollama (local/free), Together, Groq, and any compatible endpoint.
