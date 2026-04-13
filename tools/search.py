@@ -5,10 +5,43 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Callable
 
 import frontmatter
 
 from .config import load_config
+
+
+SEARCH_TOKENIZER: Callable[[str], list[str]] | None = None
+STOPWORDS: set[str] = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "need", "dare", "ought",
+    "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
+    "as", "into", "through", "during", "before", "after", "above", "below",
+    "between", "out", "off", "over", "under", "again", "further", "then",
+    "once", "here", "there", "when", "where", "why", "how", "all", "both",
+    "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+    "not", "only", "own", "same", "so", "than", "too", "very", "and",
+    "but", "or", "if", "while", "that", "this", "it", "its", "they",
+}
+CJK_STOPWORDS: set[str] = {"的", "了", "是", "在", "也", "與", "与", "和"}
+# Unsegmented scripts: CJK ideographs + Hiragana + Katakana + Hangul.
+# These get decomposed into chars + bigrams (no whitespace boundaries).
+_CJK_LIKE_RANGE = (
+    r"\u3040-\u309f"          # Hiragana
+    r"\u30a0-\u30ff"          # Katakana
+    r"\u31f0-\u31ff"          # Katakana Phonetic Extensions
+    r"\uff65-\uff9f"          # Halfwidth Katakana
+    r"\u3400-\u4dbf"          # CJK Extension A
+    r"\u4e00-\u9fff"          # CJK Unified Ideographs
+    r"\uac00-\ud7af"          # Hangul Syllables
+    r"\uf900-\ufaff"          # CJK Compatibility Ideographs
+    r"\U00020000-\U0003ffff"  # CJK Extension B-G + supplements (Plane 2-3)
+)
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+_CJK_LIKE_CHAR_RE = re.compile(f"[{_CJK_LIKE_RANGE}]")
+_CJK_LIKE_RUN_RE = re.compile(f"[{_CJK_LIKE_RANGE}]+")
 
 
 def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[dict]:
@@ -32,6 +65,7 @@ def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[di
         summary = post.metadata.get("summary", "")
         tags = " ".join(post.metadata.get("tags", []))
         text = f"{title} {title} {summary} {tags} {post.content}"  # title weighted 2x
+        tokens = _tokenize(text)
         docs.append({
             "path": str(md_file),
             "slug": md_file.stem,
@@ -39,17 +73,18 @@ def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[di
             "summary": summary,
             "tags": post.metadata.get("tags", []),
             "text": text,
-            "tokens": _tokenize(text),
+            "tokens": tokens,
+            "tokens_set": set(tokens),
         })
 
     if not docs:
         return []
 
-    # Compute IDF
+    # Compute IDF (O(1) membership via tokens_set)
     doc_count = len(docs)
     idf = {}
     for term in query_terms:
-        df = sum(1 for d in docs if term in d["tokens"])
+        df = sum(1 for d in docs if term in d["tokens_set"])
         idf[term] = math.log((doc_count + 1) / (df + 1)) + 1
 
     # Score each document
@@ -179,21 +214,32 @@ def create_search_app(base_dir: Path | None = None):
 
 
 def _tokenize(text: str) -> list[str]:
-    """Simple tokenizer: lowercase, split on non-word chars, filter stopwords."""
-    stopwords = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "need", "dare", "ought",
-        "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-        "as", "into", "through", "during", "before", "after", "above", "below",
-        "between", "out", "off", "over", "under", "again", "further", "then",
-        "once", "here", "there", "when", "where", "why", "how", "all", "both",
-        "each", "few", "more", "most", "other", "some", "such", "no", "nor",
-        "not", "only", "own", "same", "so", "than", "too", "very", "and",
-        "but", "or", "if", "while", "that", "this", "it", "its", "they",
-    }
-    tokens = re.findall(r"\w+", text.lower())
-    return [t for t in tokens if t not in stopwords and len(t) > 1]
+    """Tokenize: Latin words (filtered by stopwords, len>1) + CJK chars + CJK bigrams.
+
+    Downstream may override by setting module-level SEARCH_TOKENIZER to a callable.
+    """
+    if SEARCH_TOKENIZER is not None:
+        return SEARCH_TOKENIZER(text)
+
+    tokens: list[str] = []
+    text_lower = text.lower()
+
+    # Whitespace-segmented words (Latin, Cyrillic, Greek, accented, etc.).
+    # Strip CJK-like chars so mixed tokens like "Go语言" still yield "go".
+    text_for_words = _CJK_LIKE_CHAR_RE.sub(" ", text_lower)
+    for w in _WORD_RE.findall(text_for_words):
+        if w not in STOPWORDS and len(w) > 1:
+            tokens.append(w)
+
+    # Unsegmented runs (CJK / kana / Hangul): single chars + bigrams.
+    for run in _CJK_LIKE_RUN_RE.findall(text):
+        for ch in run:
+            if ch not in CJK_STOPWORDS:
+                tokens.append(ch)
+        for i in range(len(run) - 1):
+            tokens.append(run[i:i + 2])
+
+    return tokens
 
 
 def _extract_snippet(text: str, query_terms: list[str], window: int = 100) -> str:

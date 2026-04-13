@@ -29,6 +29,8 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/lint/checks.py | ALLOW_CJK_SLUGS           | Accept CJK slugs as valid (bool)         |
 | tools/lint/checks.py | SYSTEM_PROMPT             | LLM system for deep lint                 |
 | tools/lint/fixes.py  | STUB_SYSTEM_PROMPT        | LLM system for stub generation           |
+| tools/search.py      | SEARCH_TOKENIZER          | Callable(text)->list[str] to replace tokenizer (or None) |
+| tools/search.py      | STOPWORDS / CJK_STOPWORDS | Stopword sets used by default tokenizer  |
 | tools/query.py       | SYSTEM_PROMPT             | LLM system message for Q&A               |
 | tools/query.py       | TONE_INSTRUCTIONS         | Dict of tone_id → instruction string     |
 | tools/xici.py        | XICI_SYSTEM_PROMPT        | LLM system for guided introduction       |

@@ -2,6 +2,16 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.5.1] — 2026-04-13
+
+### Added
+- **CJK-aware default search tokenizer** — `tools/search.py:_tokenize` now emits Latin words (filtered by `STOPWORDS`, len>1) plus CJK single chars and bigrams. Previously `\w+` captured an entire CJK run as one token, so single-char or short-phrase CJK queries returned nothing — making search effectively unusable for CJK-heavy bases (siwen, huazangge, etc.). English search behavior is unchanged.
+- **`SEARCH_TOKENIZER` customization point** (tools/search.py) — set to a `Callable[[str], list[str]]` to fully replace the tokenizer (e.g., for jieba/MeCab). Default `None` uses the built-in CJK-aware tokenizer.
+- **`STOPWORDS` / `CJK_STOPWORDS`** module-level sets — overridable by downstream.
+
+### Changed
+- IDF document-frequency check now uses cached `tokens_set` (O(1) membership) instead of `term in tokens_list` (O(n)).
+
 ## [0.5.0] — 2026-04-13
 
 ### ⚠️ Breaking
