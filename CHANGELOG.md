@@ -2,6 +2,28 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.6.0] — 2026-04-14
+
+### Added
+- **Unified operations contract** (`tools/operations.py`) — 17 canonical KB operations declared once, dispatched by CLI, agent HTTP, and MCP server from the same registry. Eliminates the three-way drift that existed between `cli.py`, `agent_api.py`, and `mcp_server.py` in 0.5.x.
+- **`register(Operation(...))`** — downstream projects add custom operations at import time; they auto-surface in all three surfaces (MCP tools list, `/api/op/<name>`, `llmbase ops call`).
+- **`llmbase ops list` / `llmbase ops call <name> --json-args '...'`** — generic CLI dispatcher matching the MCP tool names.
+- **`POST /api/op/<name>` + `GET /api/op`** — generic HTTP dispatcher. Legacy semantic endpoints (`/api/ask`, `/api/search`, `/api/articles`, …) remain as wrappers for backwards compatibility.
+
+### Changed
+- **`mcp_server.py` slimmed from 398 to ~90 lines.** TOOLS list + dispatch now generated from the operations registry; no more hand-maintained duplication.
+- MCP tool handlers now use `operations.dispatch`, picking up the write-lock automatically for ops marked `writes=True`.
+
+### Notes
+- No breaking changes. All existing CLI subcommands, HTTP endpoints, and MCP tool names are preserved.
+- All write surfaces route through `operations.dispatch`, which acquires `tools.worker.job_lock` for ops marked `writes=True`:
+  - MCP tool calls (`tools/mcp_server.py`)
+  - CLI (`llmbase ops call <name>`)
+  - `POST /api/op/<name>` (generic, `tools/agent_api.py`)
+  - Legacy agent-HTTP: `/api/ingest`, `/api/compile`, `/api/lint/fix`, `/api/index/rebuild`, `/api/ask` (`tools/agent_api.py`)
+  - Web-UI HTTP: `/api/ingest`, `/api/compile`, `/api/index/rebuild`, `/api/ask` (`tools/web.py`)
+- Two ops escalate to the lock based on arguments (not just the `writes` flag): `kb_ask` with `promote=True`, and `kb_lint` with the legacy `fix=True`. The Web-UI `/api/lint/fix` keeps its pre-existing background-thread pattern (acquires `job_lock` itself).
+
 ## [0.5.2] — 2026-04-13
 
 ### Fixed

@@ -1,8 +1,9 @@
 """Agent-facing API: exposes knowledge base operations as callable functions.
 
-This module provides a clean interface for AI agents to interact with the
-knowledge base programmatically, either via direct Python imports or via
-the JSON-RPC HTTP server.
+All operations route through ``tools.operations`` — the single source of
+truth shared with the CLI and MCP server. Legacy semantic endpoints
+(``/api/ask``, ``/api/search``, …) remain as thin wrappers for backwards
+compatibility; new clients should prefer the generic ``/api/op/<name>``.
 """
 
 import json
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from flask import Flask, request, jsonify
 
+from . import operations as ops
 from .config import load_config, ensure_dirs
 from .ingest import ingest_url, ingest_file, list_raw
 from .compile import compile_new, compile_all, rebuild_index
@@ -175,26 +177,39 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
     app = Flask(__name__)
     kb = KnowledgeBase(base_dir)
 
+    def _legacy_dispatch(op_name: str, args: dict):
+        try:
+            result = ops.dispatch(op_name, kb.base_dir, args)
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        return jsonify({"status": "ok", **result})
+
     @app.route("/api/ingest", methods=["POST"])
     def api_ingest():
-        data = request.json
-        return jsonify(kb.ingest(data["source"]))
+        data = request.json or {}
+        return _legacy_dispatch("kb_ingest", {"source": data["source"]})
 
     @app.route("/api/compile", methods=["POST"])
     def api_compile():
         data = request.json or {}
-        return jsonify(kb.compile(full=data.get("full", False)))
+        return _legacy_dispatch("kb_compile", {"full": data.get("full", False)})
 
     @app.route("/api/ask", methods=["POST"])
     def api_ask():
-        data = request.json
-        return jsonify(kb.ask(
-            data["question"],
-            deep=data.get("deep", False),
-            file_back=data.get("file_back", True),
-            tone=data.get("tone", "default"),
-            promote=data.get("promote", False),
-        ))
+        data = request.json or {}
+        # Route through operations.dispatch so promote=True acquires the same
+        # job-lock that the MCP and CLI surfaces use.
+        try:
+            result = ops.dispatch("kb_ask", kb.base_dir, {
+                "question": data["question"],
+                "deep": data.get("deep", False),
+                "file_back": data.get("file_back", True),
+                "tone": data.get("tone", "default"),
+                "promote": data.get("promote", False),
+            })
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        return jsonify({"status": "ok", **result})
 
     @app.route("/api/search", methods=["GET"])
     def api_search():
@@ -209,7 +224,7 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
 
     @app.route("/api/lint/fix", methods=["POST"])
     def api_lint_fix():
-        return jsonify(kb.lint_fix())
+        return _legacy_dispatch("kb_lint_fix", {})
 
     @app.route("/api/health", methods=["GET"])
     def api_health():
@@ -229,6 +244,39 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
 
     @app.route("/api/index/rebuild", methods=["POST"])
     def api_rebuild_index():
-        return jsonify(kb.rebuild_index())
+        return _legacy_dispatch("kb_rebuild_index", {})
+
+    # Generic operations dispatcher — exposes every registered op,
+    # including ones added by downstream projects after import.
+    @app.route("/api/op/<name>", methods=["POST"])
+    def api_op(name):
+        if ops.get(name) is None:
+            return jsonify({"status": "error", "error": f"unknown operation: {name}"}), 404
+        args = request.get_json(silent=True) or {}
+        try:
+            result = ops.dispatch(name, kb.base_dir, args)
+            return jsonify({"status": "ok", "result": result})
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        except TypeError as e:
+            return jsonify({"status": "error", "error": f"bad arguments: {e}"}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "error": str(e)}), 500
+
+    @app.route("/api/op", methods=["GET"])
+    def api_op_list():
+        return jsonify({
+            "status": "ok",
+            "operations": [
+                {
+                    "name": op.name,
+                    "description": op.description,
+                    "params": op.params,
+                    "writes": op.writes,
+                    "category": op.category,
+                }
+                for op in ops.all_operations()
+            ],
+        })
 
     return app

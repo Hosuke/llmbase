@@ -518,25 +518,28 @@ def create_web_app(base_dir: Path | None = None):
                     "message": "promote=true requires authentication",
                 }), 401
         if deep:
-            result = query_with_search(
-                q,
-                base,
-                tone=tone,
-                file_back=file_back,
-                return_context=True,
-                promote=promote,
-            )
-            if isinstance(result, dict):
-                payload = {
-                    "answer": result["answer"],
-                    "consulted": result.get("consulted", []),
-                }
-                if result.get("output_path"):
-                    payload["output_path"] = result["output_path"]
-                if "promotion" in result:
-                    payload["promotion"] = result["promotion"]
-                return jsonify(payload)
-            return jsonify({"answer": result})
+            # Route through operations.dispatch so promote=True acquires the
+            # shared job_lock (same behavior as MCP / CLI / agent-HTTP).
+            from . import operations as _ops
+            try:
+                result = _ops.dispatch("kb_ask", base, {
+                    "question": q,
+                    "tone": tone,
+                    "file_back": file_back,
+                    "deep": True,
+                    "promote": promote,
+                })
+            except RuntimeError as e:
+                return jsonify({"status": "busy", "error": str(e)}), 409
+            payload = {
+                "answer": result["answer"],
+                "consulted": result.get("consulted", []),
+            }
+            if result.get("output_path"):
+                payload["output_path"] = result["output_path"]
+            if "promotion" in result:
+                payload["promotion"] = result["promotion"]
+            return jsonify(payload)
         else:
             result = query(q, file_back=file_back, base_dir=base, tone=tone, return_path=True)
             payload = {"answer": result["answer"]}
@@ -593,10 +596,13 @@ def create_web_app(base_dir: Path | None = None):
     @app.route("/api/ingest", methods=["POST"])
     @require_auth
     def api_ingest():
-        data = request.json
-        source = data.get("source", "")
-        path = ingest_url(source, base)
-        return jsonify({"status": "ok", "path": str(path)})
+        from . import operations as _ops
+        data = request.json or {}
+        try:
+            result = _ops.dispatch("kb_ingest", base, {"source": data.get("source", "")})
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        return jsonify({"status": "ok", **result})
 
     @app.route("/api/upload", methods=["POST"])
     @require_auth
@@ -688,8 +694,12 @@ def create_web_app(base_dir: Path | None = None):
     @app.route("/api/compile", methods=["POST"])
     @require_auth
     def api_compile():
-        articles = compile_new(base)
-        return jsonify({"status": "ok", "articles_created": len(articles)})
+        from . import operations as _ops
+        try:
+            result = _ops.dispatch("kb_compile", base, {})
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        return jsonify({"status": "ok", "articles_created": result["articles_created"]})
 
     @app.route("/api/lint", methods=["POST"])
     def api_lint():
@@ -765,8 +775,12 @@ def create_web_app(base_dir: Path | None = None):
     @app.route("/api/index/rebuild", methods=["POST"])
     @require_auth
     def api_rebuild_index():
-        entries = rebuild_index(base)
-        return jsonify({"status": "ok", "article_count": len(entries)})
+        from . import operations as _ops
+        try:
+            result = _ops.dispatch("kb_rebuild_index", base, {})
+        except RuntimeError as e:
+            return jsonify({"status": "busy", "error": str(e)}), 409
+        return jsonify({"status": "ok", **result})
 
     # ─── SPA Fallback ──────────────────────────────────────────
 

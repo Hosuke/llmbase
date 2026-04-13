@@ -664,6 +664,63 @@ def export_graph_cmd(ctx, slug, depth):
     click.echo(json.dumps(export_graph(slug, depth, ctx.obj["base_dir"]), indent=2, ensure_ascii=False))
 
 
+# ─── Operations contract (generic dispatch) ────────────────────────
+
+@cli.group()
+def ops():
+    """Inspect and invoke operations via the unified contract (CLI/HTTP/MCP share)."""
+    pass
+
+
+@ops.command("list")
+@click.pass_context
+def ops_list_cmd(ctx):
+    """List all registered operations."""
+    from . import operations as _ops
+    table = Table(title="Operations")
+    table.add_column("name", style="cyan")
+    table.add_column("category")
+    table.add_column("writes", justify="center")
+    table.add_column("description")
+    for op in _ops.all_operations():
+        table.add_row(op.name, op.category, "✓" if op.writes else "", op.description)
+    console.print(table)
+
+
+@ops.command("call")
+@click.argument("name")
+@click.option("--json-args", "json_args", default="{}", help="JSON-encoded arguments")
+@click.pass_context
+def ops_call_cmd(ctx, name, json_args):
+    """Invoke an operation by name with JSON arguments.
+
+    Example: llmbase ops call kb_search --json-args '{"query": "kong"}'
+    """
+    import json as _json
+    from . import operations as _ops
+
+    if _ops.get(name) is None:
+        click.echo(f"Unknown operation: {name}", err=True)
+        ctx.exit(1)
+    try:
+        args = _json.loads(json_args)
+    except _json.JSONDecodeError as e:
+        click.echo(f"--json-args is not valid JSON: {e}", err=True)
+        ctx.exit(1)
+    if not isinstance(args, dict):
+        click.echo("--json-args must be a JSON object", err=True)
+        ctx.exit(1)
+    try:
+        result = _ops.dispatch(name, ctx.obj["base_dir"], args)
+    except TypeError as e:
+        click.echo(f"Bad arguments: {e}", err=True)
+        ctx.exit(2)
+    except RuntimeError as e:
+        click.echo(f"Busy: {e}", err=True)
+        ctx.exit(3)
+    click.echo(_json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
 def main():
     cli()
 

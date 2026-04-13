@@ -51,6 +51,8 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/worker.py      | CUSTOM_JOBS               | List of custom background jobs           |
 | tools/worker.py      | register_learn_source()   | Register custom learn source handler     |
 | tools/worker.py      | register_job()            | Register custom background job           |
+| tools/operations.py  | register(Operation(...))  | Register custom op (auto-exposed via CLI/HTTP/MCP) |
+| tools/operations.py  | dispatch(name, base, args)| Programmatic op invocation (with write-lock) |
 | config.yaml          | web.static_dir            | Custom frontend build path               |
 
 ## Lifecycle Hooks (tools/hooks.py)
