@@ -33,6 +33,9 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/search.py      | STOPWORDS / CJK_STOPWORDS | Stopword sets used by default tokenizer  |
 | tools/query.py       | SYSTEM_PROMPT             | LLM system message for Q&A               |
 | tools/query.py       | TONE_INSTRUCTIONS         | Dict of tone_id → instruction string     |
+| tools/query.py       | PROMOTE_SYSTEM_PROMPT     | LLM system for Q&A→concept promotion judge |
+| tools/query.py       | PROMOTE_CONTENT_EXAMPLE   | Content-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
+| tools/query.py       | PROMOTE_TITLE_EXAMPLE     | Title-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
 | tools/xici.py        | XICI_SYSTEM_PROMPT        | LLM system for guided introduction       |
 | tools/xici.py        | LANG_STYLES               | Dict of lang → style instruction         |
 | tools/entities.py    | ENTITY_SYSTEM_PROMPT      | LLM system for entity extraction         |

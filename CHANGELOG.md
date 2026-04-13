@@ -2,6 +2,14 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.5.2] — 2026-04-13
+
+### Fixed
+- **`promote_to_concept` now respects `SECTION_HEADERS`.** The Q&A→concept promotion judge had the trilingual content schema hard-coded in its prompt, so downstream projects that override `compile.SECTION_HEADERS` (e.g. siwen's single-section `[("文言", "")]`) still got articles written with `## English / ## 中文 / ## 日本語` sections. Prompt examples are now derived from `compile.SECTION_HEADERS` at call time.
+
+### Added
+- **`PROMOTE_CONTENT_EXAMPLE` / `PROMOTE_TITLE_EXAMPLE`** (tools/query.py) — module-level overrides for the promote judge's content/title schema hints. Default `None` auto-derives from `SECTION_HEADERS`.
+
 ## [0.5.1] — 2026-04-13
 
 ### Added

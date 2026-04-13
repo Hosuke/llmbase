@@ -231,6 +231,47 @@ Reject conversational / procedural / list-of-things questions.
 You must reply with a single JSON object. No preamble, no markdown fences."""
 
 
+# Overridable. If None, the content-schema example shown to the promote judge
+# is auto-derived from compile.SECTION_HEADERS at call time, so downstream
+# projects (e.g. single-language siwen) that override SECTION_HEADERS don't
+# also have to replace this prompt. Set to a string to force a custom schema.
+PROMOTE_CONTENT_EXAMPLE: str | None = None
+PROMOTE_TITLE_EXAMPLE: str | None = None
+
+
+def _derive_promote_examples() -> tuple[str, str]:
+    """Build content/title schema hints from compile.SECTION_HEADERS at call time."""
+    from . import compile as _compile_mod  # late import so downstream overrides apply
+    headers = _compile_mod.SECTION_HEADERS or [("English", "## English")]
+
+    def _label(lang_key: str, header: str) -> str:
+        # Prefer the header's visible text (strip markdown hashes) for display;
+        # fall back to the key itself.
+        return header.lstrip("#").strip() or lang_key
+
+    if PROMOTE_CONTENT_EXAMPLE is not None:
+        content_example = PROMOTE_CONTENT_EXAMPLE
+    else:
+        parts = []
+        for i, (lang_key, header) in enumerate(headers):
+            label = _label(lang_key, header)
+            body = (
+                f"Full {label} body with [[wiki-links]]…"
+                if i == 0
+                else f"{label} body…"
+            )
+            parts.append(f"{header}\n\n{body}" if header else body)
+        content_example = "\n\n".join(parts)
+
+    if PROMOTE_TITLE_EXAMPLE is not None:
+        title_example = PROMOTE_TITLE_EXAMPLE
+    else:
+        labels = [_label(k, h) for k, h in headers]
+        title_example = " / ".join(f"{lbl} title" for lbl in labels)
+
+    return content_example, title_example
+
+
 def promote_to_concept(
     question: str,
     answer: str,
@@ -264,6 +305,9 @@ def promote_to_concept(
     index_summary = "\n".join(index_lines) if index_lines else "(empty wiki)"
 
     consulted_slugs = [c["slug"] for c in consulted]
+    content_example, title_example = _derive_promote_examples()
+    content_example_json = json.dumps(content_example)
+    title_example_json = json.dumps(title_example)
 
     prompt = f"""A user asked a question and received an answer from the wiki.
 Decide whether this Q&A should be promoted into a standalone concept article.
@@ -303,10 +347,10 @@ Reply with EXACTLY this JSON schema (all fields required):
   "reason": "one-line explanation",
   "merge_into": "existing-slug or null",
   "slug": "new-or-existing-slug (kebab-case, ascii; use pinyin for Chinese)",
-  "title": "English Title / 中文标题",
-  "summary": "one-line English summary (≤200 chars)",
+  "title": {title_example_json},
+  "summary": "one-line summary (≤200 chars)",
   "tags": ["tag1", "tag2"],
-  "content": "## English\\n\\nFull English body with [[wiki-links]]…\\n\\n## 中文\\n\\n完整中文内容…\\n\\n## 日本語\\n\\n完全な日本語…"
+  "content": {content_example_json}
 }}
 
 If rejecting, reply with:
