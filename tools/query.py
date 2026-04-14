@@ -148,8 +148,32 @@ def query_with_search(
     if not index:
         return "Wiki is empty. Run `llmbase compile` first."
 
+    # Step 0: TF-IDF prefilter — caps prompt size regardless of KB scale.
+    # Below threshold, full index fits any model; above, the LLM selector
+    # itself needs a pre-filtered candidate pool or it blows the context
+    # window (observed: 11k-article KB ≈ 160k tokens of summaries alone).
+    # Only ``selector_index`` is narrowed; ``index`` stays full so later
+    # steps (consulted bookkeeping, promote's duplicate check) still see
+    # every article.
+    query_cfg = cfg.get("query") if isinstance(cfg.get("query"), dict) else {}
+    query_cfg = query_cfg or {}
+
+    def _int_cfg(key: str, default: int) -> int:
+        try:
+            val = query_cfg.get(key, default)
+            return int(val) if val is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    prefilter_threshold = _int_cfg("prefilter_threshold", 500)
+    prefilter_top_k = _int_cfg("prefilter_top_k", 200)
+
+    selector_index = index
+    if len(selector_index) > prefilter_threshold:
+        selector_index = _bm25_prefilter(question, selector_index, top_k=prefilter_top_k)
+
     index_summary = "\n".join(
-        f"- {e['title']}: {e['summary']}" for e in index
+        f"- {e['title']}: {e['summary']}" for e in selector_index
     )
 
     search_prompt = f"""Given this wiki index:
@@ -575,3 +599,70 @@ def _load_index(meta_dir: Path) -> list[dict]:
     if index_path.exists():
         return json.loads(index_path.read_text())
     return []
+
+
+def _bm25_prefilter(question: str, index: list[dict], top_k: int) -> list[dict]:
+    """Rank index entries by TF-IDF over (title + summary + tags) vs question.
+
+    (Name retained for historical reasons; the scoring is TF-IDF, the same
+    formula ``tools.search.search()`` uses.)
+
+    Returns the top_k entries. Degenerate queries (no tokens after
+    filtering) and empty-match runs fall back to a simple slice so the
+    deep-ask path always has candidates to hand to the LLM selector.
+
+    Reuses ``tools.search._tokenize`` to stay consistent with the main
+    search path — CJK-aware (chars + bigrams) and stopword-filtered.
+    """
+    import math
+    from collections import Counter
+    from .search import _tokenize
+
+    if top_k <= 0:
+        return []
+
+    query_terms = _tokenize(question)
+    if not query_terms:
+        return index[:top_k]
+
+    docs = []
+    for entry in index:
+        tags = entry.get("tags") or []
+        text = " ".join([
+            str(entry.get("title", "")),
+            str(entry.get("summary", "")),
+            " ".join(str(t) for t in tags),
+        ])
+        tokens = _tokenize(text)
+        if not tokens:
+            continue
+        docs.append({
+            "entry": entry,
+            "tokens": tokens,
+            "tokens_set": set(tokens),
+        })
+
+    if not docs:
+        return index[:top_k]
+
+    doc_count = len(docs)
+    idf = {}
+    for term in query_terms:
+        df = sum(1 for d in docs if term in d["tokens_set"])
+        idf[term] = math.log((doc_count + 1) / (df + 1)) + 1
+
+    scored = []
+    for d in docs:
+        counts = Counter(d["tokens"])
+        score = 0.0
+        for term in query_terms:
+            if term in counts:
+                tf = 1 + math.log(counts[term])
+                score += tf * idf[term]
+        if score > 0:
+            scored.append((score, d["entry"]))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = [e for _, e in scored[:top_k]]
+
+    return selected or index[:top_k]

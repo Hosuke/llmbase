@@ -36,6 +36,8 @@ customize behavior without forking functions. This is a **stable contract**.
 | tools/query.py       | PROMOTE_SYSTEM_PROMPT     | LLM system for Q&A→concept promotion judge |
 | tools/query.py       | PROMOTE_CONTENT_EXAMPLE   | Content-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
 | tools/query.py       | PROMOTE_TITLE_EXAMPLE     | Title-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
+| config.yaml          | query.prefilter_threshold | Above this many articles, TF-IDF prefilter the index before LLM selector (default 500) |
+| config.yaml          | query.prefilter_top_k     | Number of candidates to keep after prefilter (default 200) |
 | tools/xici.py        | XICI_SYSTEM_PROMPT        | LLM system for guided introduction       |
 | tools/xici.py        | LANG_STYLES               | Dict of lang → style instruction         |
 | tools/entities.py    | ENTITY_SYSTEM_PROMPT      | LLM system for entity extraction         |
