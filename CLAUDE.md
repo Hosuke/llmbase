@@ -104,3 +104,26 @@ Do NOT skip Codex review. Do NOT commit while Codex is still running.
 - Python import check: `python -c "from tools.lint import lint; print('OK')"`
 - Lint check: `python llmbase.py lint check`
 - Build: `cd frontend && npx vite build`
+
+## Release Process (MANDATORY when bumping `pyproject.toml` version)
+A version bump is NOT a release until it lands on PyPI AND ClawHub. Git tag
+alone is insufficient — `pip install llmwiki` reads PyPI. When the version
+in `pyproject.toml` changes, you MUST complete ALL of:
+
+1. Commit + push git (with matching `vX.Y.Z` tag)
+2. Publish to PyPI:
+   ```
+   rm -rf dist/ build/ *.egg-info
+   python -m build
+   twine upload dist/llmwiki-X.Y.Z*        # needs PYPI token
+   ```
+3. Publish SKILL.md to ClawHub (if skills/llmwiki/SKILL.md changed or version bumped):
+   ```
+   npx clawhub@latest publish skills/llmwiki --version X.Y.Z --changelog "..."
+   ```
+4. Verify: `pip index versions llmwiki` shows the new version; ClawHub page
+   at https://clawhub.ai/hosuke/llmwiki shows it.
+
+Do NOT consider a release complete until all three surfaces (git tag, PyPI,
+ClawHub) show the new version. If you only push git, say so explicitly —
+don't imply the release is live.
