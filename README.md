@@ -2,7 +2,7 @@
 
 # LLMBase
 
-**LLM-powered personal knowledge base**
+**A personal knowledge base that an LLM _compiles_, not just stores.**
 
 [![GitHub stars](https://img.shields.io/github/stars/Hosuke/llmbase?style=social)](https://github.com/Hosuke/llmbase)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
@@ -12,540 +12,411 @@
 [![ClawHub Skill](https://img.shields.io/badge/ClawHub-llmwiki-orange.svg)](https://clawhub.ai)
 [![Deploy on Railway](https://img.shields.io/badge/Deploy-Railway-blueviolet.svg)](https://railway.app)
 
-Inspired by [Karpathy's LLM Knowledge Base pattern](https://x.com/karpathy/status/2039805659525644595) ([detailed design](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) — raw data goes in, an LLM compiles it into a structured, interlinked wiki, and you query & enhance it over time.
+Inspired by [Karpathy's LLM Knowledge Base pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — raw material in, an LLM compiles it into a structured, interlinked wiki, and you keep querying & refining it. No vector DB. No embeddings pipeline. Just markdown, an LLM, and one operations contract that serves your CLI, your browser, and your AI agent.
 
-No vector database. No embeddings pipeline. Just markdown, an LLM, and a clean UI.
+**Live:**
+**[華藏閣](https://huazangge-production.up.railway.app)** — autonomous trilingual Buddhist KB, continuously learning from CBETA
+· **[斯文](https://siwen.ink)** — classical-Chinese (文言) KB of Confucian, Daoist & Buddhist classics
 
-**Live Demos:**
-- **[華藏閣](https://huazangge-production.up.railway.app)** — Autonomous Buddhist studies KB that continuously learns from CBETA canon (trilingual EN/中/日)
-- **[斯文](https://siwen.ink)** — Classical Chinese (文言) knowledge base of Confucian, Daoist & Buddhist classics, with a single-language 文言 frontend
-
-[English](#how-it-works) | [中文](#中文说明)
+[English](#the-idea) · [中文说明](#中文说明)
 
 </div>
 
 ---
 
-## How It Works
+## The Idea
+
+Most "memory systems" store every word and hope semantic search finds it later. **LLMBase does the opposite** — an LLM *reads and restructures* your raw material into composed markdown articles, with `[[wiki-links]]`, backlinks, and a taxonomy that emerges from the content itself. Storage is cheap; structure is the product.
+
+Everything compounds. Every query, every lint pass, every ingest batch adds to the same graph: duplicate concepts merge (叠加进化), broken links auto-generate stubs, tone modes explain the same idea in several registers, citations resolve back to their sources. Humans and agents read the same wiki.
+
+One registry — `tools/operations.py` — declares every KB operation exactly once. The MCP server dispatches every tool through it; the CLI and HTTP API share the same `Operation` definitions and are being migrated onto it. Register an op via `operations.register(...)` and it's reachable from an MCP-enabled agent immediately.
+
+## Pipeline
 
 ```
-raw/  ──LLM compile──>  wiki/  ──query/lint──>  wiki/ (enhanced)
- │                        │                        │
- ├─ web articles          ├─ concept articles       ├─ filed answers
- ├─ papers / PDFs         ├─ index + backlinks      ├─ new connections
- └─ local files           └─ cross-references       └─ health fixes
-                              ↑                        │
-                              └────────────────────────┘
-                                explorations add up
+raw/ ──compile──>  wiki/concepts/  ──query/lint──>  wiki/ (enhanced)
+                         │                               ↑
+                         └─────── 叠加进化 ───────────────┘
 ```
 
-**Phase 1: Ingest** — Collect documents from URLs, PDFs, local files, or data sources (CBETA, ctext.org) into `raw/`
+**1 · Ingest** — URLs, PDFs, local files, or corpus plugins (CBETA canon, ctext.org, Wikisource) land in `raw/` with provenance metadata.
 
-**Phase 2: Compile** — LLM reads raw docs, extracts concepts, writes trilingual wiki articles (EN/中/日) with `[[wiki-links]]`, builds index. Duplicate concepts are merged, not recreated.
+**2 · Compile** — the LLM extracts concepts and writes trilingual articles (EN / 中文 / 日本語) with cross-references, aliases, and an emergent taxonomy. Existing concepts update in place.
 
-**Phase 3: Query & Enhance** — Ask questions against the wiki. Answers get filed back, strengthening the knowledge base. Every exploration adds up.
+**3 · Query** — a deep-research loop pulls context from compiled concepts, answers in the voice you choose (scholar 🎓 · 文言 📜 · ELI5 👶 · caveman 🦴), and optionally files the answer back. Agents that need verbatim material can call `kb_search_raw` directly for a second-layer recall over the original sources.
 
-**Phase 4: Lint & Heal** — LLM health checks: find inconsistencies, broken links, orphan articles. Auto-generates stub articles for missing concepts, fixes metadata, rebuilds index. The worker runs this cycle every 24h.
+**4 · Heal** — the lint pipeline detects broken links, garbage stubs, dirty tags, duplicates, uncategorized drift — and repairs them. The background worker runs this on a schedule.
 
-## Key Features
+## What Makes It Different
 
-| Feature | Description |
-|---------|-------------|
-| **Trilingual Output** | Every article compiled in English, 中文, and 日本語 with global language switcher |
-| **Autonomous Learning** | Background worker continuously ingests, compiles, and self-heals. [Guide →](docs/autonomous-learning.md) |
-| **Self-Healing Wiki** | 7-step auto-fix: clean garbage → fix tags → normalize → metadata → broken links → dedup → taxonomy. [Guide →](docs/self-healing.md) |
-| **Guided Reading** | LLM-generated 导读 (literary introduction) that evolves with your knowledge base |
-| **Voice/Tone Modes** | Query in different styles: 文言文 📜 (default for Chinese), scholar 🎓, caveman 🦴, ELI5 👶 |
-| **Emergent Taxonomy** | LLM generates domain-appropriate categories — no hardcoded domains. Works for any field |
-| **Alias Resolution** | Multilingual wiki-links resolve correctly: `[[参禅]]` → `can-chan.md`, with optional simplified/traditional conversion (opencc) |
-| **Duplicate Detection** | CJK-aware dedup: merges `benevolence` + `ren` + `仁爱` into one article (叠加进化) |
-| **Reference Sources** | Pluggable citation system: articles show verifiable links to CBETA, Wikisource, ctext.org. [Guide →](docs/reference-sources.md) |
-| **Research Trails** | Rabbithole-style exploration paths — auto-generated from deep research queries |
-| **Entity Extraction** | Opt-in: LLM extracts people, events, places → Timeline, People, Map views |
-| **Knowledge Graph** | D3.js force-directed graph with density control slider, tag filtering, adaptive layout |
-| **Agent-First API** | HTTP API + Python SDK for LLM agents to query and contribute. [Reference →](docs/api-reference.md) |
-| **Model Fallback** | Primary LLM fails? Auto-falls back to secondary models. Handles thinking-mode output. |
-| **Deploy Anywhere** | Docker, Railway, Render, or any VPS. Auto-generates API secret for cloud security. |
+- **Synthesis, not archiving.** The wiki *is* the memory. No vector store, no giant transcript tape.
+- **Two-layer recall.** `kb_search` scores compiled concepts with a TF-IDF tokenizer; `kb_search_raw` runs the same scoring over the original `raw/` sources — verbatim fallback when the compile glossed over a detail.
+- **Trilingual by default.** Every article ships with English, 中文, and 日本語 sections. A multilingual alias map resolves `[[参禅]]` → `can-chan.md`, with simplified/traditional conversion via opencc.
+- **Emergent structure.** Taxonomy is LLM-generated per-domain — nothing hardcoded to Buddhism or classics. Works for any field.
+- **One contract, three surfaces.** The same `Operation(name=..., handler=..., params=...)` powers CLI / HTTP / MCP simultaneously.
+- **Self-healing.** 7-step auto-fix: clean → metadata → broken-links → dedup → taxonomy. Merges `benevolence` + `ren` + `仁爱` into one article rather than three.
+- **Library, not framework.** Downstream projects override module-level constants and register hooks. No forking. The customization contract is stable across versions.
 
 ## Install
 
 ```bash
-pip install llmwiki                          # PyPI
-npx clawhub install llmwiki                  # ClawHub (AI agent skill)
-# or: git clone + pip install -e .           # from source
+pip install llmwiki                                    # PyPI
+# or
+git clone https://github.com/Hosuke/llmbase.git
+cd llmbase && pip install -e .
 ```
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/Hosuke/llmbase.git && cd llmbase
-
-# Backend
-pip install llmwiki          # from PyPI
-# or: pip install -e .       # from source
-
-# Frontend
 cd frontend && npm install && npx vite build && cd ..
-
-# Configure (any OpenAI-compatible API)
-cp .env.example .env    # edit with your API key
-
-# Launch
-llmbase web              # http://localhost:5555
+cp .env.example .env                     # set API key / base URL / model
+llmbase web                              # → http://localhost:5555
 ```
 
-## Use Cases
-
-LLMBase is designed for anyone building a personal or domain-specific knowledge base:
-
-- **Researchers** — Compile papers and notes into an interlinked wiki that grows with every reading
-- **Students** — Build a study knowledge base that deepens with each review session
-- **Domain experts** — Create specialized reference wikis (law, medicine, history, philosophy)
-- **Cultural preservation** — Digitize and compile classical texts with multilingual annotations
-- **AI developers** — Build structured knowledge for agent retrieval without vector databases
-
-## CLI Reference
+Any OpenAI-compatible endpoint works (self-hosted or aggregator). Configure a fallback chain and retry budget:
 
 ```bash
-# ─── Ingest ───────────────────────────────────────
-llmbase ingest url https://example.com/article
-llmbase ingest pdf ./book.pdf --chunk-pages 20
-llmbase ingest file ./notes.md
-llmbase ingest dir ./research-papers/
+LLMBASE_API_KEY=...
+LLMBASE_BASE_URL=...
+LLMBASE_MODEL=...
 
-# Data source plugins
-llmbase ingest cbeta-learn --batch 10         # Buddhist canon
-llmbase ingest ctext-book 论语 /analects/zh   # Chinese classics
-llmbase ingest wikisource-learn --batch 5     # Wikisource
-
-# ─── Compile ──────────────────────────────────────
-llmbase compile new          # Incremental (3-layer dedup)
-llmbase compile all          # Full rebuild
-llmbase compile index        # Rebuild index + aliases
-
-# ─── Health & Repair ─────────────────────────────
-llmbase lint check           # All checks (8 categories)
-llmbase lint clean           # Remove garbage stubs
-llmbase lint dedup           # Detect + merge duplicates
-llmbase lint normalize-tags  # Merge synonymous tags
-llmbase lint fix             # Full auto-fix pipeline
-llmbase lint heal            # Check → fix → recheck → report
-llmbase lint deep            # LLM deep quality analysis
-
-# ─── Query ────────────────────────────────────────
-llmbase query "What are the key concepts?"
-llmbase query "何为空性" --tone wenyan       # 📜 Classical Chinese
-llmbase query "Explain X" --tone scholar     # 🎓 Academic
-llmbase query "What is Y" --tone eli5        # 👶 Simple
-llmbase query "Z?" --tone caveman            # 🦴 Primitive
-llmbase query "Compare A and B" --file-back  # Save to wiki
-
-# ─── Serve ────────────────────────────────────────
-llmbase web                  # Web UI (localhost:5555)
-llmbase serve                # Agent API (localhost:5556)
+LLMBASE_FALLBACK_MODELS=model-a,model-b   # optional; empty = no fallback
+LLMBASE_PRIMARY_RETRIES=3                 # default 3
+LLMBASE_FALLBACK_RETRIES=1                # default 1
 ```
 
-**Web UI pages**: Dashboard (导读), Wiki, Search, Q&A, Graph, Explore (timeline/people/map), Trails (research paths), Ingest, Health
+## Three Surfaces, One Contract
 
-## LLM Provider
+Every operation is declared once in `tools/operations.py` and exposed everywhere.
 
-Works with **any OpenAI-compatible API**:
+### CLI
 
 ```bash
-LLMBASE_API_KEY=sk-...
-LLMBASE_BASE_URL=https://api.openai.com/v1
-LLMBASE_MODEL=gpt-4o
+# ─── Ingest ─────────────────────────────────────
+llmbase ingest url   https://example.com/article
+llmbase ingest pdf   ./book.pdf --chunk-pages 20
+llmbase ingest file  ./notes.md
+llmbase ingest dir   ./research-papers/
 
-# Optional fallback chain (empty = no fallback, only the primary is retried)
-LLMBASE_FALLBACK_MODELS=gpt-4o-mini,deepseek-chat
+llmbase ingest cbeta-learn      --batch 10         # Buddhist canon
+llmbase ingest ctext-book 论语  /analects/zh       # Chinese classics
+llmbase ingest wikisource-learn --batch 5
 
-# Optional retry budget (defaults: primary=3, fallback=1)
-# LLMBASE_PRIMARY_RETRIES=3
-# LLMBASE_FALLBACK_RETRIES=1
+# ─── Compile & maintain ─────────────────────────
+llmbase compile new             # incremental (3-layer dedup)
+llmbase compile all             # full rebuild
+llmbase compile index           # rebuild index + aliases
+
+llmbase lint check              # 8 categories of structural checks
+llmbase lint heal               # check → fix → re-check → report
+llmbase lint deep               # LLM deep quality analysis
+
+# ─── Query ──────────────────────────────────────
+llmbase query "何为空性" --tone wenyan            # 📜 Classical Chinese
+llmbase query "Explain X"  --tone scholar         # 🎓 Academic
+llmbase query "What is Y"  --tone eli5            # 👶 Simple
+llmbase query "Compare A and B" --file-back       # save to wiki
+
+# ─── Serve ──────────────────────────────────────
+llmbase web                     # Web UI     :5555
+llmbase serve                   # Agent API  :5556
 ```
 
-Supports: OpenAI, OpenRouter (200+ models), Ollama (local/free), Together, Groq, and any compatible endpoint.
-
-## Autonomous Worker
-
-Deploy once, and the server learns on its own:
-
-```yaml
-# config.yaml
-worker:
-  enabled: true
-  learn_source: cbeta              # auto-ingest from CBETA Buddhist canon
-  learn_interval_hours: 6          # every 6 hours
-  learn_batch_size: 10             # 10 new texts per batch
-  compile_interval_hours: 1        # compile new docs every hour
-  health_check_interval_hours: 24  # self-heal every 24 hours
-
-health:
-  auto_fix_broken_links: true      # generate stubs for broken [[wiki-links]]
-  max_stubs_per_run: 10            # cap LLM calls per health cycle
-```
-
-The worker runs alongside the web server — no separate process needed. Health checks auto-generate stub articles for broken links and persist reports to `wiki/_meta/health.json`.
-
-## Security
-
-Write endpoints (ingest, compile, delete, clean, etc.) are protected by an API secret when deployed to the cloud.
-
-| Scenario | Behavior |
-|----------|----------|
-| **Local dev** (no `PORT` env) | All endpoints open, no auth needed |
-| **Cloud deploy** (`PORT` set, no secret) | Auto-generates a 32-byte random secret |
-| **Cloud deploy** (manual secret) | Set `LLMBASE_API_SECRET` env var |
-| **Frontend** (same-origin) | Auth cookie set automatically on page load |
-| **External API** | Requires `Authorization: Bearer <secret>` header |
-
-```bash
-# Optional: set your own secret
-LLMBASE_API_SECRET=your-secret-here
-
-# Or let it auto-generate (logged on startup: first 8 chars)
-# Check Railway logs for: "Auto-generated API secret: xxxxxxxx..."
-```
-
-Read endpoints (`GET /api/articles`, `/api/search`, `/api/taxonomy`) are always open — the knowledge base is meant to be readable.
-
-## Deployment
-
-```bash
-# Docker
-docker compose up -d
-
-# Railway (connects to GitHub, auto-deploys on push)
-railway init && railway up
-
-# Manual
-gunicorn --bind 0.0.0.0:5555 --workers 2 --timeout 300 wsgi:app
-```
-
-## Agent API
-
-```python
-from tools.agent_api import KnowledgeBase
-
-kb = KnowledgeBase("./")
-kb.ingest("https://example.com/article")
-kb.compile()
-result = kb.ask("What is X?", deep=True, tone="wenyan")
-results = kb.search("keyword")
-health = kb.health_report()
-xici = kb.get_xici("zh")         # Guided reading
-```
-
-See [full API reference →](docs/api-reference.md)
-
-Key endpoints:
+### HTTP
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/articles` | List all articles |
-| GET | `/api/articles/<slug>` | Get article (with backlinks + sources) |
-| POST | `/api/ask` | Query (deep research by default) |
-| GET | `/api/taxonomy?lang=zh` | Hierarchical categories |
-| GET | `/api/xici?lang=zh` | Guided reading (导读) |
-| GET | `/api/entities` | People, events, places |
-| GET | `/api/trails` | Research exploration paths |
-| POST | `/api/lint/fix` | Auto-fix pipeline |
-| GET | `/api/health` | Last health report |
-| GET | `/api/aliases` | Wiki-link alias map |
-| GET | `/api/refs/plugins` | Reference source plugins |
+| GET  | `/api/articles`          | list articles |
+| GET  | `/api/articles/<slug>`   | article + backlinks + citations |
+| GET  | `/api/search?q=...`      | full-text search over concepts |
+| POST | `/api/ask`               | deep-research Q&A |
+| GET  | `/api/taxonomy?lang=zh`  | hierarchical categories |
+| GET  | `/api/xici?lang=zh`      | guided reading (导读) |
+| GET  | `/api/entities`          | people / events / places |
+| GET  | `/api/trails`            | research exploration paths |
+| POST | `/api/lint/fix`          | auto-fix pipeline |
 
-## MCP Server (AI Client Integration)
+Read endpoints (articles, search, taxonomy, xici, entities) stay open. Mutating endpoints (ingest, compile, delete, clean, lint/fix) auto-protect behind `LLMBASE_API_SECRET` in cloud deployments — auto-generated if unset; same-origin frontend cookies set automatically. `kb_search_raw` is reachable via CLI and MCP; a REST route can be added via the customization contract.
 
-LLMBase exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server, so any MCP-compatible AI client can interact with your knowledge base directly — no HTTP, no curl, no custom integration.
-
-**Supported clients**: Claude Code, Cursor, Windsurf, ClawHub, and any MCP-compatible tool.
-
-### Setup
-
-Add to your AI client's MCP settings:
+### MCP (AI agents)
 
 ```json
 {
   "mcpServers": {
     "llmbase": {
       "command": "python",
-      "args": ["-m", "tools.mcp_server", "--base-dir", "/path/to/your/kb"]
+      "args": ["-m", "tools.mcp_server", "--base-dir", "/path/to/kb"]
     }
   }
 }
 ```
 
-### Available Tools
+Tools: `kb_search`, `kb_search_raw`, `kb_ask`, `kb_get`, `kb_list`, `kb_backlinks`, `kb_taxonomy`, `kb_xici`, `kb_stats`, `kb_ingest`, `kb_compile`, `kb_lint`, `kb_export*` — plus anything you register.
 
-| Tool | Description |
-|------|-------------|
-| `kb_search` | Full-text search |
-| `kb_ask` | Deep research query with tone modes |
-| `kb_get` | Get article by slug or alias (`空`, `kong`, `emptiness` all work) |
-| `kb_list` | List articles, filter by tag |
-| `kb_backlinks` | Find articles that cite a given article |
-| `kb_taxonomy` | Category tree (multilingual) |
-| `kb_stats` | Article count, word count |
-| `kb_xici` | Guided reading (导读) |
-| `kb_ingest` | Ingest a URL |
-| `kb_compile` | Compile raw docs into wiki |
-| `kb_lint` | Health check / auto-fix |
+Works with Claude Code, Cursor, Windsurf, ClawHub, and any MCP client. An agent mounted on this server can answer from compiled concepts, fall back to raw sources when the compile missed detail, ingest new material mid-session, and trigger healing. See [docs/mcp-server.md](docs/mcp-server.md).
 
-See [MCP Server Guide →](docs/mcp-server.md)
+## Autonomous Worker
 
-## Customization & Extension
-
-LLMBase is designed as a library, not a framework. Downstream projects customize via module-level constants and hook registration — no forking needed. See [full guide](docs/customization.md).
-
-```python
-import tools.compile as c
-import tools.query as q
-from tools.hooks import register
-from tools.worker import register_learn_source, register_job
-
-# Single-language KB
-c.SECTION_HEADERS = [("wenyan", "## 文言")]
-c.COMPILE_ARTICLE_FORMAT = "## 文言\n\n以文言撰寫完整內容。"
-
-# Custom tone mode
-q.TONE_INSTRUCTIONS["formal_zh"] = "請以正式中文回答。"
-
-# React to lifecycle events (10 events available)
-register("compiled", lambda source, title, **kw: sync.push(source, title))
-
-# Custom learn source + background job
-register_learn_source("my_corpus", my_learn_handler)
-register_job("my_sync", interval_hours=2, handler=my_sync_fn)
-```
-
-**Extension points**: module constants (compile, query, taxonomy, xici, entities, lint) | lifecycle hooks (10 events) | worker (custom learn sources + jobs) | web (custom routes, middleware, configurable static_dir)
-
-## Design Philosophy
-
-- **Domain-agnostic** — No hardcoded domains. Taxonomy, categories, and structure emerge from content via LLM
-- **No vector DB** — Index files + LLM context window are sufficient at personal scale
-- **Explorations add up** — Every query, every lint pass, every batch ingestion compounds the knowledge
-- **LLM writes, you curate** — The LLM maintains the wiki; you direct what to learn
-- **Incremental, not batch** — New data merges into existing articles (叠加进化), never starts from scratch
-- **Extensible without forking** — Override module constants, register hooks, add custom learn sources and API routes
-- **Agent-native** — Every feature is accessible via API. Humans and agents are equal users
-- **Self-healing** — The system detects and repairs its own issues: broken links, duplicates, dirty tags, miscategorization
-
----
-
-## 中文说明
-
-### 这是什么？
-
-LLMBase 是一个 **LLM 驱动的个人知识库系统**，灵感来自 [Karpathy 的 LLM Knowledge Base 设计](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)。
-
-核心理念：**原始文档输入 → LLM 编译成结构化 wiki → 持续查询增强 → 知识不断叠加，温故而知新。**
-
-不需要向量数据库，不需要 embedding pipeline。只需要 markdown 文件、一个 LLM、和一套干净的 Web UI。
-
-**线上示例：**
-- **[華藏閣](https://huazangge-production.up.railway.app)** — 自治佛学知识库，持续从 CBETA 大藏经自动学习（三语 EN/中/日）
-- **[斯文](https://siwen.ink)** — 文言知識庫，收录儒释道经典，纯文言前端
-
-### 架构设计
-
-```
-┌─ 数据摄入层 ────────────────────────────────────────────┐
-│  URL 抓取 | PDF 自动转换 | 本地文件 | CBETA 大藏经       │
-│  ctext.org 儒道经典 | 浏览器抓取 (OpenCLI)              │
-└─────────────────────────┬───────────────────────────────┘
-                          ↓
-┌─ LLM 编译层 ────────────────────────────────────────────┐
-│  提取概念 → 生成三语文章 (EN/中/日)                      │
-│  建立 [[wiki 链接]] → 交叉引用 → 反向链接                │
-│  重复概念自动合并 → 知识叠加而非覆盖                     │
-└─────────────────────────┬───────────────────────────────┘
-                          ↓
-┌─ 知识库层 ──────────────────────────────────────────────┐
-│  wiki/concepts/*.md    三语结构化文章                     │
-│  wiki/_meta/index.json 全文索引                          │
-│  wiki/_meta/taxonomy.json 自动生成的分类体系              │
-│  wiki/_meta/backlinks.json 反向链接图谱                  │
-│  wiki/outputs/*.md     Q&A 答案归档                      │
-└─────────────────────────┬───────────────────────────────┘
-                          ↓
-┌─ 应用层 ────────────────────────────────────────────────┐
-│  React Web UI (亮暗双主题，全局语言切换)                   │
-│  CLI 命令行工具                                          │
-│  Agent HTTP API + Python SDK                             │
-│  D3.js 知识图谱可视化                                    │
-│  自治 Worker（后台自动学习 + 编译 + 健康检查）             │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 四个阶段循环
-
-1. **摄入 (Ingest)** — 从 URL、PDF、本地文件、或数据源插件（CBETA、ctext.org）收集原始文档
-2. **编译 (Compile)** — LLM 阅读原始文档，提取概念，撰写三语文章，构建索引。已有概念自动合并更新
-3. **查询与增强 (Query & Enhance)** — 基于 wiki 的智能问答，答案归档回 wiki。每次查询都让知识库更强
-4. **检查与自愈 (Lint & Heal)** — 断链检测 → 自动生成 stub 文章、孤立文章发现、元数据补全、LLM 深度分析。Worker 每 24h 自动执行
-
-### 核心功能
-
-| 功能 | 说明 |
-|------|------|
-| **三语输出** | 每篇文章自动生成 English / 中文 / 日本語 三个版本，顶栏全局语言切换，支持中英双语模式 |
-| **自治学习** | 后台 Worker 自动摄入、编译、自愈，部署后无需人工干预 |
-| **自愈系统** | 定期健康检查，自动为断链生成 stub 文章，修复元数据，重建索引 |
-| **语气模式** | 问答支持多种风格：原始人 🦴、文言文 📜、学术 🎓、幼儿园 👶 |
-| **模型容错** | 主模型失败自动切换备选模型，知识库持续增长不中断 |
-| **PDF 摄入** | `llmbase ingest pdf ./book.pdf` 自动切分为 20 页/块的 markdown，支持中英文 PDF |
-| **知识叠加** | Q&A 答案归档回 wiki，Lint 建议新连接，重复概念合并而非覆盖。温故而知新 |
-| **分类体系** | LLM 自动生成层级分类（参考四库全书分类法），左栏按分类浏览 |
-| **Agent API** | HTTP API + Python SDK，便于 AI agent 直接查询、搜索、贡献知识 |
-| **知识图谱** | D3.js 力导向图，可视化概念间的连接关系，发现意外关联 |
-
-### 定制与扩展
-
-LLMBase 作为库而非框架设计。下游项目通过覆盖模块常数和注册钩子来定制行为，无需 fork。详见 [完整指南](docs/customization.md)。
-
-```python
-import tools.compile as c
-from tools.hooks import register
-from tools.worker import register_learn_source
-
-c.SECTION_HEADERS = [("wenyan", "## 文言")]     # 单语知识库
-register("compiled", my_sync_handler)            # 编译后同步
-register_learn_source("my_corpus", my_handler)   # 自定义学习源
-```
-
-**扩展点**: 模块常数 (compile, query, taxonomy, xici, entities, lint) | 生命周期钩子 (10 个事件) | Worker (自定义学习源 + 后台作业) | Web (自定义路由、中间件、可配 static_dir)
-
-### 快速开始
-
-```bash
-# 克隆并安装
-git clone https://github.com/Hosuke/llmbase.git && cd llmbase
-pip install -e .
-cd frontend && npm install && npx vite build && cd ..
-
-# 配置 LLM（支持任何 OpenAI 兼容 API）
-cp .env.example .env
-# 编辑 .env 填入 API key、模型名、备选模型
-
-# 启动
-llmbase web    # 浏览器打开 http://localhost:5555
-```
-
-### CLI 命令速查
-
-```bash
-# 摄入
-llmbase ingest url https://example.com/article   # 抓取网页
-llmbase ingest pdf ./book.pdf --chunk-pages 20    # PDF 自动转换
-llmbase ingest cbeta-learn --batch 10             # CBETA 大藏经渐进学习
-llmbase ingest ctext-book 论语 /analects/zh       # ctext 经典抓取
-
-# 编译与维护
-llmbase compile new       # 增量编译新文档
-llmbase lint check        # 结构健康检查
-llmbase lint deep         # LLM 深度分析
-llmbase lint heal         # 全自愈周期：检查 → 修复 → 复查 → 报告
-
-# 查询（支持语气模式）
-llmbase query "什么是般若？"                       # 默认风格
-llmbase query "何为空性" --tone wenyan              # 📜 文言文风格
-llmbase query "什么是因果" --tone caveman           # 🦴 原始人风格
-llmbase query "比较儒道佛的核心思想" --file-back     # 答案归档回 wiki
-
-# 部署
-llmbase web               # Web UI (localhost:5555)
-llmbase serve             # Agent API (localhost:5556)
-```
-
-### 自治 Worker 配置
+Deploy once; the server keeps learning.
 
 ```yaml
 # config.yaml
 worker:
   enabled: true
-  learn_source: cbeta        # 数据源（CBETA 大藏经）
-  learn_interval_hours: 6    # 每 6 小时自动学习一批
-  learn_batch_size: 10       # 每批 10 部经文
-  compile_interval_hours: 1        # 每小时自动编译
-  health_check_interval_hours: 24  # 每 24 小时自愈检查
+  learn_source: cbeta              # or any registered learn source
+  learn_interval_hours: 6
+  learn_batch_size: 10
+  compile_interval_hours: 1
+  health_check_interval_hours: 24
 
 health:
-  auto_fix_broken_links: true      # 自动为断链生成 stub 文章
-  max_stubs_per_run: 10            # 每次自愈最多生成 10 篇 stub
+  auto_fix_broken_links: true
+  max_stubs_per_run: 10
 ```
 
-部署后服务器会自己学、自己编译、自己建索引、自己修复断链。你只需要偶尔上传新 PDF 或调整学习方向。
+The worker starts automatically under the production WSGI entrypoint (`wsgi.py` → `start_worker_thread`) — single deployment, no separate queue or cron. Local dev with `llmbase web` does not start the worker; run `gunicorn wsgi:app` (or call `tools.worker.start_worker_thread` yourself) to exercise the autonomous loop locally.
 
-### 数据源插件
+## Customization
 
-| 插件 | 数据量 | 用法 |
-|------|--------|------|
-| **CBETA** | 4,868 部佛经，2.23 亿字 | `llmbase ingest cbeta-learn` |
-| **ctext.org** | 儒道墨法兵等先秦经典 | `llmbase ingest ctext-book` |
-| **PDF** | 任意 PDF 文件 | `llmbase ingest pdf` |
+Library, not framework. Override module-level constants at import time, or register callbacks on lifecycle events.
 
-### 项目结构
+```python
+import tools.compile as c
+import tools.query   as q
+from tools.hooks     import register
+from tools.worker    import register_learn_source
+from tools.operations import register as register_op, Operation
 
-```
-llmbase/
-├── frontend/              # React + TypeScript + Tailwind CSS
-│   └── src/
-│       ├── pages/         # Dashboard, Wiki, Search, Q&A, Graph, Explore, Trails, Ingest, Health
-│       ├── components/    # Layout, Markdown, ArticleCard, TrailRecorder, CategoryNode
-│       └── lib/           # API, theme, lang, trail context, branding
-├── tools/                 # Python 后端
-│   ├── cli.py             # Click CLI 入口
-│   ├── ingest.py          # 文档摄入（URL/文件/目录）+ SSRF 防护
-│   ├── compile.py         # LLM 三语编译 + 三层去重合并
-│   ├── query.py           # Q&A 引擎（deep research + tone modes）
-│   ├── search.py          # TF-IDF 全文搜索
-│   ├── lint.py            # 7 步自动修复 pipeline
-│   ├── resolve.py         # 多语言 wiki-link 别名解析
-│   ├── taxonomy.py        # LLM 涌现式分类（两阶段生成）
-│   ├── entities.py        # 人物/事件/地点实体提取
-│   ├── xici.py            # 导读生成（文言文为基底）
-│   ├── worker.py          # 自治学习 Worker（job lock + dedup）
-│   ├── atomic.py          # 原子文件写入（防损坏）
-│   ├── refs/              # 引用源插件系统
-│   │   ├── __init__.py    # 插件自动发现
-│   │   ├── cbeta.py       # CBETA 引用
-│   │   ├── wikisource.py  # 维基文库引用
-│   │   └── ctext.py       # ctext.org 引用
-│   ├── cbeta.py           # CBETA 数据源
-│   ├── ctext.py           # ctext.org 数据源
-│   ├── wikisource.py      # 维基文库数据源
-│   ├── agent_api.py       # Agent HTTP API + Python SDK
-│   ├── web.py             # Flask Web 服务器（auth + 全 API）
-│   └── llm.py             # LLM 客户端（容错 + thinking mode 处理）
-├── docs/                  # 详细文档
-├── config.yaml            # 配置文件
-├── CLAUDE.md              # AI 辅助开发规范
-└── pyproject.toml
+# Single-language KB
+c.SECTION_HEADERS = [("wenyan", "## 文言")]
+
+# Custom tone mode
+q.TONE_INSTRUCTIONS["formal_zh"] = "請以正式中文回答。"
+
+# React to lifecycle events (10 emitted across compile/lint/xici/entities/…)
+register("compiled", lambda source, title, **kw: sync.push(source, title))
+
+# Custom learn source for the worker
+register_learn_source("my_corpus", my_learn_handler)
+
+# One op, three surfaces
+register_op(Operation(
+    name="kb_custom",
+    description="My custom KB op",
+    handler=my_handler,
+    params={"type": "object", "properties": {"query": {"type": "string"}}},
+))
 ```
 
-### 安全
+Stable contract — see [docs/customization.md](docs/customization.md) for the full surface (compile, query, taxonomy, xici, entities, lint, web, worker, operations).
 
-写入类 API（摄入、编译、删除、清理等）在云端部署时自动受 API Secret 保护。
+## Live Deployments
 
-| 场景 | 行为 |
-|------|------|
-| **本地开发** | 全开，无需认证 |
-| **云端部署**（未设密钥） | 自动生成 32 字节随机密钥 |
-| **云端部署**（手动设密钥） | 设置 `LLMBASE_API_SECRET` 环境变量 |
-| **前端**（同源访问） | 页面加载时自动种 cookie，免输入 |
-| **外部 API 调用** | 需带 `Authorization: Bearer <密钥>` |
+Both run pure `llmwiki` as a dependency; all customization goes through hooks and overrides, no forks.
 
-读取类 API（文章、搜索、分类）始终开放——知识库本身是可读的。
+- **[華藏閣](https://huazangge-production.up.railway.app)** — autonomous Buddhist KB, continuously learning from CBETA canon, trilingual (EN / 中 / 日). Supabase sync wired via lifecycle hooks.
+- **[斯文](https://siwen.ink)** — classical-Chinese KB of Confucian, Daoist & Buddhist classics. Single-language 文言 frontend. CJK slugs enabled via the customization contract.
 
-### 部署方式
+## Design Principles
 
-| 方式 | 说明 |
-|------|------|
-| **Docker** | `docker compose up -d`，一行命令 |
-| **Railway** | 连接 GitHub 仓库，自动部署，push 即更新 |
-| **Render** | 免费 tier 可用 |
-| **VPS** | `gunicorn wsgi:app`，任何服务器 |
+- **Domain-agnostic** — taxonomy emerges from content; nothing is hardcoded
+- **No vector DB** — markdown + a thoughtful tokenizer + LLM context is enough at personal scale; `kb_search_raw` covers verbatim recall
+- **Explorations add up** — every query, lint, and ingest compounds the wiki
+- **LLM writes, you curate** — the LLM maintains; you direct
+- **Incremental, not batch** — 叠加进化: concepts merge, never overwrite
+- **Extensible without forking** — stable customization contract
+- **Agent-native** — humans and agents are equal users
+- **Self-healing** — the system detects and fixes its own drift
+
+## Deploy
+
+```bash
+docker compose up -d                                                    # Docker
+railway up                                                              # Railway
+gunicorn --bind 0.0.0.0:5555 --workers 2 --timeout 300 wsgi:app         # any VPS
+```
+
+---
+
+## 中文说明
+
+### 这是什么
+
+LLMBase（PyPI：`llmwiki`）是一个 **由 LLM 合成、而非单纯存储的知识库**。大多数"记忆系统"把每一个字塞进向量库、靠语义检索找回；LLMBase 恰恰相反——让 LLM **读懂并重写**你的原始材料为结构化、互链的 markdown 文章，带 `[[wiki 链接]]`、反向链接、以及由内容涌现的分类体系。**存储是廉价的，结构才是产品。**
+
+一切会累加。每次查询、每轮 lint、每批摄入都落进同一张图：重复概念合并（叠加进化）、断链自动补 stub、多种语气模式换不同方式讲同一件事、引用可溯源回原文。人和 agent 读的是同一套 wiki。
+
+单一注册表 `tools/operations.py` 把每个操作声明一次：MCP server 全部工具走该注册表派发；CLI 和 HTTP API 共用同一套 `Operation` 定义，正在逐步迁移接入。通过 `operations.register(...)` 注册一个 op，MCP-enabled agent 即可调用。
+
+灵感来自 [Karpathy 的 LLM Knowledge Base 设计](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)。
+
+### 管道
+
+```
+raw/ ──compile──>  wiki/concepts/  ──query/lint──>  wiki/（增强）
+                         │                                ↑
+                         └───────  叠加进化  ──────────────┘
+```
+
+1. **摄入** — URL、PDF、本地文件、语料插件（CBETA 大藏经、ctext、Wikisource）落地 `raw/`，带出处元数据
+2. **编译** — LLM 提取概念，生成三语文章（EN/中/日），建立交叉引用、别名图与涌现式分类
+3. **查询** — 深度研究式问答从编译后的概念层召回；agent 需要原文时可直接调用 `kb_search_raw` 走原文兜底。支持学者 🎓、文言 📜、幼稚园 👶、原始人 🦴 等语气；答案可归档回 wiki
+4. **自愈** — lint pipeline 检测断链、垃圾 stub、脏 tag、重复、未分类，并修复。Worker 按时自动执行
+
+### 与其他方案的区别
+
+- **合成 vs 存档**——wiki 本身即记忆，不用向量库，不堆原文磁带
+- **双层召回**——`kb_search` 对编译后概念做 TF-IDF 打分；`kb_search_raw` 用同一套打分器跑 `raw/` 原文，兜底取被 compile 抽象掉的细节
+- **默认三语**——每篇都有 English / 中文 / 日本語；alias 图跨脚本解析 `[[参禅]]` → `can-chan.md`，繁简互通
+- **结构涌现**——分类由 LLM 按域生成，零硬编码
+- **一套契约，三个面**——同一个 `Operation(...)` 同时驱动 CLI / HTTP / MCP
+- **自愈**——7 步 auto-fix：清理 → 元数据 → 断链 → 合并 → 分类
+- **库而非框架**——下游通过覆盖模块常数和注册 hook 定制，不 fork，契约跨版本稳定
+
+### 安装
+
+```bash
+pip install llmwiki
+# 或
+git clone https://github.com/Hosuke/llmbase.git
+cd llmbase && pip install -e .
+```
+
+### 快速开始
+
+```bash
+cd frontend && npm install && npx vite build && cd ..
+cp .env.example .env                     # 配置 API key / base URL / 模型
+llmbase web                              # → http://localhost:5555
+```
+
+兼容任何 OpenAI 协议端点（自部署或聚合器）。可配置备选模型链与重试预算：
+
+```bash
+LLMBASE_API_KEY=...
+LLMBASE_BASE_URL=...
+LLMBASE_MODEL=...
+
+LLMBASE_FALLBACK_MODELS=model-a,model-b   # 可选；空 = 不降级
+LLMBASE_PRIMARY_RETRIES=3                 # 默认 3
+LLMBASE_FALLBACK_RETRIES=1                # 默认 1
+```
+
+### 三个面，一套契约
+
+#### CLI
+
+```bash
+# 摄入
+llmbase ingest url   https://...
+llmbase ingest pdf   ./book.pdf --chunk-pages 20
+llmbase ingest cbeta-learn      --batch 10
+llmbase ingest ctext-book 论语  /analects/zh
+
+# 编译与维护
+llmbase compile new           # 增量编译
+llmbase lint heal             # 检查 → 修复 → 复查 → 报告
+llmbase lint deep             # LLM 深度质量分析
+
+# 查询
+llmbase query "何为空性" --tone wenyan
+llmbase query "比较儒道佛"   --file-back
+
+# 服务
+llmbase web                   # Web UI    :5555
+llmbase serve                 # Agent API :5556
+```
+
+#### HTTP
+
+读接口（articles / search / taxonomy / xici / entities）常开；变更类接口（ingest / compile / delete / clean / lint/fix）由 `LLMBASE_API_SECRET` 保护（云端部署自动生成；同源前端自动种 cookie）。`kb_search_raw` 目前通过 CLI 与 MCP 暴露，如需 REST 路由可通过定制契约添加。
+
+#### MCP
+
+```json
+{
+  "mcpServers": {
+    "llmbase": {
+      "command": "python",
+      "args": ["-m", "tools.mcp_server", "--base-dir", "/path/to/kb"]
+    }
+  }
+}
+```
+
+工具集：`kb_search`、`kb_search_raw`（原文兜底）、`kb_ask`、`kb_get`、`kb_list`、`kb_backlinks`、`kb_taxonomy`、`kb_xici`、`kb_stats`、`kb_ingest`、`kb_compile`、`kb_lint`、`kb_export*`，以及下游自注册的 op。
+
+支持 Claude Code、Cursor、Windsurf、ClawHub 等所有 MCP 客户端。挂载后 agent 可从概念层答题、原文层兜底、会话中继续摄入、触发自愈。
+
+### 自治 Worker
+
+```yaml
+worker:
+  enabled: true
+  learn_source: cbeta
+  learn_interval_hours: 6
+  learn_batch_size: 10
+  compile_interval_hours: 1
+  health_check_interval_hours: 24
+
+health:
+  auto_fix_broken_links: true
+  max_stubs_per_run: 10
+```
+
+Worker 在生产 WSGI 入口（`wsgi.py` → `start_worker_thread`）自动启动——单部署，无需额外队列或 cron。本地 `llmbase web` 开发时 worker 不会自启；要在本地跑自治循环，请用 `gunicorn wsgi:app`，或自行调用 `tools.worker.start_worker_thread`。
+
+### 定制与扩展
+
+"库而非框架"。import 时覆盖模块常数，或注册 hook：
+
+```python
+import tools.compile as c
+import tools.query   as q
+from tools.hooks     import register
+from tools.worker    import register_learn_source
+from tools.operations import register as register_op, Operation
+
+c.SECTION_HEADERS = [("wenyan", "## 文言")]                 # 单语 KB
+q.TONE_INSTRUCTIONS["formal_zh"] = "請以正式中文回答。"       # 自定义语气
+register("compiled", my_sync_handler)                        # 编译后回调
+register_learn_source("my_corpus", my_handler)               # 自定义学习源
+register_op(Operation(                                       # 一次注册，三面同暴露
+    name="kb_custom", description="自定义 op",
+    handler=my_handler,
+    params={"type": "object", "properties": {"query": {"type": "string"}}},
+))
+```
+
+完整契约见 [docs/customization.md](docs/customization.md)（涵盖 compile / query / taxonomy / xici / entities / lint / web / worker / operations）。
+
+### 线上实例
+
+两者均为纯 `llmwiki` 依赖，定制全走 hook + override，无 fork。
+
+- **[華藏閣](https://huazangge-production.up.railway.app)**——自治佛学 KB，从 CBETA 大藏经持续学习，三语；Supabase 同步通过生命周期 hook 接入
+- **[斯文](https://siwen.ink)**——文言知识库，儒释道经典，纯文言前端；通过定制契约启用 CJK slug
+
+### 设计原则
+
+- **域无关**——分类由内容涌现，零硬编码
+- **不依赖向量库**——个人规模 markdown + 合理 tokenizer 足矣，`kb_search_raw` 补足原文召回
+- **探索会累加**——每次查询、lint、摄入都让知识库更强
+- **LLM 写，你审**——LLM 维护，你指导方向
+- **增量而非批处理**——叠加进化，不覆盖重来
+- **可扩展而不 fork**——契约稳定
+- **Agent 原生**——人与 agent 平权
+- **自愈**——系统自己发现并修复漂移
+
+### 部署
+
+```bash
+docker compose up -d                                                    # Docker
+railway up                                                              # Railway
+gunicorn --bind 0.0.0.0:5555 --workers 2 --timeout 300 wsgi:app         # 任意 VPS
+```
 
 ---
 
