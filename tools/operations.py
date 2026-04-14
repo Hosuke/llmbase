@@ -104,6 +104,11 @@ def _op_search(base_dir: Path, query: str, top_k: int = 10) -> dict:
     return {"results": search(query, top_k=top_k, base_dir=base_dir)}
 
 
+def _op_search_raw(base_dir: Path, query: str, top_k: int = 10) -> dict:
+    from .search import search_raw
+    return {"results": search_raw(query, top_k=top_k, base_dir=base_dir)}
+
+
 def _op_ask(
     base_dir: Path,
     question: str,
@@ -304,6 +309,25 @@ _CANONICAL: list[Operation] = [
         name="kb_search",
         description="Full-text search across the knowledge base wiki articles.",
         handler=_op_search,
+        params={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "top_k": {"type": "integer", "default": 10},
+            },
+            "required": ["query"],
+        },
+        category="read",
+    ),
+    Operation(
+        name="kb_search_raw",
+        description=(
+            "Fallback full-text search over the raw/ ingest directory "
+            "(pre-compile source material). Use when kb_search misses — "
+            "raw holds verbatim scraped sources, dictionaries, and book "
+            "chapters that may contain exact wording lost during compile."
+        ),
+        handler=_op_search_raw,
         params={
             "type": "object",
             "properties": {

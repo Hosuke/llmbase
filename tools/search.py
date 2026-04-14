@@ -116,6 +116,97 @@ def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[di
     return results[:top_k]
 
 
+def search_raw(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[dict]:
+    """Full-text search over the raw/ ingest directory (pre-compile sources).
+
+    Used as a fallback when ``search()`` misses — raw holds verbatim source
+    material (scraped pages, dictionaries, book chapters) that may contain
+    exact wording, dates, or quotations lost during LLM compilation.
+
+    Returns entries with ``source`` (raw/ subdirectory name), ``rel_path``
+    (path relative to raw/), and ``source_url`` (populated only for http(s)
+    URLs — local filesystem paths from local-file ingest are scrubbed to
+    avoid leaking usernames/home dirs to MCP/HTTP clients).
+    """
+    cfg = load_config(base_dir)
+    raw_dir = Path(cfg["paths"]["raw"])
+
+    if not raw_dir.exists():
+        return []
+
+    # Clamp top_k to non-negative — negative slice would over-return.
+    top_k = max(0, int(top_k))
+    if top_k == 0:
+        return []
+
+    query_terms = _tokenize(query)
+    if not query_terms:
+        return []
+
+    docs = []
+    for md_file in raw_dir.rglob("*.md"):
+        try:
+            post = frontmatter.load(str(md_file))
+        except Exception:
+            continue
+        title = post.metadata.get("title") or md_file.stem
+        raw_source = post.metadata.get("source", "") or ""
+        # Only surface http(s) URLs — local filesystem paths from local-file
+        # ingest would leak usernames / absolute paths to callers.
+        source_url = raw_source if isinstance(raw_source, str) and raw_source.startswith(("http://", "https://")) else ""
+        rel = md_file.relative_to(raw_dir)
+        # Use top-level subdir as the source identifier when metadata lacks it
+        source_id = rel.parts[0] if len(rel.parts) > 1 else md_file.stem
+        text = f"{title} {title} {source_url} {post.content}"
+        tokens = _tokenize(text)
+        if not tokens:
+            continue
+        docs.append({
+            "rel_path": str(rel),
+            "source": source_id,
+            "source_url": source_url,
+            "title": title,
+            "text": text,
+            "tokens": tokens,
+            "tokens_set": set(tokens),
+        })
+
+    if not docs:
+        return []
+
+    doc_count = len(docs)
+    idf = {}
+    for term in query_terms:
+        df = sum(1 for d in docs if term in d["tokens_set"])
+        idf[term] = math.log((doc_count + 1) / (df + 1)) + 1
+
+    results = []
+    for doc in docs:
+        token_counts = Counter(doc["tokens"])
+        score = 0.0
+        matched_terms = []
+        for term in query_terms:
+            if term in token_counts:
+                tf = 1 + math.log(token_counts[term])
+                score += tf * idf[term]
+                matched_terms.append(term)
+
+        if score > 0:
+            snippet = _extract_snippet(doc["text"], query_terms)
+            results.append({
+                "source": doc["source"],
+                "source_url": doc["source_url"],
+                "title": doc["title"],
+                "rel_path": doc["rel_path"],
+                "score": round(score, 3),
+                "matched_terms": matched_terms,
+                "snippet": snippet,
+            })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_k]
+
+
 def search_cli(query: str, base_dir: Path | None = None) -> str:
     """CLI-friendly search output (for LLM tool use)."""
     results = search(query, base_dir=base_dir)
