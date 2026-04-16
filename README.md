@@ -87,6 +87,20 @@ LLMBASE_PRIMARY_RETRIES=3                 # default 3
 LLMBASE_FALLBACK_RETRIES=1                # default 1
 ```
 
+`.env` is discovered in this order (first hit wins; shell `export` always
+beats the file):
+
+1. `$LLMBASE_ENV_FILE` — explicit path override
+2. `$PWD/.env` — only when `$PWD/config.yaml` declares llmbase paths
+   (`paths.concepts` / `paths.wiki` / `paths.raw`). This keeps a stray
+   `config.yaml` from an unrelated project from qualifying CWD as a KB
+   root and loading a hostile `.env` that could redirect requests.
+3. `~/.config/llmbase/.env` — user-level default, works across projects
+4. `<package_parent>/.env` — legacy source-install path
+
+Works identically for `pip install llmwiki`, `pipx install llmwiki`, and
+`pip install -e .`.
+
 ## Three Surfaces, One Contract
 
 Every operation is declared once in `tools/operations.py` and exposed everywhere.

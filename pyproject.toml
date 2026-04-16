@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llmwiki"
-version = "0.6.4"
+version = "0.6.5"
 description = "LLM-powered personal knowledge base — raw data goes in, an LLM compiles it into a structured, interlinked wiki"
 readme = "README.md"
 license = {text = "MIT"}

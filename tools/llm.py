@@ -9,11 +9,131 @@ from dotenv import load_dotenv
 import httpx
 from openai import OpenAI
 
-# Load .env from project root
-_env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_env_path)
-
 logger = logging.getLogger("llmbase.llm")
+
+
+def _load_env() -> Path | None:
+    """Resolve .env in a way that works for both editable and PyPI installs.
+
+    Search order (first hit wins; shell exports always beat all of them
+    because ``override=False``):
+
+    1. ``$LLMBASE_ENV_FILE`` — explicit path override.
+    2. ``$PWD/.env`` — but only when the CWD also contains a ``config.yaml``
+       (i.e. this is an actual KB project root). Gating on ``config.yaml``
+       stops a hostile ``.env`` dropped into an unrelated working directory
+       from redirecting ``LLMBASE_BASE_URL`` while shell-exported keys leak
+       to attacker infra.
+    3. ``~/.config/llmbase/.env`` — user-level default, install-agnostic.
+    4. ``<package_parent>/.env`` — legacy path that only worked for
+       ``pip install -e .`` source checkouts.
+
+    The old single-location lookup silently failed under pipx/PyPI installs
+    because ``__file__`` resolves inside ``site-packages/`` (issue #4).
+    """
+    def _safe_load(path: Path) -> bool:
+        # python-dotenv's return value is unreliable as a success signal —
+        # it returns False for valid empty/comment-only files as well as
+        # unreadable ones. Since we already gate on ``is_file()`` above,
+        # only a raised exception should count as a load failure here.
+        try:
+            load_dotenv(path, override=False)
+        except Exception as exc:
+            logger.warning("Failed to read .env at %s: %s", path, exc)
+            return False
+        return True
+
+    def _safe_resolve(path: Path) -> Path | None:
+        try:
+            return path.resolve()
+        except (OSError, RuntimeError):
+            return None
+
+    # Explicit override is authoritative: if LLMBASE_ENV_FILE is set, we load
+    # that exact file or nothing — never fall through to CWD/XDG/package. A
+    # typo in the override must not silently pick up a different .env that
+    # could redirect requests to attacker infra.
+    override = os.environ.get("LLMBASE_ENV_FILE")
+    if override:
+        explicit = Path(override).expanduser()
+        try:
+            is_file = explicit.is_file()
+        except OSError:
+            is_file = False
+        resolved = _safe_resolve(explicit) if is_file else None
+        if resolved is not None and _safe_load(resolved):
+            logger.info("Loaded .env from %s (via LLMBASE_ENV_FILE)", resolved)
+            return resolved
+        logger.error(
+            "LLMBASE_ENV_FILE=%r is not a readable file; refusing to fall back "
+            "to other .env locations.", override,
+        )
+        return None
+
+    candidates: list[Path] = []
+    try:
+        cwd = Path.cwd()
+    except (OSError, RuntimeError):
+        cwd = None
+    # Trust CWD/.env only when CWD looks like a real llmbase KB project —
+    # config.yaml alone is too weak a marker (many unrelated projects ship
+    # one). Require llmbase-canonical keys under ``paths:`` in the config.
+    if cwd is not None and _is_llmbase_project(cwd):
+        candidates.append(cwd / ".env")
+    try:
+        home = Path.home()
+    except (OSError, RuntimeError):
+        home = None
+    if home is not None:
+        candidates.append(home / ".config" / "llmbase" / ".env")
+    candidates.append(Path(__file__).resolve().parent.parent / ".env")
+
+    seen: set[Path] = set()
+    for p in candidates:
+        resolved = _safe_resolve(p)
+        if resolved is None or resolved in seen:
+            continue
+        seen.add(resolved)
+        try:
+            is_file = resolved.is_file()
+        except OSError:
+            continue
+        if is_file and _safe_load(resolved):
+            logger.info("Loaded .env from %s", resolved)
+            return resolved
+    logger.info(
+        "No .env file found (checked LLMBASE_ENV_FILE, CWD, ~/.config/llmbase, package dir); "
+        "using shell environment only"
+    )
+    return None
+
+
+def _is_llmbase_project(root: Path) -> bool:
+    """Heuristic: does *root*/config.yaml declare llmbase-canonical paths?
+
+    Requires at least one of ``paths.concepts`` / ``paths.wiki`` /
+    ``paths.raw`` — the keys llmbase actually consumes. This keeps stray
+    ``config.yaml`` files in unrelated repos (gatsby, hugo, k8s manifests,
+    …) from being treated as KB roots and pulling in a hostile ``.env``.
+    """
+    cfg_path = root / "config.yaml"
+    try:
+        if not cfg_path.is_file():
+            return False
+        import yaml
+        with cfg_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    paths = data.get("paths")
+    if not isinstance(paths, dict):
+        return False
+    return any(k in paths for k in ("concepts", "wiki", "raw"))
+
+
+_ENV_SOURCE = _load_env()
 
 _client = None
 
