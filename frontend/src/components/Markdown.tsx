@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, isValidElement } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useNavigate } from 'react-router-dom';
 import type { Components } from 'react-markdown';
 import { api } from '../lib/api';
+import { Mermaid } from './Mermaid';
 
 // Global alias cache — loaded once, shared across all Markdown instances
 let aliasCache: Record<string, string> | null = null;
@@ -60,6 +61,20 @@ export function Markdown({ content, className = '' }: { content: string; classNa
         );
       }
       return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+    },
+    pre({ children }) {
+      // Catch ```mermaid``` at the <pre> level so we don't end up with
+      // <pre><div class="mermaid">...</div></pre> (invalid + bad layout).
+      const child = Array.isArray(children) ? children[0] : children;
+      if (isValidElement(child)) {
+        const props = child.props as { className?: unknown; children?: unknown };
+        const cls = typeof props.className === 'string' ? props.className : '';
+        if (/(?:^|\s)language-mermaid(?:\s|$)/.test(cls)) {
+          const source = String(props.children ?? '').replace(/\n$/, '');
+          return <Mermaid source={source} />;
+        }
+      }
+      return <pre>{children}</pre>;
     },
   };
 

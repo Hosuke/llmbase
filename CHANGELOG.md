@@ -2,6 +2,12 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.6.9] — 2026-04-18
+
+### Added
+- **Mermaid in `Markdown` component.** Wiki / classics / Q&A pages now render ` ```mermaid ` code fences as live diagrams. The `mermaid` library is dynamically imported the first time a diagram appears (no first-paint cost on plain pages) and re-renders on theme toggle, picking up the dark/light palette automatically. `securityLevel: 'strict'` so labels are escaped. Failures fall back to a labeled error block with the original source visible.
+- **Deep-nest visual hierarchy in `.prose-article`.** `<ul>` and `<ol>` now rotate list-style markers per nesting depth (disc → circle → square → ▸ → ⋄ → ▫ → ◆ → ◇ for `<ul>`; decimal → lower-alpha → lower-roman → upper-alpha → upper-roman → cjk-ideographic → hiragana → katakana for `<ol>`) and gain a 1px outline-variant "rail" on the left from depth 2 onward, fading at depth 3+. Targeted at 古籍解經 / 太虛大師全書 content nested 7-8 layers (甲乙丙丁戊己庚辛) where Markdown's 6 head levels run out and bare nested lists collapse into a wall.
+
 ## [0.6.8] — 2026-04-18
 
 ### Fixed

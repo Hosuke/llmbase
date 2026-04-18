@@ -150,6 +150,62 @@ body {
 .prose-article p { margin-bottom: 1rem; }
 .prose-article ul, .prose-article ol { margin: 0.5rem 0 1rem 1.5rem; }
 .prose-article li { margin-bottom: 0.375rem; }
+
+/* Deep-nest readability: bullet rotation + subtle "rail" per depth.
+   古籍解經 nests 甲乙丙丁戊己庚辛 to 8 layers; without per-depth cues
+   anything past depth 4 collapses into a wall. */
+.prose-article ul { list-style-type: disc; }
+.prose-article ul ul { list-style-type: circle; }
+.prose-article ul ul ul { list-style-type: square; }
+.prose-article ul ul ul ul { list-style-type: '▸ '; }
+.prose-article ul ul ul ul ul { list-style-type: '⋄ '; }
+.prose-article ul ul ul ul ul ul { list-style-type: '▫ '; }
+.prose-article ul ul ul ul ul ul ul { list-style-type: '◆ '; }
+.prose-article ul ul ul ul ul ul ul ul { list-style-type: '◇ '; }
+
+.prose-article ol { list-style-type: decimal; }
+.prose-article ol ol { list-style-type: lower-alpha; }
+.prose-article ol ol ol { list-style-type: lower-roman; }
+.prose-article ol ol ol ol { list-style-type: upper-alpha; }
+.prose-article ol ol ol ol ol { list-style-type: upper-roman; }
+.prose-article ol ol ol ol ol ol { list-style-type: cjk-ideographic; }
+.prose-article ol ol ol ol ol ol ol { list-style-type: hiragana; }
+.prose-article ol ol ol ol ol ol ol ol { list-style-type: katakana; }
+
+.prose-article ul ul, .prose-article ul ol,
+.prose-article ol ul, .prose-article ol ol {
+  margin-left: 1.25rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--c-outline-variant);
+}
+.prose-article ul ul ul, .prose-article ul ul ol,
+.prose-article ul ol ul, .prose-article ul ol ol,
+.prose-article ol ul ul, .prose-article ol ul ol,
+.prose-article ol ol ul, .prose-article ol ol ol {
+  border-left-color: color-mix(in srgb, var(--c-outline-variant) 70%, transparent);
+}
+
+/* Mermaid surface — neutral container so the SVG sits on the same
+   tone as code blocks, not on raw page background. */
+.prose-article .mermaid {
+  background: var(--c-surface-low);
+  border: 1px solid var(--c-outline-variant);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.prose-article .mermaid svg { max-width: 100%; height: auto; display: inline-block; }
+.prose-article .mermaid-loading { margin: 1rem 0; }
+.prose-article .mermaid-error {
+  background: var(--c-error-container);
+  color: var(--c-error);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
 .prose-article blockquote {
   border-left: 3px solid var(--c-primary-container);
   padding: 0.75rem 1rem; margin: 1rem 0;

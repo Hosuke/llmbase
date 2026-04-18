@@ -1,6 +1,6 @@
 ---
 name: llmwiki
-version: "0.6.8"
+version: "0.6.9"
 description: "LLM-powered personal knowledge base. Raw documents in, an LLM compiles them into a structured interlinked wiki with trilingual articles, emergent taxonomy, and self-healing. One operations contract serves CLI, HTTP, and MCP."
 author: Hosuke
 homepage: https://github.com/Hosuke/llmbase
