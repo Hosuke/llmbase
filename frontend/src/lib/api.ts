@@ -74,13 +74,21 @@ async function get<T>(url: string): Promise<T> {
   return res.json();
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function post<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `API error: ${res.status}`);
   return res.json();
 }
 
@@ -139,6 +147,7 @@ export const api = {
   getSources: () => get<{ documents: RawDoc[] }>('/api/sources').then(d => d.documents),
   ingest: (source: string) => post<{ status: string; path: string }>('/api/ingest', { source }),
   compile: () => post<{ status: string; articles_created: number }>('/api/compile', {}),
+  getWorkerStatus: () => get<{ busy: boolean }>('/api/worker/status'),
   lint: (deep = false) => post<{ results?: LintResults; report?: string }>('/api/lint', { deep }),
   lintFix: () => post<{ fixes: string[]; fix_count: number }>('/api/lint/fix', {}),
   cleanWiki: () => post<{ removed: number; slugs: string[] }>('/api/wiki/clean', {}),

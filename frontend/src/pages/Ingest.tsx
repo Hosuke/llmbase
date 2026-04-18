@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '../components/Icon';
 import { Markdown } from '../components/Markdown';
-import { api, type RawDoc } from '../lib/api';
+import { ApiError, api, type RawDoc } from '../lib/api';
+
+// Poll the worker status while a job is in flight. 2s is a decent balance
+// between recovery latency and request noise — compile jobs typically run
+// minutes, so the user will see progress without hammering the backend.
+const POLL_MS = 2000;
+// Give up after this many consecutive poll failures so a missing/unauth
+// status endpoint can't strand the UI in "Compiling…" forever.
+const POLL_MAX_CONSECUTIVE_FAILURES = 5;
 
 export function Ingest() {
   const [url, setUrl] = useState('');
@@ -10,11 +18,75 @@ export function Ingest() {
   const [compiling, setCompiling] = useState(false);
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<{ title: string; content: string; metadata: Record<string, string> } | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollFailures = useRef(0);
+  // Guard against async work resolving after unmount — any setState or
+  // startPolling call guarded by this ref becomes a no-op once cleanup ran.
+  const mounted = useRef(true);
 
-  useEffect(() => { loadDocs(); }, []);
+  useEffect(() => {
+    mounted.current = true;
+    loadDocs();
+    // Recover in-flight state across route changes / reloads (issue #7):
+    // if the worker lock is held when we mount, show "compiling" and
+    // start polling until it releases.
+    (async () => {
+      try {
+        const { busy } = await api.getWorkerStatus();
+        if (!mounted.current) return;
+        if (busy) {
+          setCompiling(true);
+          setMessage('A compile is already running in the background…');
+          startPolling();
+        }
+      } catch { /* ignore — endpoint absent on old backend or unauth */ }
+    })();
+    return () => {
+      mounted.current = false;
+      stopPolling();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+    pollFailures.current = 0;
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollFailures.current = 0;
+    pollTimer.current = setInterval(async () => {
+      try {
+        const { busy } = await api.getWorkerStatus();
+        if (!mounted.current) return;
+        pollFailures.current = 0;
+        if (!busy) {
+          stopPolling();
+          setCompiling(false);
+          setMessage('Compile finished. Refreshed document list.');
+          await loadDocs();
+        }
+      } catch {
+        if (!mounted.current) return;
+        pollFailures.current += 1;
+        if (pollFailures.current >= POLL_MAX_CONSECUTIVE_FAILURES) {
+          stopPolling();
+          setCompiling(false);
+          setMessage('Error: worker status unreachable — assume the job is done and reload if needed.');
+        }
+      }
+    }, POLL_MS);
+  }
 
   async function loadDocs() {
-    try { setDocs(await api.getSources()); } catch { /* */ }
+    try {
+      const sources = await api.getSources();
+      if (mounted.current) setDocs(sources);
+    } catch { /* */ }
   }
 
   async function handleIngest() {
@@ -23,13 +95,15 @@ export function Ingest() {
     setMessage('');
     try {
       await api.ingest(url);
+      if (!mounted.current) return;
       setMessage('Document ingested successfully!');
       setUrl('');
       await loadDocs();
     } catch {
+      if (!mounted.current) return;
       setMessage('Error: Failed to ingest document.');
     }
-    setIngesting(false);
+    if (mounted.current) setIngesting(false);
   }
 
   async function handleCompile() {
@@ -37,19 +111,29 @@ export function Ingest() {
     setMessage('');
     try {
       const res = await api.compile();
+      if (!mounted.current) return;
       setMessage(`Compiled! ${res.articles_created} new articles created.`);
       await loadDocs();
-    } catch {
-      setMessage('Error: Compilation failed.');
+      if (mounted.current) setCompiling(false);
+    } catch (err) {
+      if (!mounted.current) return;
+      if (err instanceof ApiError && err.status === 409) {
+        // Another job already holds the lock — don't flash "failed";
+        // fall back to the same polling path as the on-mount recovery.
+        setMessage('A compile is already running — waiting for it to finish…');
+        startPolling();
+      } else {
+        setMessage('Error: Compilation failed.');
+        setCompiling(false);
+      }
     }
-    setCompiling(false);
   }
 
   async function viewRaw(slug: string) {
     try {
       const res = await fetch(`/api/sources/${slug}`);
       const data = await res.json();
-      if (data.content) setPreview(data);
+      if (mounted.current && data.content) setPreview(data);
     } catch { /* */ }
   }
 

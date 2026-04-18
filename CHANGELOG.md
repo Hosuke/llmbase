@@ -2,6 +2,14 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.6.8] — 2026-04-18
+
+### Fixed
+- **Web-UI compile button survives navigation (issue #7).** The Ingest page held its `compiling` flag in local component state, so routing away and back re-enabled the button while the worker lock was still held — a second click then 409'd. The page now polls the new `/api/worker/status` endpoint on mount to recover in-flight state, keeps the button disabled while the lock is held, and falls back to the same polling path when a click 409s. Also generalises `api.compile()` to throw a typed `ApiError` so the UI can distinguish 409 (busy) from other failures.
+
+### Added
+- **`GET /api/worker/status`** — reports `{busy: bool}` derived from `tools.worker.job_lock.locked()`. Auth-gated (same `require_auth` policy as the write endpoints whose state it reflects); a no-op decorator when `LLMBASE_API_SECRET` is unset (local/dev). Intended for SPA polling and dashboard status widgets.
+
 ## [0.6.7] — 2026-04-18
 
 ### Fixed

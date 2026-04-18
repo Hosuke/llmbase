@@ -433,6 +433,48 @@ def test_http_timeout_env_overrides_default(monkeypatch):
     _llm._client = None
 
 
+def test_worker_status_requires_auth_when_secret_set(tmp_kb, monkeypatch):
+    """/api/worker/status is auth-gated when API_SECRET is set (codex finding).
+
+    It leaks whether a write job is in flight, which tracks the same
+    privilege as the write endpoints themselves.
+    """
+    monkeypatch.setenv("LLMBASE_API_SECRET", "secret-abc")
+    c = _client(tmp_kb)
+    r = c.get("/api/worker/status")
+    assert r.status_code == 401
+
+    r = c.get("/api/worker/status", headers={"Authorization": "Bearer secret-abc"})
+    assert r.status_code == 200
+
+
+def test_worker_status_reflects_lock_state(tmp_kb):
+    """GET /api/worker/status must report the shared job_lock's liveness.
+
+    Issue #7: the Ingest page uses this to recover in-flight compile state
+    after a route change. Correctness guarantee: busy=True iff the lock is
+    held by some other caller.
+    """
+    from tools.worker import job_lock
+    c = _client(tmp_kb)
+
+    assert not job_lock.locked()
+    r = c.get("/api/worker/status")
+    assert r.status_code == 200
+    assert r.get_json() == {"busy": False}
+
+    acquired = job_lock.acquire(blocking=False)
+    assert acquired
+    try:
+        r = c.get("/api/worker/status")
+        assert r.get_json() == {"busy": True}
+    finally:
+        job_lock.release()
+
+    r = c.get("/api/worker/status")
+    assert r.get_json() == {"busy": False}
+
+
 def test_http_timeout_env_invalid_falls_back(monkeypatch):
     import tools.llm as _llm
     monkeypatch.setattr(_llm, "_client", None)

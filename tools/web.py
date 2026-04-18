@@ -969,6 +969,24 @@ def create_web_app(base_dir: Path | None = None):
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         return jsonify({"status": "ok", "categories": len(data["categories"]), "locked": True})
 
+    @app.route("/api/worker/status")
+    @require_auth
+    def api_worker_status():
+        """Report whether the shared job_lock is held.
+
+        Issue #7: the Web-UI Ingest page lost in-flight state on route
+        change, so its compile button re-enabled while a worker job was
+        still running and a second click 409'd. The SPA now polls this
+        endpoint on Ingest mount to recover the lock state and keep the
+        button disabled + status visible until the job settles.
+
+        Auth-gated to match the write endpoints whose state it reflects —
+        without ``API_SECRET`` the decorator is a no-op (dev mode).
+        """
+        from .worker import job_lock
+        busy = job_lock.locked()
+        return jsonify({"busy": busy})
+
     @app.route("/api/compile", methods=["POST"])
     @require_auth
     def api_compile():
