@@ -2,6 +2,15 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.7.2] — 2026-04-18
+
+### Added
+- **`/api/articles/lite?tag=<slug>` server-side filter.** The lite endpoint (index.json-backed, no frontmatter parse — added in v0.6.4) now narrows in-process by frontmatter tag when `?tag=` is supplied. Empty match returns `200 {"articles": [], "total": 0}` — same shape as `/api/articles?tag=nonexistent`; lite deliberately doesn't load taxonomy to validate tag existence. Driven by siwen.ink (~13k articles): the sidebar's category view used to download every entry and filter client-side; now it pulls only the slice it renders. Matching is case-sensitive, exact (matches frontmatter storage), and tolerates the frontmatter pattern of a tag stored as a single string rather than a list (via the existing `_normalize_tags` helper, same path `/api/articles?tag=` already uses).
+- **`LLMBASE_LITE_CACHE_MAX_AGE` env var.** When set to a positive integer, `/api/articles/lite` (and its 304 responses) emit `Cache-Control: public, max-age=<N>` instead of the default `no-cache`. Lets large-KB deployments take a browser-side fast path on every navigation; the existing ETag still handles freshness past the TTL. Default of `0` (or unset, or invalid value) keeps the existing `no-cache` behaviour, so no other endpoint or caller is affected. **Caveat:** during the max-age window, sidebars can lag behind a fresh compile — only set this if a few minutes of staleness is acceptable.
+
+### Changed
+- **`/api/articles/lite` ETag now keys on the tag param** (via the existing `_kb_etag(extra=...)` hook). Distinct slices get distinct ETags, so a 304 will never serve a stale partial slice to the wrong caller.
+
 ## [0.7.1] — 2026-04-18
 
 ### Added

@@ -45,24 +45,40 @@ def _concepts_fingerprint(concepts_dir: Path) -> str:
     return h.hexdigest()[:16]
 
 
-def _apply_kb_cache_headers(resp, etag: str | None, last_mod: str | None):
+def _cache_control_value(max_age: int) -> str:
+    """``public, max-age=N`` when N>0, else the safe ``no-cache`` default."""
+    return f"public, max-age={max_age}" if max_age and max_age > 0 else "no-cache"
+
+
+def _apply_kb_cache_headers(resp, etag: str | None, last_mod: str | None, *, max_age: int = 0):
     if etag:
         resp.headers["ETag"] = etag
         if last_mod:
             resp.headers["Last-Modified"] = last_mod
-        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["Cache-Control"] = _cache_control_value(max_age)
     return resp
 
 
-def _not_modified(etag: str, last_mod: str | None):
+def _not_modified(etag: str, last_mod: str | None, *, max_age: int = 0):
     """Return a 304 carrying the validators (RFC 7232 §4.1)."""
     from flask import make_response
     resp = make_response("", 304)
     resp.headers["ETag"] = etag
     if last_mod:
         resp.headers["Last-Modified"] = last_mod
-    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Cache-Control"] = _cache_control_value(max_age)
     return resp
+
+
+def _lite_cache_max_age() -> int:
+    """Read LLMBASE_LITE_CACHE_MAX_AGE; clamp to ≥0; bad values fall back to 0 (no-cache)."""
+    import os
+    raw = os.environ.get("LLMBASE_LITE_CACHE_MAX_AGE", "0")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return n if n > 0 else 0
 
 
 def _if_none_match_hits(header: str | None, etag: str) -> bool:
@@ -485,30 +501,50 @@ def create_web_app(base_dir: Path | None = None):
 
     @app.route("/api/articles/lite")
     def api_articles_lite():
-        """Slim {slug, title} list backed by index.json — 1 file read, no frontmatter parse."""
+        """Slim {slug, title} list backed by index.json — 1 file read, no frontmatter parse.
+
+        Optional ``?tag=<slug>`` narrows to entries whose ``tags`` includes the slug
+        (case-sensitive, exact match — matches frontmatter storage). Unknown tags
+        return ``200 {"articles": [], "total": 0}`` for parity with ``/api/articles?tag=``;
+        validating tag existence would require loading the taxonomy, which the lite
+        endpoint deliberately avoids.
+
+        Browser caching: defaults to ``Cache-Control: no-cache`` (revalidation via ETag).
+        Set ``LLMBASE_LITE_CACHE_MAX_AGE=<seconds>`` to opt into ``public, max-age=N``
+        — useful for large KBs where the sidebar is loaded on every navigation. The
+        ETag is keyed on both the index mtime and the tag param, so distinct slices
+        never share a 304.
+        """
         cfg = load_config(base)
         meta_dir = Path(cfg["paths"]["meta"])
         idx_path = meta_dir / "index.json"
 
-        etag, last_mod = _kb_etag(meta_dir, "lite")
+        tag = request.args.get("tag")
+        etag, last_mod = _kb_etag(meta_dir, f"lite:tag={tag or ''}")
+        max_age = _lite_cache_max_age()
+
         if etag and _if_none_match_hits(request.headers.get("If-None-Match"), etag):
-            return _not_modified(etag, last_mod)
+            return _not_modified(etag, last_mod, max_age=max_age)
 
         if not idx_path.exists():
             resp = jsonify({"articles": [], "total": 0})
-            return _apply_kb_cache_headers(resp, etag, last_mod)
+            return _apply_kb_cache_headers(resp, etag, last_mod, max_age=max_age)
         try:
             idx = json.loads(idx_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return jsonify({"articles": [], "total": 0}), 500
         if not isinstance(idx, list):
             return jsonify({"articles": [], "total": 0}), 500
+
+        entries = [e for e in idx if isinstance(e, dict)]
+        if tag:
+            entries = [e for e in entries if tag in _normalize_tags(e.get("tags"))]
         lite = [
             {"slug": e.get("slug", ""), "title": e.get("title", e.get("slug", ""))}
-            for e in idx if isinstance(e, dict)
+            for e in entries
         ]
         resp = jsonify({"articles": lite, "total": len(lite)})
-        return _apply_kb_cache_headers(resp, etag, last_mod)
+        return _apply_kb_cache_headers(resp, etag, last_mod, max_age=max_age)
 
     def _safe_concept(concepts_dir: Path, slug: str) -> Path | None:
         """Resolve concepts_dir/{slug}.md, returning None if it escapes concepts_dir.

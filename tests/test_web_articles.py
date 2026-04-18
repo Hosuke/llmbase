@@ -217,3 +217,129 @@ def test_lite_route_not_shadowed_by_path_slug(client, tmp_kb):
     assert "articles" in body and "total" in body
     # If shadowed, would 404 (no article slug "lite") or return article shape.
     assert "content" not in body
+
+
+# ─── v0.7.2: lite ?tag= filter + LLMBASE_LITE_CACHE_MAX_AGE ──────────
+
+
+def test_lite_tag_filter_narrows(client, tmp_kb):
+    _seed_index(tmp_kb)
+    r = client.get("/api/articles/lite?tag=buddhism")
+    body = r.get_json()
+    assert body["total"] == 2
+    slugs = {a["slug"] for a in body["articles"]}
+    assert slugs == {"kong", "si-di"}
+    # Lite shape unchanged: only slug + title.
+    for a in body["articles"]:
+        assert set(a.keys()) == {"slug", "title"}
+
+
+def test_lite_tag_unknown_returns_empty_200(client, tmp_kb):
+    """Parity with /api/articles?tag=nonexistent — empty list, not 404.
+
+    Validating tag existence would require loading taxonomy, which lite avoids
+    on principle. The downstream caller can detect empty and decide what to do.
+    """
+    _seed_index(tmp_kb)
+    r = client.get("/api/articles/lite?tag=nonexistent")
+    assert r.status_code == 200
+    assert r.get_json() == {"articles": [], "total": 0}
+
+
+def test_lite_no_tag_returns_full_list(client, tmp_kb):
+    """Backwards compat: omitting ?tag must match v0.6.4-0.7.1 shape exactly."""
+    _seed_index(tmp_kb)
+    r = client.get("/api/articles/lite")
+    body = r.get_json()
+    assert body["total"] == 3
+    assert {a["slug"] for a in body["articles"]} == {"kong", "si-di", "ren"}
+
+
+def test_lite_etag_distinct_per_tag(client, tmp_kb):
+    """Different tag slices must get distinct ETags — otherwise a 304 would
+    hand back stale partial data to the wrong caller."""
+    _seed_index(tmp_kb)
+    e_full = client.get("/api/articles/lite").headers.get("ETag")
+    e_buddhism = client.get("/api/articles/lite?tag=buddhism").headers.get("ETag")
+    e_confucianism = client.get("/api/articles/lite?tag=confucianism").headers.get("ETag")
+    assert e_full and e_buddhism and e_confucianism
+    assert len({e_full, e_buddhism, e_confucianism}) == 3
+
+
+def test_lite_etag_304_respects_tag(client, tmp_kb):
+    _seed_index(tmp_kb)
+    r1 = client.get("/api/articles/lite?tag=buddhism")
+    etag = r1.headers.get("ETag")
+    # Same tag → 304.
+    r2 = client.get("/api/articles/lite?tag=buddhism", headers={"If-None-Match": etag})
+    assert r2.status_code == 304
+    # Different tag → must NOT 304 with the buddhism etag (would serve stale slice).
+    r3 = client.get("/api/articles/lite?tag=confucianism", headers={"If-None-Match": etag})
+    assert r3.status_code == 200
+
+
+def test_lite_cache_default_no_cache(client, tmp_kb, monkeypatch):
+    monkeypatch.delenv("LLMBASE_LITE_CACHE_MAX_AGE", raising=False)
+    _seed_index(tmp_kb)
+    r = client.get("/api/articles/lite")
+    assert r.headers.get("Cache-Control") == "no-cache"
+
+
+def test_lite_cache_max_age_env_opts_in(tmp_kb, monkeypatch):
+    """LLMBASE_LITE_CACHE_MAX_AGE switches Cache-Control to public, max-age=N."""
+    monkeypatch.setenv("LLMBASE_LITE_CACHE_MAX_AGE", "600")
+    app = create_web_app(tmp_kb)
+    c = app.test_client()
+    _seed_index(tmp_kb)
+    r = c.get("/api/articles/lite")
+    assert r.headers.get("Cache-Control") == "public, max-age=600"
+    # ETag still present — max-age handles fast path, ETag handles freshness past TTL.
+    assert r.headers.get("ETag")
+
+
+def test_lite_cache_max_age_applies_to_304(tmp_kb, monkeypatch):
+    monkeypatch.setenv("LLMBASE_LITE_CACHE_MAX_AGE", "600")
+    app = create_web_app(tmp_kb)
+    c = app.test_client()
+    _seed_index(tmp_kb)
+    etag = c.get("/api/articles/lite").headers.get("ETag")
+    r304 = c.get("/api/articles/lite", headers={"If-None-Match": etag})
+    assert r304.status_code == 304
+    assert r304.headers.get("Cache-Control") == "public, max-age=600"
+
+
+def test_lite_cache_invalid_env_falls_back(tmp_kb, monkeypatch):
+    """Garbage env value must NOT crash — falls back to no-cache."""
+    monkeypatch.setenv("LLMBASE_LITE_CACHE_MAX_AGE", "not-a-number")
+    app = create_web_app(tmp_kb)
+    c = app.test_client()
+    _seed_index(tmp_kb)
+    r = c.get("/api/articles/lite")
+    assert r.status_code == 200
+    assert r.headers.get("Cache-Control") == "no-cache"
+
+
+def test_lite_cache_zero_env_means_no_cache(tmp_kb, monkeypatch):
+    monkeypatch.setenv("LLMBASE_LITE_CACHE_MAX_AGE", "0")
+    app = create_web_app(tmp_kb)
+    c = app.test_client()
+    _seed_index(tmp_kb)
+    r = c.get("/api/articles/lite")
+    assert r.headers.get("Cache-Control") == "no-cache"
+
+
+def test_lite_tag_normalizes_string_tags(tmp_kb):
+    """A frontmatter tag stored as a single string (not a list) must still match."""
+    concepts_dir = tmp_kb / "wiki" / "concepts"
+    post = frontmatter.Post("body")
+    post.metadata.update({
+        "title": "Single-tag", "summary": "s",
+        "tags": "buddhism",  # plain string, not a list
+        "created": "2026-04-01T00:00:00+00:00",
+        "updated": "2026-04-01T00:00:00+00:00",
+    })
+    (concepts_dir / "lone.md").write_text(frontmatter.dumps(post), encoding="utf-8")
+    _seed_index(tmp_kb)
+    app = create_web_app(tmp_kb); c = app.test_client()
+    slugs = {a["slug"] for a in c.get("/api/articles/lite?tag=buddhism").get_json()["articles"]}
+    assert "lone" in slugs
