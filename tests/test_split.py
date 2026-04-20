@@ -5,9 +5,14 @@ exercise the core contract siwen's ``split_taixu_bian`` and any
 other downstream will build on top of.
 """
 
+from pathlib import Path
+
 import pytest
 
 from tools.split import Section, split_by_heading
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "taixu"
 
 
 # ─── empty / no-match → [] ─────────────────────────────────────────────
@@ -252,3 +257,52 @@ def test_section_is_dataclass():
     # All documented fields present:
     for f in ("level", "title", "header_line", "start", "end", "content"):
         assert hasattr(s, f)
+
+
+# ─── Taixu corpus fixtures (tests/fixtures/taixu/) ────────────────────
+# These exercise split_by_heading against real siwen·太虛 book bodies
+# (post-wenguan / post-normalize). The expected counts match the per-
+# file shape documented in tests/fixtures/taixu/README.md; regressions
+# here mean either the splitter changed semantics or a fixture drifted.
+
+
+@pytest.mark.parametrize("filename, level2_count, level3_count", [
+    # (file, expected h2 sections, expected h3 sections)
+    ("sanming_lun.md", 3, 0),
+    ("xinjing_shiyi.md", 1, 7),
+    ("focheng_zongyao_lun_head50kb.md", 6, 24),
+])
+def test_taixu_fixture_split_counts(filename, level2_count, level3_count):
+    body = (FIXTURES_DIR / filename).read_text(encoding="utf-8")
+    assert len(split_by_heading(body, level=2)) == level2_count
+    assert len(split_by_heading(body, level=3)) == level3_count
+
+
+def test_taixu_fixture_sanming_lun_h2_titles():
+    """Concrete titles the splitter should recover — guards against
+    off-by-one or whitespace-handling regressions on CJK titles."""
+    body = (FIXTURES_DIR / "sanming_lun.md").read_text(encoding="utf-8")
+    out = split_by_heading(body, level=2)
+    assert [s.title for s in out] == ["緣起分第一", "名義分第二", "界別分第三"]
+
+
+def test_taixu_fixture_duplicate_chapter_numbers_preserved():
+    """``focheng_zongyao_lun`` restarts chapter numbering at each 编
+    boundary — ``第一章`` appears twice at h2. The splitter must yield
+    every occurrence (no title-based dedup)."""
+    body = (FIXTURES_DIR / "focheng_zongyao_lun_head50kb.md").read_text(encoding="utf-8")
+    out = split_by_heading(body, level=2)
+    first_chapters = [s for s in out if s.title.startswith("第一章")]
+    assert len(first_chapters) == 2, \
+        f"expected two '第一章' sections (multi-编 cross-boundary), got {len(first_chapters)}"
+
+
+def test_taixu_fixture_xinjing_no_h1_in_body():
+    """Parse-only contract: body has no h1 even though frontmatter's
+    ``book`` field matches the h2 title. Upstream must not fabricate
+    an h1 — that's siwen's post-processor concern."""
+    body = (FIXTURES_DIR / "xinjing_shiyi.md").read_text(encoding="utf-8")
+    assert split_by_heading(body, level=1) == []
+    h2 = split_by_heading(body, level=2)
+    assert len(h2) == 1
+    assert h2[0].title == "般若波羅密多心經釋義"
