@@ -2,6 +2,19 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## [0.9.0] — 2026-06-11
+
+### Added
+- **Language profile contract (`config.yaml` `languages:` + `llmwiki.config.get_language_profile(cfg)` / `get_section_headers(cfg)`).** Language structure now has a single source of truth: a `languages:` block with `default`, named `profiles`, profile `sections` (`code`, `key`, `header`, `label`, `icon`, `title_hint`), and `composite views` (`code`, `show`, `primary`, ...). Resolution is deliberately compatibility-first: import-time assignment to `compile.SECTION_HEADERS` still wins as the legacy customization contract (zero downstream breakage), then config `languages:`, then the builtin trilingual profile. The factory default is unchanged and byte-compatible, including the zh-en bilingual view and the historical `"zh"` API default.
+- **Single-section empty-header profiles are first-class.** Profiles such as `[("文言", "")]` (the siwen monolingual pattern) now mean "the whole body is the section": `_split_sections`, `_assemble_sections`, and `_merge_into` keep a bare body with no heading line. The resolver validates an empty header only for single-section profiles, preserving real section headings everywhere else.
+- **`GET /api/languages` and profile-aware language validation across HTTP surfaces.** The new endpoint returns the normalized profile. `?lang=` on `/api/taxonomy`, `/api/xici`, and `/api/xici/generate` now validates against profile codes and returns `400` with the valid list for unknown codes. The legacy patch path synthesizes a `"_patched"` profile, bypasses validation, and keeps the historical accept-all plus `"zh"` default; `/api/xici/generate` additionally checks `LANG_STYLES` capability for config-defined profiles. Invalid language config now fails as clean JSON `500` instead of leaking an internal traceback shape.
+- **Frontend language contract derives from `/api/languages`.** `lang.tsx` no longer carries the hardcoded `Lang` union, static `LANG_OPTIONS`, or literal `## English` / `## 中文` / `## 日本語` markers. Bare-body profiles render content untouched with identity titles and a hidden language switcher; memo/effect dependencies track the live contract, and language query params are URL-encoded.
+- **`docs/siwen-migration.md` migration notes.** The downstream siwen patches are now categorized by what can be retired and what must remain: `languages:` governs article structure, not LLM prompt wording.
+- **Worker xici regeneration enumerates profile codes by capability.** Regeneration now walks normalized profile codes filtered by `LANG_STYLES`, while the legacy patch path preserves the existing four-tuple behavior.
+
+### Fixed
+- **Latent `_split_sections` empty-header regex bug.** An empty section header previously produced the regex `^\s*$`, so every blank line looked like a section boundary and splits were corrupted. Empty headers are now valid only through the explicit single-section profile path, where the whole body is treated as content.
+
 ## [0.7.10] — 2026-04-24
 
 ### Fixed
