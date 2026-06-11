@@ -1,32 +1,114 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-export type Lang = 'zh' | 'en' | 'ja' | 'zh-en';
+export type Lang = string;
 
-export const LANG_OPTIONS: { value: Lang; label: string; icon: string }[] = [
-  { value: 'zh', label: '中文', icon: '中' },
-  { value: 'en', label: 'English', icon: 'EN' },
-  { value: 'ja', label: '日本語', icon: '日' },
-  { value: 'zh-en', label: '中英双语', icon: '双' },
-];
+export interface LangSection {
+  code: string;
+  key: string;
+  header: string;
+  label: string;
+  icon: string;
+  title_hint: string;
+}
 
-const LangContext = createContext<{
+export interface LangView {
+  code: string;
+  show: string[];
+  label: string;
+  icon: string;
+  title_hint: string;
+  primary: string;
+}
+
+export interface LanguageContract {
+  name: string;
+  sections: LangSection[];
+  views: LangView[];
+  default_lang: string;
+  api_default_lang: string;
+  codes: string[];
+  single_section: boolean;
+  bare_body: boolean;
+}
+
+export interface LangOption {
+  value: Lang;
+  label: string;
+  icon: string;
+}
+
+interface LangContextValue {
   lang: Lang;
   setLang: (l: Lang) => void;
-}>({ lang: 'zh', setLang: () => {} });
+  options: LangOption[];
+  contract: LanguageContract | null;
+}
+
+let _contract: LanguageContract | null = null;
+
+export async function fetchLanguages(): Promise<LanguageContract | null> {
+  if (_contract) return _contract;
+  try {
+    const res = await fetch('/api/languages');
+    if (res.ok) {
+      _contract = await res.json();
+      return _contract;
+    }
+  } catch { /* identity fallback */ }
+  return null;
+}
+
+export function getLanguageContract(): LanguageContract | null {
+  return _contract;
+}
+
+const LangContext = createContext<LangContextValue>({
+  lang: '',
+  setLang: () => {},
+  options: [],
+  contract: null,
+});
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(() => {
-    if (typeof window === 'undefined') return 'zh';
-    return (localStorage.getItem('llmbase-lang') as Lang) || 'zh-en';
+  const [lang, setLangState] = useState<Lang | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('llmbase-lang');
   });
+  const [contract, setContract] = useState<LanguageContract | null>(getLanguageContract());
 
   const setLang = (l: Lang) => {
     setLangState(l);
     localStorage.setItem('llmbase-lang', l);
   };
 
+  useEffect(() => {
+    let active = true;
+    fetchLanguages().then(nextContract => {
+      if (!active || !nextContract) return;
+      setContract(nextContract);
+
+      const stored = localStorage.getItem('llmbase-lang');
+      // Legacy pre-contract patch path: preserve whatever lang the deployment
+      // historically used; bare_body rendering is identity and extract/localize
+      // already fall back gracefully for unknown codes.
+      const preservePatchedLang = nextContract.name === '_patched' && stored !== null;
+      if (stored === null || (!preservePatchedLang && !nextContract.codes.includes(stored))) {
+        setLang(nextContract.default_lang);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const options: LangOption[] = contract
+    ? [...contract.sections, ...contract.views].map(item => ({
+        value: item.code,
+        label: item.label,
+        icon: item.icon,
+      }))
+    : [];
+
   return (
-    <LangContext.Provider value={{ lang, setLang }}>
+    <LangContext.Provider value={{ lang: lang ?? '', setLang, options, contract }}>
       {children}
     </LangContext.Provider>
   );
@@ -39,43 +121,56 @@ export const useLang = () => useContext(LangContext);
  */
 export function localizeTitle(title: string, lang: Lang): string {
   if (!title) return '';
+
+  const contract = getLanguageContract();
+  if (!contract || contract.single_section) return title;
+
   const parts = title.split('/').map(s => s.trim());
   if (parts.length < 2) return title;
 
   const hasCJK = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+  const item = contract.sections.find(section => section.code === lang)
+    ?? contract.views.find(view => view.code === lang);
+  const hint = item?.title_hint ?? 'full';
 
-  if (lang === 'zh-en') return title; // Show both
-
-  if (lang === 'zh' || lang === 'ja') {
+  if (hint === 'full') return title;
+  if (hint === 'cjk') {
     const cjk = parts.find(p => hasCJK(p));
     return cjk || parts[parts.length - 1];
   }
-  const en = parts.find(p => !hasCJK(p));
-  return en || parts[0];
+  if (hint === 'latin') {
+    const latin = parts.find(p => !hasCJK(p));
+    return latin || parts[0];
+  }
+  return title;
 }
 
 /**
- * Extract language section(s) from trilingual article content
+ * Extract language section(s) from article content.
  */
 export function extractLangContent(content: string, lang: Lang): string {
-  if (lang === 'zh-en') {
-    // Bilingual: show both English and Chinese sections
-    const en = _extractSection(content, '## English');
-    const zh = _extractSection(content, '## 中文');
-    if (en && zh) return `## English\n\n${en}\n\n---\n\n## 中文\n\n${zh}`;
+  const contract = getLanguageContract();
+  if (!contract || contract.bare_body) return content;
+
+  const view = contract.views.find(item => item.code === lang);
+  if (view) {
+    const blocks = view.show.map(code => {
+      const section = contract.sections.find(item => item.code === code);
+      if (!section) return null;
+      const body = _extractSection(content, section.header);
+      if (!body) return null;
+      return `${section.header}\n\n${body}`;
+    });
+    if (blocks.every((block): block is string => block !== null)) {
+      return blocks.join('\n\n---\n\n');
+    }
     return content;
   }
 
-  const headers: Record<string, string> = {
-    en: '## English',
-    zh: '## 中文',
-    ja: '## 日本語',
-  };
-
-  const marker = headers[lang];
-  if (marker) {
-    const section = _extractSection(content, marker);
-    if (section) return section;
+  const section = contract.sections.find(item => item.code === lang);
+  if (section) {
+    const body = _extractSection(content, section.header);
+    if (body) return body;
   }
   return content;
 }

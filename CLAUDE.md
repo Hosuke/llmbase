@@ -22,7 +22,10 @@ customize behavior without forking functions. This is a **stable contract**.
 | llmwiki/compile.py     | SYSTEM_PROMPT             | LLM system message for compilation       |
 | llmwiki/compile.py     | COMPILE_USER_PROMPT       | User prompt template ({title}, {content}, {existing}, {article_format}) |
 | llmwiki/compile.py     | COMPILE_ARTICLE_FORMAT    | Example article format in user prompt    |
-| llmwiki/compile.py     | SECTION_HEADERS           | Language sections for split/merge        |
+| llmwiki/compile.py     | DEFAULT_SECTION_HEADERS    | Identity anchor for patch detection — never reassign this; override SECTION_HEADERS by ASSIGNMENT instead |
+| llmwiki/compile.py     | SECTION_HEADERS           | Language sections for split/merge (import-time assignment overrides config `languages:`) |
+| llmwiki/config.py     | get_language_profile(cfg)  | Resolve active language profile: import-time SECTION_HEADERS patch > config `languages:` > builtin trilingual. Returns normalized {sections, views, codes, default_lang, api_default_lang, single_section, bare_body} |
+| llmwiki/config.py     | get_section_headers(cfg)   | [(key, header)] from the active profile — same precedence; consumers (compile/export/query/worker/web) derive from this |
 | llmwiki/taxonomy.py    | TAXONOMY_SYSTEM_PROMPT    | LLM system message for taxonomy          |
 | llmwiki/taxonomy.py    | TAXONOMY_LABEL_KEYS       | Language keys in label dicts             |
 | llmwiki/taxonomy.py    | TAXONOMY_GENERATOR        | Callable to replace LLM taxonomy (or None) |
@@ -36,6 +39,7 @@ customize behavior without forking functions. This is a **stable contract**.
 | llmwiki/query.py       | PROMOTE_SYSTEM_PROMPT     | LLM system for Q&A→concept promotion judge |
 | llmwiki/query.py       | PROMOTE_CONTENT_EXAMPLE   | Content-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
 | llmwiki/query.py       | PROMOTE_TITLE_EXAMPLE     | Title-schema hint for promote judge (None = auto-derive from SECTION_HEADERS) |
+| config.yaml          | languages.default / languages.profiles | Language profile contract (single source of truth). Single section with header "" = bare-body monolingual mode (first-class) |
 | config.yaml          | query.prefilter_threshold | Above this many articles, TF-IDF prefilter the index before LLM selector (default 500) |
 | config.yaml          | query.prefilter_top_k     | Number of candidates to keep after prefilter (default 200) |
 | llmwiki/xici.py        | XICI_SYSTEM_PROMPT        | LLM system for guided introduction       |
@@ -61,6 +65,7 @@ customize behavior without forking functions. This is a **stable contract**.
 | llmwiki/web.py         | app.config["llmbase"]     | Runtime dict: base_dir, cfg, api_secret, session_token |
 | llmwiki/web.py         | EXTRA_ROUTES              | List of (rule, handler, options) tuples  |
 | llmwiki/web.py         | BEFORE/AFTER_REQUEST_HOOKS| Request middleware lists                  |
+| llmwiki/web.py        | GET /api/languages         | Public endpoint returning the normalized language profile; frontend lang.tsx derives LANG options/markers from it; ?lang= on taxonomy/xici validates against profile codes |
 | llmwiki/worker.py      | LEARN_SOURCES             | Dict of source_name → learn handler      |
 | llmwiki/worker.py      | CUSTOM_JOBS               | List of custom background jobs           |
 | llmwiki/worker.py      | register_learn_source()   | Register custom learn source handler     |

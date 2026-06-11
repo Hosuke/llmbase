@@ -47,3 +47,24 @@ health:
 entities:
   enabled: false
   extract_interval_hours: 24
+
+languages:
+  default: trilingual
+  profiles:
+    trilingual:
+      default_lang: zh-en
+      api_default_lang: zh
+      sections:
+        - {code: en, key: english, header: "## English", label: English, icon: EN, title_hint: latin}
+        - {code: zh, key: 中文, header: "## 中文", label: 中文, icon: 中, title_hint: cjk}
+        - {code: ja, key: 日本語, header: "## 日本語", label: 日本語, icon: 日, title_hint: cjk}
+      views:
+        - {code: zh-en, show: [en, zh], label: 中英双语, icon: 双, title_hint: full, primary: zh}
+
+# Monolingual Classical-Chinese example (single section, EMPTY header → bare body):
+# languages:
+#   default: wenyan
+#   profiles:
+#     wenyan:
+#       sections:
+#         - {code: wenyan, key: 文言, header: "", label: 文言, icon: 文}

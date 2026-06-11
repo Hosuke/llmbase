@@ -11,8 +11,7 @@ from pathlib import Path
 
 import frontmatter
 
-from .config import load_config, ensure_dirs
-from . import compile as _compile_mod
+from .config import load_config, ensure_dirs, get_section_headers
 from .compile import _split_sections
 
 
@@ -42,13 +41,14 @@ def export_article(slug: str, base_dir: Path | None = None) -> dict | None:
     post = frontmatter.load(str(article_path))
 
     # Split content by language
-    sections = _split_sections(post.content)
+    section_headers = get_section_headers(cfg)
+    sections = _split_sections(post.content, headers=section_headers)
     content = {}
     # Map SECTION_HEADERS keys to API-stable short keys for export.
     # Default mapping: "english" → "english", "中文" → "zh", "日本語" → "ja".
     # For custom SECTION_HEADERS, section_key is used as-is.
     _EXPORT_KEY_MAP = {"中文": "zh", "日本語": "ja"}
-    for section_key, _header in _compile_mod.SECTION_HEADERS:
+    for section_key, _header in section_headers:
         section = sections.get(section_key, "").strip()
         if section:
             export_key = _EXPORT_KEY_MAP.get(section_key, section_key)

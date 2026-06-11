@@ -5,6 +5,7 @@ from pathlib import Path
 
 import frontmatter
 
+import llmwiki.compile as compile_mod
 from llmwiki.compile import rebuild_index, _merge_into, _split_sections, _assemble_sections
 
 
@@ -77,6 +78,82 @@ def test_assemble_sections():
     assert "## 中文" in result
     assert "## 日本語" in result
     assert "Hello world" in result
+
+
+def test_wenyan_empty_header_split_whole_body():
+    body = "第一段。\n\n第二段。"
+
+    assert _split_sections(body, headers=[("文言", "")]) == {
+        "_preamble": "",
+        "文言": body,
+    }
+
+
+def test_wenyan_empty_header_assemble_bare_body():
+    result = _assemble_sections(
+        {"_preamble": "", "文言": "正文。"},
+        headers=[("文言", "")],
+    )
+
+    assert result == "正文。"
+
+
+def test_wenyan_empty_header_roundtrip():
+    body = "第一段。\n\n第二段。"
+    headers = [("文言", "")]
+
+    assert _assemble_sections(_split_sections(body, headers=headers), headers=headers) == body
+
+
+def test_wenyan_empty_header_merge_replaces_longer_and_keeps_shorter(tmp_path):
+    article_path = tmp_path / "wenyan.md"
+    post = frontmatter.Post("舊文。")
+    post.metadata["title"] = "文言"
+    post.metadata["tags"] = []
+    article_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    headers = [("文言", "")]
+
+    _merge_into(
+        article_path,
+        {"content": "新文甚長，足以易舊文。", "tags": ["wenyan"]},
+        headers=headers,
+    )
+    merged = frontmatter.load(str(article_path))
+    assert merged.content == "新文甚長，足以易舊文。"
+    assert "wenyan" in merged.metadata["tags"]
+
+    _merge_into(article_path, {"content": "短。", "tags": ["short"]}, headers=headers)
+    merged_again = frontmatter.load(str(article_path))
+    assert merged_again.content == "新文甚長，足以易舊文。"
+    assert "short" not in merged_again.metadata["tags"]
+
+
+def test_default_trilingual_split_assemble_regression():
+    content = """Intro.
+
+## English
+
+English body.
+
+## 中文
+
+中文正文。
+
+## 日本語
+
+日本語本文。"""
+
+    sections = _split_sections(content)
+    assert _assemble_sections(sections) == content
+
+
+def test_section_headers_patch_wins_for_empty_header_split():
+    try:
+        compile_mod.SECTION_HEADERS = [("文言", "")]
+        body = "第一段。\n\n第二段。"
+        assert _split_sections(body) == {"_preamble": "", "文言": body}
+    finally:
+        compile_mod.SECTION_HEADERS = compile_mod.DEFAULT_SECTION_HEADERS
 
 
 def test_merge_into_adds_content(tmp_kb):

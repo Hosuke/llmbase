@@ -110,7 +110,7 @@ def _normalize_tags(value) -> list[str]:
         return [str(t) for t in value]
     return [str(value)]
 
-from .config import load_config, ensure_dirs
+from .config import load_config, ensure_dirs, get_language_profile
 from .search import search
 from .query import query, query_with_search
 from .ingest import ingest_url, list_raw
@@ -272,6 +272,21 @@ def create_web_app(base_dir: Path | None = None):
         "session_token": SESSION_TOKEN,
     }
 
+    def _invalid_languages_response(e: ValueError):
+        return jsonify({"error": f"invalid languages config: {e}"}), 500
+
+    def _resolve_lang(raw: str | None):
+        """Validate ?lang= against the active language profile."""
+        try:
+            profile = get_language_profile(load_config(base))
+        except ValueError as e:
+            return None, None, _invalid_languages_response(e)
+        # legacy pre-contract patch path — accept any lang, keep the historical "zh" default; validation only applies to config-defined profiles.
+        if profile["name"] == "_patched":
+            return (raw or "zh"), profile, None
+        lang = raw or profile["api_default_lang"]
+        return (lang if lang in profile["codes"] else None), profile, None
+
     # ─── API Routes ────────────────────────────────────────────
 
     @app.route("/api/healthz")
@@ -298,6 +313,16 @@ def create_web_app(base_dir: Path | None = None):
                 "url": branding.get("powered_by_url", "https://github.com/Hosuke/llmbase"),
             },
         })
+
+    @app.route("/api/languages")
+    def api_languages():
+        """Language profile contract: sections, views, valid lang codes."""
+        cfg = load_config(base)
+        try:
+            profile = get_language_profile(cfg)
+        except ValueError as e:
+            return _invalid_languages_response(e)
+        return jsonify(profile)
 
     @app.route("/api/stats")
     def api_stats():
@@ -346,11 +371,15 @@ def create_web_app(base_dir: Path | None = None):
 
     @app.route("/api/taxonomy")
     def api_taxonomy():
-        """Get hierarchical category taxonomy. ?lang=zh|en|ja"""
+        """Get hierarchical category taxonomy. ?lang values come from the language profile."""
         from .taxonomy import build_taxonomy
         cfg = load_config(base)
         meta_dir = Path(cfg["paths"]["meta"])
-        lang = request.args.get("lang", "zh")
+        lang, profile, error = _resolve_lang(request.args.get("lang"))
+        if error:
+            return error
+        if lang is None:
+            return jsonify({"error": "invalid lang", "valid": profile["codes"]}), 400
         # Taxonomy depends on both KB version (index.json) and the on-disk
         # taxonomy.json. Mix taxonomy.json mtime + lang into the etag.
         tx_path = meta_dir / "taxonomy.json"
@@ -804,9 +833,13 @@ def create_web_app(base_dir: Path | None = None):
 
     @app.route("/api/xici")
     def api_xici():
-        """Get the cached Xi Ci (guided introduction). ?lang=zh|en|ja|zh-en"""
+        """Get the cached Xi Ci (guided introduction). ?lang values come from the language profile."""
         from .xici import get_xici
-        lang = request.args.get("lang", "zh")
+        lang, profile, error = _resolve_lang(request.args.get("lang"))
+        if error:
+            return error
+        if lang is None:
+            return jsonify({"error": "invalid lang", "valid": profile["codes"]}), 400
         return jsonify(get_xici(base, lang))
 
     @app.route("/api/xici/generate", methods=["POST"])
@@ -815,7 +848,18 @@ def create_web_app(base_dir: Path | None = None):
         """Regenerate Xi Ci for a given language."""
         from .xici import generate_xici
         data = request.json or {}
-        lang = data.get("lang", "zh")
+        lang, profile, error = _resolve_lang(data.get("lang"))
+        if error:
+            return error
+        if lang is None:
+            return jsonify({"error": "invalid lang", "valid": profile["codes"]}), 400
+        if profile["name"] != "_patched":
+            from .xici import LANG_STYLES
+            if lang not in LANG_STYLES:
+                return jsonify({
+                    "error": "lang not supported by xici (no LANG_STYLES entry)",
+                    "valid": [c for c in profile["codes"] if c in LANG_STYLES],
+                }), 400
         result = generate_xici(base, lang)
         return jsonify(result)
 

@@ -14,7 +14,7 @@ export function ArticleDetail() {
   const [article, setArticle] = useState<Article | null>(null);
   const [allArticles, setAllArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  const { lang } = useLang();
+  const { lang, contract } = useLang();
   const { recordStep } = useTrail();
 
   // Auto-record article visit to trail
@@ -53,7 +53,7 @@ export function ArticleDetail() {
   const displayContent = useMemo(() => {
     if (!article?.content) return '';
     return extractLangContent(article.content, lang);
-  }, [article?.content, lang]);
+  }, [article?.content, lang, contract]);
 
   // Extract headings for TOC from displayed content
   const headings = useMemo(() => {

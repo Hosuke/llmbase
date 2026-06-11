@@ -110,7 +110,7 @@ export interface TaxonomyCategory {
 
 export const api = {
   getCollections: () => get<{ collections: Collection[] }>('/api/collections').then(d => d.collections),
-  getTaxonomy: (lang: string) => get<{ categories: TaxonomyCategory[] }>(`/api/taxonomy?lang=${lang}`).then(d => d.categories),
+  getTaxonomy: (lang: string) => get<{ categories: TaxonomyCategory[] }>(`/api/taxonomy?lang=${encodeURIComponent(lang)}`).then(d => d.categories),
   getStats: () => get<Stats>('/api/stats'),
   getArticles: () => get<{ articles: Article[] }>('/api/articles').then(d => d.articles),
   getArticle: (slug: string) => get<Article>('/api/articles/' + slug),
@@ -142,7 +142,7 @@ export const api = {
   deleteTrail: (id: string) => post<{ status: string }>(`/api/trails/${id}/delete`, {}),
   getEntities: () => get<{ people: any[]; events: any[]; places: any[]; article_count?: number }>('/api/entities'),
   extractEntities: () => post<{ people: any[]; events: any[]; places: any[] }>('/api/entities/extract', {}),
-  getXiCi: (lang: string) => get<XiCi>(`/api/xici?lang=${lang}`),
+  getXiCi: (lang: string) => get<XiCi>(`/api/xici?lang=${encodeURIComponent(lang)}`),
   generateXiCi: (lang: string) => post<XiCi>('/api/xici/generate', { lang }),
   getSources: () => get<{ documents: RawDoc[] }>('/api/sources').then(d => d.documents),
   ingest: (source: string) => post<{ status: string; path: string }>('/api/ingest', { source }),

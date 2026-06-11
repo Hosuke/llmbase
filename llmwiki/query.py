@@ -22,7 +22,7 @@ from pathlib import Path
 
 import frontmatter
 
-from .config import load_config, ensure_dirs
+from .config import load_config, ensure_dirs, get_section_headers
 from .llm import chat, chat_with_context, extract_json
 
 logger = logging.getLogger("llmbase.query")
@@ -289,17 +289,17 @@ You must reply with a single JSON object. No preamble, no markdown fences."""
 
 
 # Overridable. If None, the content-schema example shown to the promote judge
-# is auto-derived from compile.SECTION_HEADERS at call time, so downstream
-# projects (e.g. single-language siwen) that override SECTION_HEADERS don't
-# also have to replace this prompt. Set to a string to force a custom schema.
+# is auto-derived from the active language profile at call time, so downstream
+# projects (e.g. single-language siwen) don't also have to replace this prompt.
+# Import-time compile.SECTION_HEADERS overrides still win via get_section_headers().
+# Set to a string to force a custom schema.
 PROMOTE_CONTENT_EXAMPLE: str | None = None
 PROMOTE_TITLE_EXAMPLE: str | None = None
 
 
-def _derive_promote_examples() -> tuple[str, str]:
-    """Build content/title schema hints from compile.SECTION_HEADERS at call time."""
-    from . import compile as _compile_mod  # late import so downstream overrides apply
-    headers = _compile_mod.SECTION_HEADERS or [("English", "## English")]
+def _derive_promote_examples(cfg: dict | None = None) -> tuple[str, str]:
+    """Build content/title schema hints from the active language profile."""
+    headers = get_section_headers(cfg) or [("English", "## English")]
 
     def _label(lang_key: str, header: str) -> str:
         # Prefer the header's visible text (strip markdown hashes) for display;
@@ -362,7 +362,8 @@ def promote_to_concept(
     index_summary = "\n".join(index_lines) if index_lines else "(empty wiki)"
 
     consulted_slugs = [c["slug"] for c in consulted]
-    content_example, title_example = _derive_promote_examples()
+    section_headers = get_section_headers(cfg)
+    content_example, title_example = _derive_promote_examples(cfg)
     content_example_json = json.dumps(content_example)
     title_example_json = json.dumps(title_example)
 
@@ -488,7 +489,7 @@ If rejecting, reply with:
     concepts_dir = Path(cfg["paths"]["concepts"])
     pre_exists = (concepts_dir / f"{safe_slug}.md").exists()
 
-    article_path = _write_article(article, concepts_dir)
+    article_path = _write_article(article, concepts_dir, headers=section_headers)
     if article_path is None:
         return {"promoted": False, "reason": "write_article rejected slug"}
 

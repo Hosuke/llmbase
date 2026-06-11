@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { Icon } from './Icon';
 import { useTheme } from '../lib/theme';
-import { useLang, type Lang, LANG_OPTIONS, localizeTitle } from '../lib/lang';
+import { useLang, type Lang, localizeTitle } from '../lib/lang';
 import { fetchBranding, getBranding, type Branding } from '../lib/branding';
 import { api, type Article, type TaxonomyCategory } from '../lib/api';
 
@@ -70,7 +70,7 @@ const NAV = [
 export function Layout() {
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
-  const { lang, setLang } = useLang();
+  const { lang, setLang, options, contract } = useLang();
   const [branding, setBranding] = useState<Branding>(getBranding());
   const [articles, setArticles] = useState<Article[]>([]);
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
@@ -90,9 +90,11 @@ export function Layout() {
 
   // Reload taxonomy when language changes
   useEffect(() => {
-    const l = lang === 'zh-en' ? 'zh' : lang;
+    if (!lang) return;
+    const view = contract?.views.find(v => v.code === lang);
+    const l = view?.primary ?? lang;
     api.getTaxonomy(l).then(setTaxonomy).catch(() => {});
-  }, [lang]);
+  }, [lang, contract]);
 
   const toggleCat = (id: string) => {
     setExpandedCats(prev => {
@@ -111,7 +113,7 @@ export function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const currentLangOption = LANG_OPTIONS.find(o => o.value === lang) || LANG_OPTIONS[0];
+  const currentLangOption = options.find(o => o.value === lang) ?? { label: '', icon: '' };
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
@@ -186,31 +188,33 @@ export function Layout() {
           </div>
 
           {/* Language selector dropdown */}
-          <div className="relative" ref={langRef}>
-            <button onClick={() => setLangOpen(!langOpen)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-surface-high border border-outline-variant/40 rounded-lg text-sm hover:border-primary/50 transition-colors">
-              <Icon name="translate" className="text-[16px] text-primary" />
-              <span className="text-on-surface">{currentLangOption.label}</span>
-              <Icon name="expand_more" className="text-[16px] text-on-surface-variant" />
-            </button>
+          {options.length > 1 && (
+            <div className="relative" ref={langRef}>
+              <button onClick={() => setLangOpen(!langOpen)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-surface-high border border-outline-variant/40 rounded-lg text-sm hover:border-primary/50 transition-colors">
+                <Icon name="translate" className="text-[16px] text-primary" />
+                <span className="text-on-surface">{currentLangOption.label}</span>
+                <Icon name="expand_more" className="text-[16px] text-on-surface-variant" />
+              </button>
 
-            {langOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-surface-container border border-outline-variant/40 rounded-xl shadow-lg z-50 py-1 min-w-[160px]">
-                {LANG_OPTIONS.map(opt => (
-                  <button key={opt.value}
-                    onClick={() => { setLang(opt.value); setLangOpen(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-colors ${
-                      lang === opt.value
-                        ? 'bg-primary-container/30 text-primary font-medium'
-                        : 'text-on-surface-variant hover:bg-surface-high'
-                    }`}>
-                    <span className="w-6 text-center font-medium">{opt.icon}</span>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              {langOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-surface-container border border-outline-variant/40 rounded-xl shadow-lg z-50 py-1 min-w-[160px]">
+                  {options.map(opt => (
+                    <button key={opt.value}
+                      onClick={() => { setLang(opt.value); setLangOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-colors ${
+                        lang === opt.value
+                          ? 'bg-primary-container/30 text-primary font-medium'
+                          : 'text-on-surface-variant hover:bg-surface-high'
+                      }`}>
+                      <span className="w-6 text-center font-medium">{opt.icon}</span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Theme toggle */}
           <button onClick={toggle}

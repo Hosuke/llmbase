@@ -19,7 +19,7 @@ const PALETTE = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#38bdf8
 
 export function Graph() {
   const navigate = useNavigate();
-  const { lang } = useLang();
+  const { lang, contract } = useLang();
   const zh = lang === 'zh' || lang === 'zh-en';
   const svgRef = useRef<SVGSVGElement>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -241,7 +241,7 @@ export function Graph() {
     });
 
     return () => { simulation.stop(); };
-  }, [articles, showLabels, selectedTag, linkThreshold, lang, navigate]);
+  }, [articles, showLabels, selectedTag, linkThreshold, lang, contract, navigate]);
 
   if (loading) return <Loading text="Building graph..." />;
 

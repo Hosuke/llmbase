@@ -35,7 +35,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import load_config, ensure_dirs
+from .config import load_config, ensure_dirs, get_language_profile
 
 logger = logging.getLogger("llmbase.worker")
 
@@ -242,8 +242,18 @@ def _task_taxonomy(base: Path):
     # Regenerate Xi Ci for all languages
     logger.info("[xici] Regenerating guided introductions...")
     try:
-        from .xici import generate_xici
-        for lang in ("zh", "en", "ja", "zh-en"):
+        from .xici import generate_xici, LANG_STYLES
+        profile = get_language_profile(load_config(base))
+        # legacy pre-contract patch path — keep historical worker languages; config-defined profiles enumerate their own codes.
+        if profile["name"] == "_patched":
+            langs = ("zh", "en", "ja", "zh-en")
+        else:
+            # xici language support is governed by the LANG_STYLES customization contract; codes without a style would silently produce English-fallback content.
+            langs = [c for c in profile["codes"] if c in LANG_STYLES]
+            skipped = [c for c in profile["codes"] if c not in LANG_STYLES]
+            if skipped:
+                logger.info(f"[xici] skipping langs not in LANG_STYLES: {', '.join(skipped)}")
+        for lang in langs:
             generate_xici(base, lang)
         logger.info("[xici] Generated Xi Ci for all languages")
     except Exception as e:

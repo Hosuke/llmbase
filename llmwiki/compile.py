@@ -29,7 +29,7 @@ from pathlib import Path
 
 import frontmatter
 
-from .config import load_config, ensure_dirs
+from .config import load_config, ensure_dirs, get_section_headers
 from .llm import chat
 
 
@@ -75,11 +75,17 @@ _RAW_TYPE_TO_PLUGIN = {
 
 # Language sections used by _split_sections / _assemble_sections / _merge_into.
 # Each entry: (section_key, markdown_header_line).
-SECTION_HEADERS: list[tuple[str, str]] = [
+# DEFAULT_SECTION_HEADERS is kept as a DISTINCT object so that
+# llmwiki.config.get_language_profile() can detect import-time downstream
+# overrides by identity (`SECTION_HEADERS is not DEFAULT_SECTION_HEADERS`).
+# The customization contract is ASSIGNMENT (`compile.SECTION_HEADERS = [...]`),
+# not in-place mutation.
+DEFAULT_SECTION_HEADERS: list[tuple[str, str]] = [
     ("english", "## English"),
     ("中文", "## 中文"),
     ("日本語", "## 日本語"),
 ]
+SECTION_HEADERS: list[tuple[str, str]] = DEFAULT_SECTION_HEADERS
 
 
 SYSTEM_PROMPT = """You are a knowledge base compiler. Your job is to read raw source documents
@@ -172,6 +178,7 @@ def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> 
     raw_dir = Path(cfg["paths"]["raw"])
     concepts_dir = Path(cfg["paths"]["concepts"])
     meta_dir = Path(cfg["paths"]["meta"])
+    section_headers = get_section_headers(cfg)
 
     if batch_size is None:
         batch_size = cfg.get("compile", {}).get("batch_size", 10)
@@ -252,7 +259,7 @@ def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> 
         articles = _parse_compile_response(response)
         for article in articles:
             article["sources"] = [source_ref]
-            article_path = _write_article(article, concepts_dir)
+            article_path = _write_article(article, concepts_dir, headers=section_headers)
             if article_path:
                 compiled_articles.append(str(article_path))
                 existing_concepts.append(article["slug"])
@@ -516,7 +523,11 @@ def _parse_update_block(block: str) -> dict | None:
     return {"slug": slug, "content": "\n".join(append_content).strip()}
 
 
-def _write_article(article: dict, concepts_dir: Path) -> Path | None:
+def _write_article(
+    article: dict,
+    concepts_dir: Path,
+    headers: list[tuple[str, str]] | None = None,
+) -> Path | None:
     """Write or update an article file. Merges into existing articles.
 
     Three-layer duplicate prevention:
@@ -538,7 +549,7 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
 
     # Layer 1: exact slug match
     if article_path.exists():
-        _merge_into(article_path, article)
+        _merge_into(article_path, article, headers=headers)
         return article_path
 
     # Layer 2: alias resolution
@@ -550,7 +561,7 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
         if resolved and resolved != slug:
             existing_path = concepts_dir / f"{resolved}.md"
             if existing_path.exists():
-                _merge_into(existing_path, article)
+                _merge_into(existing_path, article, headers=headers)
                 return existing_path
 
     # Layer 3: CJK substring scan — catches variant titles (e.g., "X说" matching "X")
@@ -564,12 +575,12 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
                 continue
             # Exact CJK match (handles single chars: 仁 == 仁)
             if new_cjk == existing_cjk:
-                _merge_into(md_file, article)
+                _merge_into(md_file, article, headers=headers)
                 return md_file
             # Substring match for 2+ chars with 60% length ratio
             short, long = (new_cjk, existing_cjk) if len(new_cjk) <= len(existing_cjk) else (existing_cjk, new_cjk)
             if len(short) >= 2 and short in long and len(short) / len(long) >= 0.6:
-                _merge_into(md_file, article)
+                _merge_into(md_file, article, headers=headers)
                 return md_file
 
     # Truly new article
@@ -584,14 +595,18 @@ def _write_article(article: dict, concepts_dir: Path) -> Path | None:
     return article_path
 
 
-def _merge_into(existing_path: Path, article: dict):
+def _merge_into(
+    existing_path: Path,
+    article: dict,
+    headers: list[tuple[str, str]] | None = None,
+):
     """Merge new article content into an existing article (叠加进化).
 
     Section-level dedup: splits by configured SECTION_HEADERS,
     keeps the longer version of each section. Never blindly appends
     entire content blocks — prevents duplicate sections.
     """
-    import re
+    headers = SECTION_HEADERS if headers is None else headers
 
     existing = frontmatter.load(str(existing_path))
     new_content = article.get("content", "")
@@ -599,11 +614,11 @@ def _merge_into(existing_path: Path, article: dict):
         return None
 
     # Split both into language sections
-    existing_sections = _split_sections(existing.content)
-    new_sections = _split_sections(new_content)
+    existing_sections = _split_sections(existing.content, headers=headers)
+    new_sections = _split_sections(new_content, headers=headers)
 
     changed = False
-    for lang_key, _ in SECTION_HEADERS:
+    for lang_key, _ in headers:
         new_sec = new_sections.get(lang_key, "").strip()
         old_sec = existing_sections.get(lang_key, "").strip()
 
@@ -642,7 +657,7 @@ def _merge_into(existing_path: Path, article: dict):
 
     if changed:
         # Reassemble content from sections
-        existing.content = _assemble_sections(existing_sections)
+        existing.content = _assemble_sections(existing_sections, headers=headers)
         existing.metadata["updated"] = datetime.now(timezone.utc).isoformat()
         old_tags = set(existing.metadata.get("tags", []))
         new_tags = set(article.get("tags", []))
@@ -652,7 +667,10 @@ def _merge_into(existing_path: Path, article: dict):
     return None
 
 
-def _split_sections(content: str) -> dict[str, str]:
+def _split_sections(
+    content: str,
+    headers: list[tuple[str, str]] | None = None,
+) -> dict[str, str]:
     """Split article into {section_key: content} dict.
 
     Recognises headers defined in the module-level SECTION_HEADERS list,
@@ -660,12 +678,19 @@ def _split_sections(content: str) -> dict[str, str]:
     single "## 文言" section) will get correct splitting automatically.
     """
     import re
+    headers = SECTION_HEADERS if headers is None else headers
+
+    if len(headers) == 1 and headers[0][1] == "":
+        return {"_preamble": "", headers[0][0]: content}
+
     sections: dict[str, str] = {"_preamble": ""}
     current = "_preamble"
 
     # Build header → key mapping from SECTION_HEADERS
     header_map: list[tuple[str, re.Pattern]] = []
-    for key, header in SECTION_HEADERS:
+    for key, header in headers:
+        if header == "":
+            continue
         # Build a regex: "## English" → r"^## English\s*$"
         escaped = re.escape(header)
         flags = re.IGNORECASE if key.isascii() else 0
@@ -688,20 +713,24 @@ def _split_sections(content: str) -> dict[str, str]:
     return sections
 
 
-def _assemble_sections(sections: dict[str, str]) -> str:
+def _assemble_sections(
+    sections: dict[str, str],
+    headers: list[tuple[str, str]] | None = None,
+) -> str:
     """Reassemble sections into a single content string.
 
     Uses SECTION_HEADERS for ordering, so downstream overrides are respected.
     """
+    headers = SECTION_HEADERS if headers is None else headers
     parts = []
     preamble = sections.get("_preamble", "").strip()
     if preamble:
         parts.append(preamble)
 
-    for lang, header in SECTION_HEADERS:
+    for lang, header in headers:
         sec = sections.get(lang, "").strip()
         if sec:
-            parts.append(f"{header}\n\n{sec}")
+            parts.append(sec if header == "" else f"{header}\n\n{sec}")
 
     return "\n\n".join(parts)
 
