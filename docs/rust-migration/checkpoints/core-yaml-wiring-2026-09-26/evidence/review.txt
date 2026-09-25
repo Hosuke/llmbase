@@ -1,0 +1,20 @@
+2026-09-26 — primary-agent review, explicitly authorized by the user
+
+Accepted for this bounded checkpoint. No HIGH findings in the final patch.
+
+Reviewed: declared module wiring; narrow null mapping-key conversion; typed API
+preservation; collision detection in both orders; unchanged scalar values and
+resource limits; original-byte/body-offset assertions; unchanged migration
+fixture; source ownership; independent command exits and source hashes; exact
+archive/patch reconstruction.
+
+Initial submission was returned because core --lib tests failed (16/17).
+The delegated revision fixes the exact failure. Independent verification now
+passes compilation, 8 document contracts and 17 library unit tests, plus scoped
+formatting. No engine code was written by the primary reviewer. No additional
+model review was invoked for this small task.
+
+Limits: whole-workspace and installed-package acceptance remain outstanding.
+Other non-string YAML keys still require a typed adapter. Collision rejection
+is deliberate; full YAML compatibility and privacy-route consistency are not
+claimed by this checkpoint. No source changes followed final verification.

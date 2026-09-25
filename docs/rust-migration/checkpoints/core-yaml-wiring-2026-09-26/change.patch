@@ -1,0 +1,214 @@
+diff --git a/crates/llmbase-core/src/lib.rs b/crates/llmbase-core/src/lib.rs
+--- a/crates/llmbase-core/src/lib.rs
++++ b/crates/llmbase-core/src/lib.rs
+@@ -4,14 +4,15 @@
+ pub mod ask;
+ pub mod catalog;
+ pub mod compat_compile;
++pub mod compat_io;
+ pub mod compat_kb;
+-pub mod compat_io;
+ pub mod compat_pipeline;
+ pub mod compat_query;
+ pub mod compat_resolve;
+ pub mod compat_search;
+ pub mod compat_util;
+ pub mod compat_workflows;
++pub mod compat_yaml;
+ pub mod compile;
+ pub mod config;
+ pub mod document;
+diff --git a/crates/llmbase-core/src/compat_yaml.rs b/crates/llmbase-core/src/compat_yaml.rs
+--- a/crates/llmbase-core/src/compat_yaml.rs
++++ b/crates/llmbase-core/src/compat_yaml.rs
+@@ -64,7 +64,10 @@
+         (count, size)
+     }
+     /// Native document metadata remains a JSON-domain DTO. Typed-only YAML
+-    /// values return an explicit capability error instead of becoming null.
++    /// values return an explicit capability error instead of becoming null,
++    /// with one serde_yaml compatibility exception: a plain null mapping key
++    /// becomes the JSON object key "null" (collision with a quoted "null"
++    /// key is rejected explicitly).
+     pub fn to_json(&self) -> Result<Value> {
+         Ok(match self {
+             Self::Null => Value::Null,
+@@ -89,13 +92,43 @@
+             ),
+             Self::Mapping(pairs) => {
+                 let mut result = Map::new();
++                let mut null_from_plain = false;
++                let mut null_from_string = false;
+                 for (k, v) in pairs {
+-                    let Self::String(key) = k else {
+-                        return Err(Error::Capability(
+-                            "non-string YAML mapping keys require a typed adapter".into(),
+-                        ));
++                    let key = match k {
++                        Self::String(key) => {
++                            if key == "null" {
++                                null_from_string = true;
++                                if null_from_plain {
++                                    return Err(Error::Invalid(
++                                        "YAML null mapping key collides with \"null\" string key"
++                                            .into(),
++                                    ));
++                                }
++                            }
++                            key.clone()
++                        }
++                        // serde_yaml compatibility: a plain null mapping key is
++                        // the JSON object key "null". parse_typed keeps the
++                        // typed Null key for Python reconstruction; other
++                        // non-string keys still require a typed adapter.
++                        Self::Null => {
++                            null_from_plain = true;
++                            if null_from_string {
++                                return Err(Error::Invalid(
++                                    "YAML null mapping key collides with \"null\" string key"
++                                        .into(),
++                                ));
++                            }
++                            "null".to_owned()
++                        }
++                        _ => {
++                            return Err(Error::Capability(
++                                "non-string YAML mapping keys require a typed adapter".into(),
++                            ));
++                        }
+                     };
+-                    result.insert(key.clone(), v.to_json()?);
++                    result.insert(key, v.to_json()?);
+                 }
+                 Value::Object(result)
+             }
+diff --git a/crates/llmbase-core/tests/document_yaml_contracts.rs b/crates/llmbase-core/tests/document_yaml_contracts.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/tests/document_yaml_contracts.rs
+@@ -0,0 +1,125 @@
++//! Focused integration coverage for the native frontmatter parser, exercised
++//! through `Document::parse` / `parse_metadata` with synthetic fixtures only.
++//! These contracts cover YAML 1.1 safe-scalar resolution, JSON metadata, byte
++//! offsets and bounded alias handling; they are NOT a full YAML conformance
++//! or privacy-equivalence acceptance suite.
++use llmbase_core::document::{Document, parse_metadata};
++
++fn doc(text: &str) -> Document {
++    Document::parse(text.as_bytes().to_vec()).expect("synthetic document must parse")
++}
++
++#[test]
++fn yaml11_plain_booleans_but_quoted_scalars_stay_strings() {
++    let text = "---\n\
++                plain_yes: yes\n\
++                plain_on: on\n\
++                plain_no: no\n\
++                plain_off: off\n\
++                quoted_yes: \"yes\"\n\
++                single_on: 'on'\n\
++                ---\n\
++                Body.\n";
++    let doc = doc(text);
++    assert_eq!(doc.metadata["plain_yes"], true);
++    assert_eq!(doc.metadata["plain_on"], true);
++    assert_eq!(doc.metadata["plain_no"], false);
++    assert_eq!(doc.metadata["plain_off"], false);
++    assert_eq!(doc.metadata["quoted_yes"], "yes");
++    assert_eq!(doc.metadata["single_on"], "on");
++
++    let value = parse_metadata("enabled: ON\nname: \"OFF\"\n").expect("valid YAML 1.1 metadata");
++    assert_eq!(value["enabled"], true);
++    assert_eq!(value["name"], "OFF");
++}
++
++#[test]
++fn json_flow_metadata_is_accepted() {
++    let text = "---\n{\"title\": \"JSON Doc\", \"count\": 42, \"flag\": false}\n---\nBody.\n";
++    let doc = doc(text);
++    assert_eq!(doc.title("fallback"), "JSON Doc");
++    assert_eq!(doc.metadata["count"], 42);
++    assert_eq!(doc.metadata["flag"], false);
++}
++
++#[test]
++fn utf8_original_and_body_offsets_are_byte_exact() {
++    let frontmatter = "title: café 中文\nsummary: naïve — smoke\n";
++    let body = "Body 中文 é.\nSecond line 🚀.\n";
++    let text = format!("---\n{frontmatter}---\n{body}");
++    let doc = doc(&text);
++    assert_eq!(doc.original, text, "original must be preserved verbatim");
++    let expected = "---\n".len() + frontmatter.len() + "---\n".len();
++    assert_eq!(doc.body_start, expected);
++    assert_eq!(&doc.original[doc.body_start..], body);
++    assert_eq!(doc.metadata["title"], "café 中文");
++    assert_eq!(doc.hash, llmbase_core::document::hash(text.as_bytes()));
++}
++
++#[test]
++fn document_without_frontmatter_starts_body_at_zero() {
++    let doc = doc("# Heading 中文\nPlain body, no frontmatter.\n");
++    assert_eq!(doc.body_start, 0);
++    assert!(doc.metadata.is_object());
++    assert_eq!(doc.metadata.as_object().unwrap().len(), 0);
++}
++
++#[test]
++fn malformed_yaml_is_rejected() {
++    let bad_flow = "---\ntitle: [unclosed\n---\nbody\n";
++    assert!(Document::parse(bad_flow.as_bytes().to_vec()).is_err());
++    assert!(parse_metadata("a: [1, 2").is_err());
++
++    let unterminated = "---\ntitle: ok\nbody without a closing fence\n";
++    assert!(Document::parse(unterminated.as_bytes().to_vec()).is_err());
++
++    let non_mapping = "---\n- 1\n- 2\n---\nbody\n";
++    assert!(Document::parse(non_mapping.as_bytes().to_vec()).is_err());
++}
++
++#[test]
++fn cyclic_and_unresolved_aliases_are_rejected() {
++    let cyclic = "---\na: &x [*x]\n---\nbody\n";
++    assert!(Document::parse(cyclic.as_bytes().to_vec()).is_err());
++    assert!(parse_metadata("a: *missing").is_err());
++}
++
++#[test]
++fn alias_expansion_bomb_is_bounded() {
++    let bomb = "a: &a [\"0123456789\"]\n\
++                b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a]\n\
++                c: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b]\n\
++                d: &d [*c, *c, *c, *c, *c, *c, *c, *c, *c]\n\
++                e: &e [*d, *d, *d, *d, *d, *d, *d, *d, *d]\n\
++                f: [*e, *e, *e, *e, *e, *e, *e, *e, *e]\n";
++    assert!(parse_metadata(bomb).is_err());
++}
++
++#[test]
++fn plain_null_mapping_key_is_the_json_null_string_key() {
++    // serde_yaml compatibility boundary exercised by the migration contract:
++    // a plain null mapping key becomes the JSON object key "null" while the
++    // typed Null key stays available via parse_typed for Python adapters.
++    let text = "---\ntitle: 典\nunknown: {rare: 𠀀, null: null}\n---\n學而時習之。\n";
++    let doc = doc(text);
++    assert_eq!(doc.original, text);
++    assert_eq!(&doc.original[doc.body_start..], "學而時習之。\n");
++    let unknown = doc.metadata["unknown"].as_object().unwrap();
++    assert_eq!(unknown["rare"], "𠀀");
++    assert!(unknown.contains_key("null"), "null key must not be dropped");
++    assert_eq!(unknown["null"], serde_json::Value::Null);
++
++    let typed = llmbase_core::compat_yaml::parse_typed("null: null\n").unwrap();
++    let llmbase_core::compat_yaml::Node::Mapping(pairs) = typed else {
++        panic!("typed parse must keep the mapping");
++    };
++    assert!(matches!(pairs[0].0, llmbase_core::compat_yaml::Node::Null));
++
++    // A quoted "null" key colliding with a plain null key is rejected in
++    // either order rather than silently losing a metadata entry.
++    assert!(parse_metadata("null: 1\n\"null\": 2\n").is_err());
++    assert!(parse_metadata("\"null\": 1\nnull: 2\n").is_err());
++
++    // No broad stringification: other non-string keys still need an adapter.
++    assert!(parse_metadata("true: x\n").is_err());
++}
