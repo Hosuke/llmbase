@@ -1,0 +1,14 @@
+{
+  "result": "passed",
+  "read_helper_registry_unchanged": true,
+  "registered_config_unchanged": true,
+  "raw_bytes_unchanged": true,
+  "read_helpers_created_no_database": true,
+  "exact_journal_rows": 2,
+  "journal_applied": true,
+  "real_overlap_refused": true,
+  "explicit_writer_succeeded": true,
+  "package": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "e082b48f64dddaa98ebd059b2efb3894b7a299a0f9c0cb45da3b53df2bf45a49"
+}

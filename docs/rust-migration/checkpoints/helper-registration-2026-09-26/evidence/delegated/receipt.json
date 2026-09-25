@@ -1,0 +1,112 @@
+{
+  "llmwiki_version": "0.9.0",
+  "siwen_version": "0.1.0",
+  "llmwiki_module": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "siwen_module": "/root/llmbase-rust-migration-20260920/b5-integration/src-siwen/siwen/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "e082b48f64dddaa98ebd059b2efb3894b7a299a0f9c0cb45da3b53df2bf45a49",
+  "wheel_sha256": "0ee48f574d3303bbf377ef8cd935893e04b1eb0e30f3b32687486a4b05bd6c72",
+  "native_receipts": {
+    "find_uncompiled": {
+      "core": "rust",
+      "operation": "compat_compile_find",
+      "storage": "native_document_and_journal"
+    },
+    "list_existing_concepts": {
+      "core": "rust",
+      "operation": "compat_compile_existing",
+      "storage": "native_document_and_journal"
+    },
+    "rebuild_index": {
+      "core": "rust",
+      "operation": "compat_compile_rebuild",
+      "storage": "native_document_and_journal"
+    },
+    "query_last": {
+      "core": "rust",
+      "operation": "compat_query",
+      "orchestrator": "rust",
+      "model_boundary": "host_callback",
+      "stages": [
+        "index",
+        "selector",
+        "answer"
+      ],
+      "host_overrides": [],
+      "default_retrieval_public_only": true,
+      "writes": false
+    },
+    "flask_sources": {
+      "core": "rust",
+      "operation": "compat_kb_raw_list",
+      "library_id": "default",
+      "storage": "native_filesystem",
+      "indexed": false,
+      "writer_lock": false
+    }
+  },
+  "taxonomy_callback_calls": [
+    {
+      "marker": "第一類",
+      "article_count": 4
+    },
+    {
+      "marker": "第二類",
+      "article_count": 4
+    }
+  ],
+  "query_callback_count": 2,
+  "query_context_counts": [
+    4,
+    4
+  ],
+  "model_transport": "explicit offline Python callback",
+  "external_network": "blocked",
+  "required_endpoint_status": {
+    "/api/branding": 200,
+    "/api/languages": 200,
+    "/api/stats": 200,
+    "/api/collections": 200,
+    "/api/aliases": 200,
+    "/api/entities": 200,
+    "/api/tones": 200,
+    "/api/healthz": 200,
+    "/api/articles": 200,
+    "/api/articles/lite": 200,
+    "/api/sources": 200,
+    "/api/trails": 200,
+    "/api/classics": 200,
+    "/api/kepan": 200,
+    "/api/masters": 200,
+    "/api/lineages": 200,
+    "/api/schools": 200,
+    "/api/persons": 200,
+    "/api/books": 200,
+    "/api/outputs": 200,
+    "/api/taxonomy?lang=zh": 200,
+    "/api/xici?lang=zh": 200
+  },
+  "flask_hook_calls": 271,
+  "bake": {
+    "json_count": 133,
+    "html_count": 112,
+    "skipped": [],
+    "article_count": 4,
+    "classic_count": 2,
+    "book_chapters": {
+      "hosuke-laozi": [
+        "德-01"
+      ],
+      "yaomiao-zhuangzi": [],
+      "yaomiao-guanyin": []
+    },
+    "verified_clean": true
+  },
+  "synthetic_raw_bytes_unchanged": true,
+  "provenance_mode": "copied-source-manifest",
+  "copied_source_manifest": "/root/llmbase-rust-migration-20260920/b5-integration/manifests/siwen-sha256.txt",
+  "copied_source_files": 3159,
+  "copied_source_unchanged": true,
+  "original_preservation": "remote host cannot access the original checkout; attested by a separate local preservation receipt",
+  "boundary": "Siwen custom compiler, Flask rendering and custom taxonomy remain Python extensions; receipts prove only named native operations"
+}

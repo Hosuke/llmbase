@@ -1,0 +1,119 @@
+diff --git a/llmwiki/config.py b/llmwiki/config.py
+--- a/llmwiki/config.py
++++ b/llmwiki/config.py
+@@ -9,14 +9,24 @@
+ 
+ def load_config(base_dir: Path | None = None) -> dict:
+     """Load config.yaml from the project root."""
++    cfg = _read_config(base_dir)
++    from . import _native
++    _native.register_config(cfg, base_dir)
++    return cfg
++
++
++def _read_config(base_dir: Path | None = None) -> dict:
++    """Load config.yaml without publishing the root to the native registry.
++
++    Internal helper for callers that only need effective configuration values:
++    registering an inferred root would pollute the library registry.
++    """
+     if base_dir is None:
+         base_dir = Path.cwd()
+     config_path = base_dir / "config.yaml"
+     if not config_path.exists():
+         cfg = _defaults(base_dir)
+         cfg["base_dir"] = str(Path(base_dir).resolve())
+-        from . import _native
+-        _native.register_config(cfg, base_dir)
+         return cfg
+     with open(config_path) as f:
+         cfg = yaml.safe_load(f)
+@@ -26,8 +36,6 @@
+         if p:
+             cfg["paths"][key] = str((base_dir / p).resolve())
+     cfg["base_dir"] = str(Path(base_dir).resolve())
+-    from . import _native
+-    _native.register_config(cfg, base_dir)
+     return cfg
+ 
+ 
+diff --git a/llmwiki/compile.py b/llmwiki/compile.py
+--- a/llmwiki/compile.py
++++ b/llmwiki/compile.py
+@@ -30,7 +30,7 @@
+ 
+ import frontmatter
+ 
+-from .config import load_config, ensure_dirs, get_section_headers
++from .config import load_config, ensure_dirs, get_section_headers, _read_config
+ from .llm import chat
+ from . import _native
+ 
+@@ -780,9 +780,11 @@
+     if cfg is None:
+         # Private helpers accept a standalone configured directory. Derive a
+         # local metadata root when no compile invocation supplies full config.
++        # This call context is transient: reading config here must not publish
++        # an inferred library identity to the native registry.
+         selected = next(iter(roots.values()), Path.cwd())
+         selected = Path(selected).resolve()
+-        cfg = load_config(selected.parent)
++        cfg = _read_config(selected.parent)
+         if "concepts" in roots:
+             cfg["paths"]["meta"] = str(selected.parent / "_meta")
+     paths = dict(cfg["paths"])
+diff --git a/tests/rust_migration/test_native_utilities.py b/tests/rust_migration/test_native_utilities.py
+--- a/tests/rust_migration/test_native_utilities.py
++++ b/tests/rust_migration/test_native_utilities.py
+@@ -85,3 +85,51 @@
+         atomic.atomic_write_text(scoped, "ambiguous")
+     _native.with_writer(tmp_path, lambda: atomic.atomic_write_text(scoped, "explicit"), paths=cfg["paths"])
+     assert scoped.read_text() == "explicit"
++
++
++def test_standalone_compile_helpers_do_not_register_inferred_library(tmp_path):
++    from pathlib import Path
++    import llmwiki.compile as compiler
++    from llmwiki import atomic, config
++    prior = set(_native._configured_roots)
++    cfg = config.load_config(tmp_path)
++    config.ensure_dirs(cfg)
++    registered = set(_native._configured_roots) - prior
++    assert registered == {(str(tmp_path.resolve()), "default")}
++    concepts = Path(cfg["paths"]["concepts"])
++    raw = Path(cfg["paths"]["raw"])
++    meta = Path(cfg["paths"]["meta"])
++    # Read helpers with standalone directory inputs share _native_compile's
++    # transient context; none may publish an inferred library identity.
++    assert compiler._list_existing_concepts(concepts) == []
++    assert compiler._find_uncompiled(raw) == []
++    assert compiler._load_index(meta) == []
++    assert set(_native._configured_roots) - prior == registered
++    phantom = str((tmp_path / "wiki").resolve())
++    assert all(base != phantom for base, _library in _native._configured_roots)
++    # Explicit cfg and the active compile context are preserved unchanged.
++    assert compiler._native_compile("existing", cfg=cfg, concepts=concepts) == []
++    token = compiler._active_compile_config.set(cfg)
++    try:
++        assert compiler._list_existing_concepts(concepts) == []
++    finally:
++        compiler._active_compile_config.reset(token)
++    assert set(_native._configured_roots) - prior == registered
++    # The reported sequence: an ordinary metadata write after a read helper.
++    probe = meta / "probe.txt"
++    atomic.atomic_write_text(probe, "exact original bytes")
++    assert probe.read_bytes() == b"exact original bytes"
++
++
++def test_inferred_helper_context_is_transient_for_custom_roots(tmp_path):
++    import llmwiki.compile as compiler
++    prior = set(_native._configured_roots)
++    raw = tmp_path / "originals"
++    concepts = tmp_path / "knowledge" / "entries"
++    meta = tmp_path / "knowledge" / "_meta"
++    for directory in (raw, concepts, meta):
++        directory.mkdir(parents=True)
++    assert compiler._find_uncompiled(raw) == []
++    assert compiler._list_existing_concepts(concepts) == []
++    assert compiler._load_index(meta) == []
++    assert set(_native._configured_roots) == prior

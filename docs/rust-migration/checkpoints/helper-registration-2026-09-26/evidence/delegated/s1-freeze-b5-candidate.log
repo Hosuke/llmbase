@@ -1,0 +1,32 @@
+{
+  "result": "regression reproduced; candidate is not accepted",
+  "trigger": "load_config(base), read-only _list_existing_concepts, atomic_write_text",
+  "initial_registry": [
+    [
+      [
+        "/tmp/b5-registration-3mfka7nz",
+        "default"
+      ],
+      "/tmp/b5-registration-3mfka7nz/wiki/_meta"
+    ]
+  ],
+  "after_helper_registry": [
+    [
+      [
+        "/tmp/b5-registration-3mfka7nz",
+        "default"
+      ],
+      "/tmp/b5-registration-3mfka7nz/wiki/_meta"
+    ],
+    [
+      [
+        "/tmp/b5-registration-3mfka7nz/wiki",
+        "default"
+      ],
+      "/tmp/b5-registration-3mfka7nz/wiki/_meta"
+    ]
+  ],
+  "error": "atomic path matches multiple configured libraries; use an explicit writer context",
+  "extension": "/root/llmbase-rust-migration-20260920/b5-integration/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "e082b48f64dddaa98ebd059b2efb3894b7a299a0f9c0cb45da3b53df2bf45a49"
+}

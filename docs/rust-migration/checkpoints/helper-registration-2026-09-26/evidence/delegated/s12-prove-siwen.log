@@ -1,0 +1,10 @@
+[bake] sample /api/articles: slug, summary, tags, title
+[bake] sample /api/sources: chapter, path, plugin, title, type, url, work
+[bake] sample /api/classics: chapter_count, chapters, extent, series, work
+[bake] sample /api/masters: aliases, authority_links, bio_summary, chronology, dates, doctrine_nodes, dynasty, master_id, name, name_full, portrait, related_masters, roles, school_tags, source_classics, sutras_explained, work_status_counts, work_statuses, works_authored, works_commented, works_count
+[bake] sample /api/schools: (無 dict 項)
+[bake] sample /api/persons: (無 dict 項)
+[bake] sample /api/books: author, author_url, chapter_count, id, intro, status, subtitle, title
+[bake] sample /api/outputs: (無 dict 項)
+[verify] clean: /root/llmbase-rust-migration-20260920/b5-registration-fix/proofs/siwen/baked
+{"result": "passed", "receipt": "/root/llmbase-rust-migration-20260920/b5-registration-fix/proofs/siwen/receipt.json", "bake": {"json_count": 133, "html_count": 112, "skipped": [], "article_count": 4, "classic_count": 2, "book_chapters": {"hosuke-laozi": ["德-01"], "yaomiao-zhuangzi": [], "yaomiao-guanyin": []}, "verified_clean": true}}

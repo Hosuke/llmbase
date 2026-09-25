@@ -1,0 +1,59 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_standalone_compile_helpers_do_not_register_inferred_library _______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8/test_standalone_compile_helper0')
+
+    def test_standalone_compile_helpers_do_not_register_inferred_library(tmp_path):
+        from pathlib import Path
+        import llmwiki.compile as compiler
+        from llmwiki import atomic, config
+        prior = set(_native._configured_roots)
+        cfg = config.load_config(tmp_path)
+        config.ensure_dirs(cfg)
+        registered = set(_native._configured_roots) - prior
+        assert registered == {(str(tmp_path.resolve()), "default")}
+        concepts = Path(cfg["paths"]["concepts"])
+        raw = Path(cfg["paths"]["raw"])
+        meta = Path(cfg["paths"]["meta"])
+        # Read helpers with standalone directory inputs share _native_compile's
+        # transient context; none may publish an inferred library identity.
+        assert compiler._list_existing_concepts(concepts) == []
+        assert compiler._find_uncompiled(raw) == []
+        assert compiler._load_index(meta) == []
+>       assert set(_native._configured_roots) - prior == registered
+E       AssertionError: assert {('/tmp/pytes...', 'default')} == {('/tmp/pytes...', 'default')}
+E         
+E         Extra items in the left set:
+E         ('/tmp/pytest-of-root/pytest-8/test_standalone_compile_helper0/wiki', 'default')
+E         Use -v to get more diff
+
+llmbase-rust-migration-20260920/b5-registration-fix/src-llmbase/tests/rust_migration/test_native_utilities.py:107: AssertionError
+__________ test_inferred_helper_context_is_transient_for_custom_roots __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8/test_inferred_helper_context_i0')
+
+    def test_inferred_helper_context_is_transient_for_custom_roots(tmp_path):
+        import llmwiki.compile as compiler
+        prior = set(_native._configured_roots)
+        raw = tmp_path / "originals"
+        concepts = tmp_path / "knowledge" / "entries"
+        meta = tmp_path / "knowledge" / "_meta"
+        for directory in (raw, concepts, meta):
+            directory.mkdir(parents=True)
+        assert compiler._find_uncompiled(raw) == []
+        assert compiler._list_existing_concepts(concepts) == []
+        assert compiler._load_index(meta) == []
+>       assert set(_native._configured_roots) == prior
+E       AssertionError: assert {('/tmp/pytes...', 'default')} == {('/tmp/pytes...', 'default')}
+E         
+E         Extra items in the left set:
+E         ('/tmp/pytest-of-root/pytest-8/test_inferred_helper_context_i0/knowledge', 'default')
+E         ('/tmp/pytest-of-root/pytest-8/test_inferred_helper_context_i0', 'default')
+E         Use -v to get more diff
+
+llmbase-rust-migration-20260920/b5-registration-fix/src-llmbase/tests/rust_migration/test_native_utilities.py:135: AssertionError
+=========================== short test summary info ============================
+FAILED llmbase-rust-migration-20260920/b5-registration-fix/src-llmbase/tests/rust_migration/test_native_utilities.py::test_standalone_compile_helpers_do_not_register_inferred_library
+FAILED llmbase-rust-migration-20260920/b5-registration-fix/src-llmbase/tests/rust_migration/test_native_utilities.py::test_inferred_helper_context_is_transient_for_custom_roots
+2 failed in 0.65s

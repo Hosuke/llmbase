@@ -1,0 +1,23 @@
+{
+  "llmwiki_version": "0.9.0",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "platform": "Linux-6.8.0-101-generic-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "package": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "e082b48f64dddaa98ebd059b2efb3894b7a299a0f9c0cb45da3b53df2bf45a49",
+  "wheel": "/root/llmbase-rust-migration-20260920/b5-registration-fix/wheels/llmwiki-0.9.0-cp311-abi3-linux_x86_64.whl",
+  "wheel_sha256": "0ee48f574d3303bbf377ef8cd935893e04b1eb0e30f3b32687486a4b05bd6c72",
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so"
+  },
+  "require_native": true
+}

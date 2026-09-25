@@ -1,0 +1,14 @@
+{
+  "llmwiki/config.py": {
+    "before": "b14079f168aa8d5163f35bf933e9813e2dbbef5d561a7637be1525a4c29face7",
+    "after": "e95b5b2b65af73330ba005a8a4745e293ed80f8b27fb92cead307a336986251b"
+  },
+  "llmwiki/compile.py": {
+    "before": "8d157adc36b7f449bdd9a4d423a0ced9f46c3f330c5c3ae3f460ab188fa083a2",
+    "after": "cc66ddf74179514e6a32e08afdb2dfe521b7a36195621f69654e55a7efb600ef"
+  },
+  "tests/rust_migration/test_native_utilities.py": {
+    "before": "1e1ef2ddf757b5c4919b1dfc14cc778354e9174d28f7f158716b99b52a512750",
+    "after": "a894183b9a396bc1156617a0cad9c5c5506f85f849c78499dc41595ddec769ec"
+  }
+}
