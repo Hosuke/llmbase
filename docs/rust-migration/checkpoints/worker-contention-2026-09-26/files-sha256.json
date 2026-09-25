@@ -1,0 +1,14 @@
+{
+  "crates/llmbase-core/src/application.rs": {
+    "before": "f87f7cfa61c02b61501bf7b1c388cc7d06c4ca9adfcb9e8ece6ed2c75d3fe6f4",
+    "after": "a80629e68d1fec83e439ba90b157209f1603e49532398252dae65a0fad8d7328"
+  },
+  "crates/llmbase-core/tests/worker.rs": {
+    "before": "14c5c80e55e4a53cc70d0adf68fd5e8ca90add1a1111b9eb702f4b4f4c42d453",
+    "after": "89d1f28b371e7656fd4df45cd566f7a83ec80d52f9d7b51b9afde40fe7080edd"
+  },
+  "crates/llmbase-cli/tests/http_model_contracts.rs": {
+    "before": "54c22c410509a59db206700fdf6b5ab4536a404ff14d2c212d561b44e5768f8a",
+    "after": "cd348edd2f0a20548a27fe2fabd591a583a1881a22587af02fa9ad9734e9b958"
+  }
+}

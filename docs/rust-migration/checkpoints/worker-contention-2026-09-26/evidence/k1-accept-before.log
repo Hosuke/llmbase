@@ -1,0 +1,38 @@
+   Compiling cbindgen v0.29.4
+   Compiling serde_json v1.0.151
+   Compiling reqwest v0.12.28
+   Compiling ferrous-opencc v0.3.1
+   Compiling llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/k1-accept/crates/llmbase-model)
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/k1-accept/crates/llmbase-core)
+warning: function `open_operation_library` is never used
+    --> crates/llmbase-core/src/application.rs:1013:4
+     |
+1013 | fn open_operation_library(
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `llmbase-core` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.59s
+     Running tests/worker.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/worker-05ce7fc812bcf2fe)
+
+running 1 test
+test claimed_repair_retries_transient_recovery_lock_contention_under_same_lease ... FAILED
+
+failures:
+
+---- claimed_repair_retries_transient_recovery_lock_contention_under_same_lease stdout ----
+
+thread 'claimed_repair_retries_transient_recovery_lock_contention_under_same_lease' (3178261) panicked at crates/llmbase-core/tests/worker.rs:389:5:
+assertion `left == right` failed
+  left: Failed
+ right: Succeeded
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    claimed_repair_retries_transient_recovery_lock_contention_under_same_lease
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.38s
+
+error: test failed, to rerun pass `-p llmbase-core --test worker`

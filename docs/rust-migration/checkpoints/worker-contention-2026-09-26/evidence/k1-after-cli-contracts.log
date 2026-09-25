@@ -1,0 +1,9 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core)
+error[E0433]: cannot find `compat_yaml` in `crate`
+  --> crates/llmbase-core/src/document.rs:34:26
+   |
+34 |         Err(_) => crate::compat_yaml::parse(text),
+   |                          ^^^^^^^^^^^ could not find `compat_yaml` in the crate root
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `llmbase-core` (lib) due to 1 previous error

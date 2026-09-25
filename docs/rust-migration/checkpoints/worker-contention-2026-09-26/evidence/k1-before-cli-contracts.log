@@ -1,0 +1,21 @@
+   Compiling indexmap v2.14.2
+   Compiling cbindgen v0.29.4
+   Compiling serde_json v1.0.151
+   Compiling reqwest v0.12.28
+   Compiling ferrous-opencc v0.3.1
+   Compiling chrono v0.4.45
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling schemars v1.2.2
+   Compiling llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-model)
+   Compiling axum v0.8.9
+   Compiling rmcp v3.4.0
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core)
+error[E0433]: cannot find `compat_yaml` in `crate`
+  --> crates/llmbase-core/src/document.rs:34:26
+   |
+34 |         Err(_) => crate::compat_yaml::parse(text),
+   |                          ^^^^^^^^^^^ could not find `compat_yaml` in the crate root
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `llmbase-core` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

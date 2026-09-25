@@ -1,0 +1,18 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/k1-accept/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.38s
+     Running tests/worker.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/worker-05ce7fc812bcf2fe)
+
+running 10 tests
+test errors_are_persisted_without_success_or_secret_echo ... ok
+test inline_job_is_never_visible_to_a_general_queue_claim ... ok
+test targeted_worker_claims_only_requested_job_and_does_not_fallback ... ok
+test two_workers_cannot_execute_the_same_claim ... ok
+test unauthorized_or_pre_cancelled_worker_does_not_claim ... ok
+test cancellation_during_repair_open_contention_is_truthful_and_prompt ... ok
+test worker_rechecks_operation_capability_and_skips_cancelled_jobs ... ok
+test worker_runs_real_index_and_persists_result_and_events ... ok
+test claimed_repair_retries_transient_recovery_lock_contention_under_same_lease ... ok
+test claimed_repair_contention_exhaustion_fails_truthfully_without_replay ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.69s
+

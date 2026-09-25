@@ -1,0 +1,88 @@
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:7:
+ };
+ use llmbase_model::CancellationToken;
+ use serde_json::{Value, json};
+[32m+use std::fs;
+[m use std::sync::atomic::{AtomicBool, Ordering};
+ use std::sync::{Arc, Mutex, mpsc};
+ use std::time::Duration;
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:13:
+[31m-use std::fs;
+[m use tempfile::TempDir;
+ 
+ fn setup() -> (TempDir, Application, Principal, LibraryConfig) {
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:364:
+ async fn claimed_repair_retries_transient_recovery_lock_contention_under_same_lease() {
+     let (_dir, mut app, principal, config) = setup();
+     let decoy = enqueue(&app, &principal, "doctor", json!({}));
+[31m-    let selected = enqueue(&app, &principal, "maintenance_repair", json!({"mode":"clean"}));
+[m[32m+    let selected = enqueue(
+[m[32m+        &app,
+[m[32m+        &principal,
+[m[32m+        "maintenance_repair",
+[m[32m+        json!({"mode":"clean"}),
+[m[32m+    );
+[m     let id = selected["id"].as_str().unwrap().to_owned();
+     let barrier = install_open_barrier(&mut app);
+     let worker = run_selected(&app, &principal, id.clone(), CancellationToken::new());
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:408:
+ async fn claimed_repair_contention_exhaustion_fails_truthfully_without_replay() {
+     let (_dir, mut app, principal, config) = setup();
+     let decoy = enqueue(&app, &principal, "doctor", json!({}));
+[31m-    let selected = enqueue(&app, &principal, "maintenance_repair", json!({"mode":"clean"}));
+[m[32m+    let selected = enqueue(
+[m[32m+        &app,
+[m[32m+        &principal,
+[m[32m+        "maintenance_repair",
+[m[32m+        json!({"mode":"clean"}),
+[m[32m+    );
+[m     let id = selected["id"].as_str().unwrap().to_owned();
+     let barrier = install_open_barrier(&mut app);
+     let worker = run_selected(&app, &principal, id.clone(), CancellationToken::new());
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:454:
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn cancellation_during_repair_open_contention_is_truthful_and_prompt() {
+     let (_dir, mut app, principal, config) = setup();
+[31m-    let selected = enqueue(&app, &principal, "maintenance_repair", json!({"mode":"clean"}));
+[m[32m+    let selected = enqueue(
+[m[32m+        &app,
+[m[32m+        &principal,
+[m[32m+        "maintenance_repair",
+[m[32m+        json!({"mode":"clean"}),
+[m[32m+    );
+[m     let id = selected["id"].as_str().unwrap().to_owned();
+     let barrier = install_open_barrier(&mut app);
+     let cancel = CancellationToken::new();
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-core/tests/worker.rs:487:
+         "cancellation did not wait out the retry bound"
+     );
+     assert_eq!(
+[31m-        Library::open(config)
+[m[31m-            .unwrap()
+[m[31m-            .job(&id)
+[m[31m-            .unwrap()
+[m[31m-            .status,
+[m[32m+        Library::open(config).unwrap().job(&id).unwrap().status,
+[m         JobStatus::Cancelled
+     );
+ }
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-cli/tests/http_model_contracts.rs:412:
+         Arc::new(move || {
+             if !fired.swap(true, Ordering::SeqCst) {
+                 let _ = open_tx.send(());
+[31m-                let _ = held_rx.lock().unwrap().recv_timeout(Duration::from_secs(30));
+[m[32m+                let _ = held_rx
+[m[32m+                    .lock()
+[m[32m+                    .unwrap()
+[m[32m+                    .recv_timeout(Duration::from_secs(30));
+[m             }
+         })
+     }));
+Diff in /root/llmbase-rust-migration-20260920/k1-source/crates/llmbase-cli/tests/http_model_contracts.rs:419:
+     let gateway = Gateway::new(application, "http-model".into());
+[31m-    let grant = AuthGrant::new("fixture-owner-model-token", Principal::local("http-model")).unwrap();
+[m[32m+    let grant =
+[m[32m+        AuthGrant::new("fixture-owner-model-token", Principal::local("http-model")).unwrap();
+[m     let app = router(
+         HttpState::new(gateway, Surface::Web, true, vec![grant]).with_models(Some(AskModels {
+             generation: provider.client.clone(),

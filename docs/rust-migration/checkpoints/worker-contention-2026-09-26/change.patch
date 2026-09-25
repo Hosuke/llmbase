@@ -1,0 +1,421 @@
+diff --git a/crates/llmbase-core/src/application.rs b/crates/llmbase-core/src/application.rs
+--- a/crates/llmbase-core/src/application.rs
++++ b/crates/llmbase-core/src/application.rs
+@@ -3,6 +3,7 @@
+ use serde::{Deserialize, Serialize};
+ use serde_json::{Value, json};
+ use std::collections::{HashMap, HashSet};
++use std::time::Duration;
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+ #[serde(rename_all = "snake_case")]
+@@ -89,10 +90,22 @@
+ #[derive(Clone)]
+ pub struct Application {
+     libraries: HashMap<String, LibraryConfig>,
++    /// Test-only barrier fired before a claimed operation opens its library
++    /// handle; never set in production.
++    operation_open_barrier: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+ }
+ impl Application {
+     pub(crate) fn library_config(&self, library_id: &str) -> Result<LibraryConfig> {
+         self.libraries.get(library_id).cloned().ok_or(Error::Scope)
++    }
++
++    /// Test-only hook installing the operation-open barrier.
++    #[doc(hidden)]
++    pub fn set_operation_open_barrier(
++        &mut self,
++        barrier: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
++    ) {
++        self.operation_open_barrier = barrier;
+     }
+ 
+     pub fn new(configs: Vec<LibraryConfig>) -> Result<Self> {
+@@ -105,7 +118,10 @@
+         if libraries.is_empty() {
+             return Err(Error::Invalid("at least one library is required".into()));
+         }
+-        Ok(Self { libraries })
++        Ok(Self {
++            libraries,
++            operation_open_barrier: None,
++        })
+     }
+ 
+     pub fn start_ask(
+@@ -276,8 +292,9 @@
+         let private = principal.capabilities.contains(&Capability::Private);
+         let runtime = tokio::runtime::Handle::current();
+         let _guard = cancel.clone().drop_guard();
++        let open_barrier = self.operation_open_barrier.clone();
+         tokio::task::spawn_blocking(move || {
+-            let mut library = Library::open(config)?;
++            let mut library = open_operation_library(&config, &cancel, open_barrier)?;
+             runtime.block_on(library.repair(client.as_ref(), &request, private, cancel))
+         })
+         .await
+@@ -982,6 +999,34 @@
+     }
+ }
+ 
++/// A claimed job opens its own library handle only here, strictly before any
++/// model call or accepted write; a concurrent reader may briefly hold the
++/// recovery writer lock. Retry just this pre-side-effect open with a bounded
++/// delay under the same cancellation token — the operation itself and its
++/// side effects are never replayed.
++fn open_operation_library(
++    config: &LibraryConfig,
++    cancel: &tokio_util::sync::CancellationToken,
++    barrier: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
++) -> Result<Library> {
++    const ATTEMPTS: u32 = 100;
++    if let Some(barrier) = barrier {
++        barrier();
++    }
++    for attempt in 0..ATTEMPTS {
++        if cancel.is_cancelled() {
++            return Err(llmbase_model::ModelError::Cancelled.into());
++        }
++        match Library::open(config.clone()) {
++            Err(Error::Busy) if attempt + 1 < ATTEMPTS => {
++                std::thread::sleep(Duration::from_millis(20));
++            }
++            result => return result,
++        }
++    }
++    unreachable!("the final attempt returns its result")
++}
++
+ fn required_string<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
+     args.get(key)
+         .and_then(Value::as_str)
+diff --git a/crates/llmbase-core/tests/worker.rs b/crates/llmbase-core/tests/worker.rs
+--- a/crates/llmbase-core/tests/worker.rs
++++ b/crates/llmbase-core/tests/worker.rs
+@@ -2,11 +2,15 @@
+     Error, Library, LibraryConfig,
+     application::{Application, Capability, Principal, Request},
+     jobs::JobStatus,
++    store::WriterSession,
+     worker::WorkerModels,
+ };
+ use llmbase_model::CancellationToken;
+ use serde_json::{Value, json};
+ use std::fs;
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::{Arc, Mutex, mpsc};
++use std::time::Duration;
+ use tempfile::TempDir;
+ 
+ fn setup() -> (TempDir, Application, Principal, LibraryConfig) {
+@@ -298,3 +302,207 @@
+         1
+     );
+ }
++
++/// Barrier plumbing for the post-claim/pre-operation open window: the hook
++/// fires once when the claimed operation is about to open its library handle,
++/// letting the test hold the recovery writer lock at exactly that moment.
++struct OpenBarrier {
++    fired: Arc<AtomicBool>,
++    open_pending: mpsc::Receiver<()>,
++    lock_held: mpsc::Sender<()>,
++}
++fn install_open_barrier(app: &mut Application) -> OpenBarrier {
++    let fired = Arc::new(AtomicBool::new(false));
++    let (open_tx, open_rx) = mpsc::channel::<()>();
++    let (held_tx, held_rx) = mpsc::channel::<()>();
++    let held_rx = Arc::new(Mutex::new(held_rx));
++    let hook = {
++        let fired = fired.clone();
++        move || {
++            if !fired.swap(true, Ordering::SeqCst) {
++                let _ = open_tx.send(());
++                // Never block a failing test binary indefinitely.
++                let _ = held_rx
++                    .lock()
++                    .unwrap()
++                    .recv_timeout(Duration::from_secs(30));
++            }
++        }
++    };
++    app.set_operation_open_barrier(Some(Arc::new(hook)));
++    OpenBarrier {
++        fired,
++        open_pending: open_rx,
++        lock_held: held_tx,
++    }
++}
++
++fn run_selected(
++    app: &Application,
++    principal: &Principal,
++    job_id: String,
++    cancel: CancellationToken,
++) -> tokio::task::JoinHandle<Result<Option<llmbase_core::jobs::Job>, Error>> {
++    let app = app.clone();
++    let principal = principal.clone();
++    tokio::spawn(async move {
++        app.run_job(
++            &principal,
++            "worker-test",
++            WorkerModels::default(),
++            llmbase_core::worker::WorkerSelection {
++                worker_id: "contended".into(),
++                job_id: Some(job_id),
++            },
++            cancel,
++        )
++        .await
++    })
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn claimed_repair_retries_transient_recovery_lock_contention_under_same_lease() {
++    let (_dir, mut app, principal, config) = setup();
++    let decoy = enqueue(&app, &principal, "doctor", json!({}));
++    let selected = enqueue(
++        &app,
++        &principal,
++        "maintenance_repair",
++        json!({"mode":"clean"}),
++    );
++    let id = selected["id"].as_str().unwrap().to_owned();
++    let barrier = install_open_barrier(&mut app);
++    let worker = run_selected(&app, &principal, id.clone(), CancellationToken::new());
++    barrier
++        .open_pending
++        .recv_timeout(Duration::from_secs(10))
++        .expect("claimed operation never reached its library open");
++    // Hold the recovery writer lock across the first operation-open attempts,
++    // exactly like a concurrent status reader's brief Library::open.
++    let session = WriterSession::acquire(&config).unwrap();
++    barrier.lock_held.send(()).unwrap();
++    std::thread::sleep(Duration::from_millis(300));
++    drop(session);
++    let job = tokio::time::timeout(Duration::from_secs(15), worker)
++        .await
++        .unwrap()
++        .unwrap()
++        .unwrap()
++        .unwrap();
++    assert!(barrier.fired.load(Ordering::SeqCst));
++    assert_eq!(job.id, id);
++    assert_eq!(job.status, JobStatus::Succeeded);
++    assert_eq!(job.attempts, 1, "no re-claim: the lease never changed");
++    let library = Library::open(config).unwrap();
++    let events = library.job_events(&job.id).unwrap();
++    assert_eq!(
++        events
++            .iter()
++            .map(|v| v["event"].as_str().unwrap())
++            .collect::<Vec<_>>(),
++        ["queued", "start", "ok"],
++        "a single execution; the operation was never replayed"
++    );
++    assert_eq!(
++        library.job(decoy["id"].as_str().unwrap()).unwrap().status,
++        JobStatus::Queued
++    );
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn claimed_repair_contention_exhaustion_fails_truthfully_without_replay() {
++    let (_dir, mut app, principal, config) = setup();
++    let decoy = enqueue(&app, &principal, "doctor", json!({}));
++    let selected = enqueue(
++        &app,
++        &principal,
++        "maintenance_repair",
++        json!({"mode":"clean"}),
++    );
++    let id = selected["id"].as_str().unwrap().to_owned();
++    let barrier = install_open_barrier(&mut app);
++    let worker = run_selected(&app, &principal, id.clone(), CancellationToken::new());
++    barrier
++        .open_pending
++        .recv_timeout(Duration::from_secs(10))
++        .expect("claimed operation never reached its library open");
++    // Outlast the bounded retry window (100 x 20ms); the failure must stay
++    // truthful rather than flipping to success or replaying the operation.
++    let session = WriterSession::acquire(&config).unwrap();
++    barrier.lock_held.send(()).unwrap();
++    std::thread::sleep(Duration::from_millis(2600));
++    drop(session);
++    let job = tokio::time::timeout(Duration::from_secs(15), worker)
++        .await
++        .unwrap()
++        .unwrap()
++        .unwrap()
++        .unwrap();
++    assert_eq!(job.id, id);
++    assert_eq!(job.status, JobStatus::Failed);
++    assert_eq!(job.attempts, 1);
++    assert!(job.result.is_none());
++    assert_eq!(
++        job.error.as_deref(),
++        Some("another writer is active; explicit retry is available")
++    );
++    let library = Library::open(config).unwrap();
++    let events = library.job_events(&job.id).unwrap();
++    assert_eq!(
++        events
++            .iter()
++            .map(|v| v["event"].as_str().unwrap())
++            .collect::<Vec<_>>(),
++        ["queued", "start", "failed"]
++    );
++    assert_eq!(
++        library.job(decoy["id"].as_str().unwrap()).unwrap().status,
++        JobStatus::Queued
++    );
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn cancellation_during_repair_open_contention_is_truthful_and_prompt() {
++    let (_dir, mut app, principal, config) = setup();
++    let selected = enqueue(
++        &app,
++        &principal,
++        "maintenance_repair",
++        json!({"mode":"clean"}),
++    );
++    let id = selected["id"].as_str().unwrap().to_owned();
++    let barrier = install_open_barrier(&mut app);
++    let cancel = CancellationToken::new();
++    let worker = run_selected(&app, &principal, id.clone(), cancel.clone());
++    barrier
++        .open_pending
++        .recv_timeout(Duration::from_secs(10))
++        .expect("claimed operation never reached its library open");
++    let session = WriterSession::acquire(&config).unwrap();
++    barrier.lock_held.send(()).unwrap();
++    // Let a few Busy retries happen, then cancel while contention persists.
++    std::thread::sleep(Duration::from_millis(250));
++    let cancelled_at = std::time::Instant::now();
++    cancel.cancel();
++    drop(session);
++    let job = tokio::time::timeout(Duration::from_secs(15), worker)
++        .await
++        .unwrap()
++        .unwrap()
++        .unwrap()
++        .unwrap();
++    assert_eq!(job.id, id);
++    assert_eq!(job.status, JobStatus::Cancelled);
++    assert_eq!(
++        job.error.as_deref(),
++        Some("operation cancelled; committed effects are retained")
++    );
++    assert!(
++        cancelled_at.elapsed() < Duration::from_secs(2),
++        "cancellation did not wait out the retry bound"
++    );
++    assert_eq!(
++        Library::open(config).unwrap().job(&id).unwrap().status,
++        JobStatus::Cancelled
++    );
++}
+diff --git a/crates/llmbase-cli/tests/http_model_contracts.rs b/crates/llmbase-cli/tests/http_model_contracts.rs
+--- a/crates/llmbase-cli/tests/http_model_contracts.rs
++++ b/crates/llmbase-cli/tests/http_model_contracts.rs
+@@ -382,3 +382,98 @@
+     );
+     assert!(provider.requests.lock().unwrap().is_empty());
+ }
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn background_web_fix_retries_post_claim_recovery_lock_contention_with_same_job() {
++    use llmbase_core::store::WriterSession;
++    use std::sync::atomic::{AtomicBool, Ordering};
++    use std::sync::{Mutex as StdMutex, mpsc};
++    let provider = Provider::new(&[]).await;
++    let root = TempDir::new().unwrap();
++    let mut config = LibraryConfig::load(root.path(), "http-model").unwrap();
++    config.settings["entities"] = json!({"enabled":true});
++    fs::create_dir_all(&config.concepts).unwrap();
++    for name in ["Alpha", "Beta", "Gamma"] {
++        fs::write(config.concepts.join(format!("{}.md",name.to_lowercase())),format!("---\ntitle: {name}\nsummary: knowledge evidence\ntags: [{name}]\nunknown: 42\n---\nThis is substantive accepted article content about {name}, with enough detail to preserve it during cleanup. 原典𠮷.\n")).unwrap();
++    }
++    let mut library = Library::open(config.clone()).unwrap();
++    library.rebuild_metadata().unwrap();
++    let other = library.enqueue_job("doctor", json!({}), 3).unwrap();
++    drop(library);
++    // Fire the barrier once, exactly when the claimed repair operation is
++    // about to open its library handle (post-claim, pre-operation).
++    let fired = Arc::new(AtomicBool::new(false));
++    let (open_tx, open_rx) = mpsc::channel::<()>();
++    let (held_tx, held_rx) = mpsc::channel::<()>();
++    let held_rx = Arc::new(StdMutex::new(held_rx));
++    let mut application = Application::new(vec![config.clone()]).unwrap();
++    application.set_operation_open_barrier(Some({
++        let fired = fired.clone();
++        Arc::new(move || {
++            if !fired.swap(true, Ordering::SeqCst) {
++                let _ = open_tx.send(());
++                let _ = held_rx
++                    .lock()
++                    .unwrap()
++                    .recv_timeout(Duration::from_secs(30));
++            }
++        })
++    }));
++    let gateway = Gateway::new(application, "http-model".into());
++    let grant =
++        AuthGrant::new("fixture-owner-model-token", Principal::local("http-model")).unwrap();
++    let app = router(
++        HttpState::new(gateway, Surface::Web, true, vec![grant]).with_models(Some(AskModels {
++            generation: provider.client.clone(),
++            embedding: None,
++        })),
++    );
++    let (status, value) = call(app, "POST", "/api/lint/fix", json!({}), true, None).await;
++    assert_eq!(status, StatusCode::OK, "{value}");
++    assert_eq!(value["status"], "started");
++    let id = value["job_id"].as_str().unwrap().to_owned();
++    open_rx
++        .recv_timeout(Duration::from_secs(10))
++        .expect("claimed operation never reached its library open");
++    // A concurrent status reader holds the brief recovery writer lock across
++    // the first operation-open attempts, then releases it.
++    let session = WriterSession::acquire(&config).unwrap();
++    held_tx.send(()).unwrap();
++    std::thread::sleep(Duration::from_millis(300));
++    drop(session);
++    let mut complete = false;
++    let mut last_state = String::new();
++    for _ in 0..100 {
++        if let Ok(library) = Library::open(config.clone()) {
++            let job = library.job(&id).unwrap();
++            last_state = format!("{job:?}");
++            if job.status == llmbase_core::jobs::JobStatus::Succeeded {
++                assert_eq!(job.attempts, 1, "same lease; the job was never re-claimed");
++                assert_eq!(
++                    library.job(&other.id).unwrap().status,
++                    llmbase_core::jobs::JobStatus::Queued
++                );
++                complete = true;
++                break;
++            }
++            assert!(
++                !matches!(
++                    job.status,
++                    llmbase_core::jobs::JobStatus::Failed | llmbase_core::jobs::JobStatus::Partial
++                ),
++                "{job:?}"
++            );
++        }
++        tokio::time::sleep(Duration::from_millis(20)).await;
++    }
++    assert!(complete, "background repair did not complete: {last_state}");
++    assert!(fired.load(Ordering::SeqCst));
++    let result: Value =
++        serde_json::from_slice(&fs::read(config.meta.join("last_fix.json")).unwrap()).unwrap();
++    assert_eq!(
++        result,
++        json!({"status":"completed","fixes":[],"fix_count":0}),
++        "exactly one accepted repair outcome; nothing replayed"
++    );
++    assert!(provider.requests.lock().unwrap().is_empty());
++}
