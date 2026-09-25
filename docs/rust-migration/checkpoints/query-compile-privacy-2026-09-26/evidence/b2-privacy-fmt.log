@@ -1,0 +1,13 @@
+Diff in /root/llmbase-rust-migration-20260920/b2-privacy-source/crates/llmbase-core/tests/compat_query.rs:367:
+             },
+         );
+         assert!(matches!(result, Err(Error::Scope)), "{flags}");
+[31m-        assert_eq!(fs::read(cfg.concepts.join("a.md")).unwrap(), before, "{flags}");
+[m[32m+        assert_eq!(
+[m[32m+            fs::read(cfg.concepts.join("a.md")).unwrap(),
+[m[32m+            before,
+[m[32m+            "{flags}"
+[m[32m+        );
+[m     }
+     // Control: an explicitly public target still accepts promotion merges.
+     let (_dir, cfg) = fixture();

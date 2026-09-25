@@ -1,0 +1,27 @@
+Primary-agent review — 2026-09-26
+Authorization: user expressly permits primary-agent review of delegated work.
+Scope: the four-file patch, original archived files, added real-entrypoint tests,
+raw failing/passing logs, independent test results and exact source manifest.
+
+Disposition: accepted for the bounded query/compile visibility task; no HIGH
+finding remains in the reviewed delta. No claim of whole-migration acceptance.
+
+Checked:
+- Query helper delegates to the existing fail-closed classifier at every caller.
+- Promotion reaches write_article_guarded(public_only=true); malformed target
+  regressions reach the actual compile guard and preserve denied source bytes.
+- Derivation uses both source and target classification and the order
+  private > internal > public. Existing private metadata remains restrictive.
+- Public false/null/absent controls and existing behavior remain covered.
+- New query/compile regressions fail baseline source; fixed suites pass.
+- No existing assertions were weakened; changes are limited to four owned files.
+- Remote/local 108-file manifest matches exactly; archive/patch replay matches.
+- Required frontend typecheck and Python import checks returned zero.
+
+Initial query baseline omission and test formatting failure were corrected by
+the implementer and verified. Implementation process exit 124 is documented;
+all acceptance results come from concrete artifacts and independent reruns.
+No feature implementation was performed by the reviewer.
+Staged package reviewed: only this checkpoint directory is staged. Diff whitespace
+checks pass outside raw logs; four original Cargo logs retain their trailing
+blank line at EOF so the stored evidence is not silently rewritten.

@@ -1,0 +1,40 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b2-privacy-source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.23s
+     Running tests/compat_compile.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_compile-09fb40f945ea7aed)
+
+running 9 tests
+test legacy_raw_metadata_is_journaled_while_body_bytes_and_original_revision_are_retained ... ok
+test pure_tagged_parsing_preserves_legacy_order_fields_and_bare_sections ... ok
+test native_merge_preserves_exact_unchanged_bytes_and_legacy_sources_tags_rules ... ok
+test malformed_raw_private_and_visibility_flags_fail_closed ... FAILED
+test read_helpers_keep_legacy_paths_without_creating_index_state ... ok
+test raw_inheritance_never_downgrades_existing_target_restrictions ... FAILED
+test native_alias_and_cjk_resolution_reuses_existing_article ... ok
+test raw_guard_rejects_changed_source_and_carries_private_visibility_into_article ... ok
+test rebuild_returns_legacy_shape_with_public_projection_and_unknown_backlinks ... ok
+
+failures:
+
+---- malformed_raw_private_and_visibility_flags_fail_closed stdout ----
+
+thread 'malformed_raw_private_and_visibility_flags_fail_closed' (3253462) panicked at crates/llmbase-core/tests/compat_compile.rs:251:9:
+assertion `left == right` failed: quoted-false
+  left: "public"
+ right: "private"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- raw_inheritance_never_downgrades_existing_target_restrictions stdout ----
+
+thread 'raw_inheritance_never_downgrades_existing_target_restrictions' (3253467) panicked at crates/llmbase-core/tests/compat_compile.rs:284:5:
+assertion `left == right` failed
+  left: String("internal")
+ right: Number(0)
+
+
+failures:
+    malformed_raw_private_and_visibility_flags_fail_closed
+    raw_inheritance_never_downgrades_existing_target_restrictions
+
+test result: FAILED. 7 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_compile`

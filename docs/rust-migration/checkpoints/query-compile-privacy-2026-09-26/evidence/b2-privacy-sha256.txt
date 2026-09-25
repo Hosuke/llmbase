@@ -1,0 +1,4 @@
+d76bf5672c4d8de1f046071661770d1ca68633533d0bcbdc82346c2ef2e7b748  crates/llmbase-core/src/compat_query.rs
+069f0fc3a4e18fe1d1277ef156eb425a5747d25686bdf25b5dfded44ea2c2583  crates/llmbase-core/src/compat_compile.rs
+0e5a99b5d660f7edd4d3c926c9aca5fb852d7f88564d10e876fee809034eb464  crates/llmbase-core/tests/compat_query.rs
+28bafe87f5b5af9c5a734b15da4c866aedb1c43bd5867295a2fcc79ee5410bd7  crates/llmbase-core/tests/compat_compile.rs

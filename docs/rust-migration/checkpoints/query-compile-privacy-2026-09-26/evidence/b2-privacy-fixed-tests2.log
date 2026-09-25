@@ -1,0 +1,35 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b2-privacy-source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.83s
+     Running tests/compat_compile.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_compile-09fb40f945ea7aed)
+
+running 9 tests
+test legacy_raw_metadata_is_journaled_while_body_bytes_and_original_revision_are_retained ... ok
+test pure_tagged_parsing_preserves_legacy_order_fields_and_bare_sections ... ok
+test native_merge_preserves_exact_unchanged_bytes_and_legacy_sources_tags_rules ... ok
+test raw_inheritance_never_downgrades_existing_target_restrictions ... ok
+test read_helpers_keep_legacy_paths_without_creating_index_state ... ok
+test native_alias_and_cjk_resolution_reuses_existing_article ... ok
+test raw_guard_rejects_changed_source_and_carries_private_visibility_into_article ... ok
+test rebuild_returns_legacy_shape_with_public_projection_and_unknown_backlinks ... ok
+test malformed_raw_private_and_visibility_flags_fail_closed ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.78s
+
+     Running tests/compat_query.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_query-d3264577599964eb)
+
+running 12 tests
+test corrupt_legacy_surrogates_are_repaired_and_static_summary_is_current ... ok
+test deep_actual_sequence_and_consulted_titles ... ok
+test callback_failure_is_error_and_no_default_save_side_effect ... ok
+test prefilter_native_unicode_and_live_tokens_keep_ranking_and_fallback ... ok
+test malformed_private_and_visibility_flags_fail_closed_across_query_paths ... ok
+test private_and_stale_static_index_never_enter_default_context ... ok
+test malformed_truncated_and_declined_judges_never_write ... ok
+test shallow_sequence_and_journal_fileback_preserve_originals ... ok
+test accepted_promotion_uses_shared_merge_and_real_metadata_rebuild ... ok
+test source_edit_during_generation_prevents_filing ... ok
+test private_target_and_mid_judge_private_change_fail_closed ... ok
+test public_only_promotion_rejects_non_public_target_before_mutation ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+

@@ -1,0 +1,317 @@
+diff --git a/crates/llmbase-core/src/compat_query.rs b/crates/llmbase-core/src/compat_query.rs
+--- a/crates/llmbase-core/src/compat_query.rs
++++ b/crates/llmbase-core/src/compat_query.rs
+@@ -23,8 +23,8 @@
+         .ok_or_else(|| Error::Invalid(format!("{key} must be a string")))
+ }
+ fn public(v: &Value) -> bool {
+-    v.get("private") != Some(&json!(true))
+-        && v.get("visibility").is_none_or(|value| value == "public")
++    // Share the fail-closed policy: malformed private/visibility flags deny publicity.
++    crate::visibility::is_public(v)
+ }
+ fn take(s: &str, n: usize) -> String {
+     s.chars().take(n).collect()
+diff --git a/crates/llmbase-core/src/compat_compile.rs b/crates/llmbase-core/src/compat_compile.rs
+--- a/crates/llmbase-core/src/compat_compile.rs
++++ b/crates/llmbase-core/src/compat_compile.rs
+@@ -423,13 +423,7 @@
+     let new_content = article.get("content").and_then(Value::as_str).unwrap_or("");
+     let (mut metadata, content, mut changed) = if let Some(relative) = &target {
+         let original = read(&checked(config, "compiled", relative)?)?;
+-        if public_only
+-            && (original.metadata.get("private") == Some(&json!(true))
+-                || original
+-                    .metadata
+-                    .get("visibility")
+-                    .is_some_and(|value| value != "public"))
+-        {
++        if public_only && !crate::visibility::is_public(&original.metadata) {
+             return Err(Error::Scope);
+         }
+         expected = Some(hash(original.original.as_bytes()));
+@@ -504,20 +498,19 @@
+         if raw.content_hash != wanted {
+             return Err(Error::Conflict("compile raw source changed".into()));
+         }
+-        let visibility = if raw.metadata.get("private") == Some(&json!(true)) {
++        // Classify both sides with the shared fail-closed policy and retain the
++        // strongest visibility; inheritance must never downgrade restrictions.
++        let incoming = crate::visibility::visibility(&raw.metadata);
++        let old = crate::visibility::visibility(&metadata);
++        let strongest = if incoming == "private" || old == "private" {
+             "private"
++        } else if incoming == "internal" || old == "internal" {
++            "internal"
+         } else {
+-            raw.metadata
+-                .get("visibility")
+-                .and_then(Value::as_str)
+-                .unwrap_or("public")
++            "public"
+         };
+-        let old = metadata
+-            .get("visibility")
+-            .and_then(Value::as_str)
+-            .unwrap_or("public");
+-        if visibility == "private" || (visibility == "internal" && old == "public") {
+-            metadata["visibility"] = json!(visibility);
++        if strongest != old {
++            metadata["visibility"] = json!(strongest);
+             changed = true;
+         }
+         raw_guard = Some(raw);
+diff --git a/crates/llmbase-core/tests/compat_query.rs b/crates/llmbase-core/tests/compat_query.rs
+--- a/crates/llmbase-core/tests/compat_query.rs
++++ b/crates/llmbase-core/tests/compat_query.rs
+@@ -255,3 +255,136 @@
+     assert_eq!(rows["value"][0]["other"], r"\ud800");
+     assert_eq!(rows["value"][0]["pair"], "𠮷");
+ }
++
++#[test]
++fn malformed_private_and_visibility_flags_fail_closed_across_query_paths() {
++    let (_dir, cfg) = fixture();
++    let adversarial = [
++        "private: yes\n",
++        "private: on\n",
++        "private: \"false\"\n",
++        "private: \"yes\"\n",
++        "private: \"\"\n",
++        "private: 0\n",
++        "private: []\n",
++        "private: {}\n",
++        "visibility: 0\n",
++        "visibility: PUBLIC\n",
++        "visibility: internal\n",
++    ];
++    let mut slugs = Vec::new();
++    for (i, flags) in adversarial.iter().enumerate() {
++        let slug = format!("adv{i}");
++        fs::write(
++            cfg.concepts.join(format!("{slug}.md")),
++            format!("---\ntitle: LEAKTITLE{i}\nsummary: leak summary {i}\n{flags}---\n\nknowledge evidence SECRETTOKEN{i}"),
++        )
++        .unwrap();
++        slugs.push(slug);
++    }
++    for (j, flags) in ["private: false\n", "private:\n", ""].iter().enumerate() {
++        let slug = format!("ctl{j}");
++        fs::write(
++            cfg.concepts.join(format!("{slug}.md")),
++            format!("---\ntitle: Control {j}\nsummary: control summary {j}\n{flags}---\n\nknowledge evidence CONTROLTOKEN{j}"),
++        )
++        .unwrap();
++        slugs.push(slug);
++    }
++    // A stale static index claims every slug is public and retains leaked text.
++    let stale: Vec<Value> = slugs
++        .iter()
++        .enumerate()
++        .map(|(i, slug)| {
++            json!({"slug":slug,"title":format!("STALETITLE{i}"),"summary":format!("STALESECRET{i}")})
++        })
++        .collect();
++    fs::write(cfg.meta.join("index.json"), Value::Array(stale).to_string()).unwrap();
++
++    // gather: only controls enter the default context payload.
++    let serialized = gather(&cfg, "knowledge evidence").unwrap().to_string();
++    assert!(!serialized.contains("SECRETTOKEN"));
++    assert!(!serialized.contains("LEAKTITLE"));
++    for j in 0..3 {
++        assert!(serialized.contains(&format!("CONTROLTOKEN{j}")));
++    }
++
++    // load_index: stale public rows cannot override live non-public metadata.
++    let rows = run(&cfg, &json!({"mode":"load_index"}), defaults).unwrap();
++    let rows = rows["value"].as_array().unwrap();
++    assert_eq!(rows.len(), 3);
++    assert!(
++        rows.iter()
++            .all(|row| row["slug"].as_str().unwrap().starts_with("ctl"))
++    );
++    assert!(!Value::Array(rows.clone()).to_string().contains("STALE"));
++
++    // deep run: selector/answer callback payloads carry no non-public text,
++    // even when the host selector explicitly names an adversarial title.
++    let mut payloads = Vec::new();
++    let result = run(
++        &cfg,
++        &json!({"mode":"deep","question":"knowledge evidence","return_context":true}),
++        |stage, payload| {
++            payloads.push(payload.clone());
++            match stage {
++                "selector" => Ok(json!("Control 0\nControl 1\nControl 2\nLEAKTITLE0")),
++                "answer" => Ok(json!("actual answer")),
++                _ => Ok(Value::Null),
++            }
++        },
++    )
++    .unwrap();
++    assert_eq!(result["value"]["answer"], "actual answer");
++    let payloads = json!(payloads).to_string();
++    assert!(!payloads.contains("SECRETTOKEN"));
++    assert!(!payloads.contains("LEAKTITLE"));
++    assert!(!payloads.contains("STALE"));
++    for j in 0..3 {
++        assert!(payloads.contains(&format!("CONTROLTOKEN{j}")));
++    }
++}
++
++#[test]
++fn public_only_promotion_rejects_non_public_target_before_mutation() {
++    for flags in [
++        "private: \"false\"\n",
++        "private: 0\n",
++        "private: []\n",
++        "visibility: 0\n",
++        "visibility: internal\n",
++    ] {
++        let (_dir, cfg) = fixture();
++        article(&cfg, "a", "Alpha", flags);
++        let before = fs::read(cfg.concepts.join("a.md")).unwrap();
++        let result = run(
++            &cfg,
++            &json!({"mode":"promote","question":"What?","answer":"answer","consulted":[],"index":[]}),
++            |_, _| {
++                Ok(
++                    json!({"decision":{"promote":true,"slug":"a","title":"Alpha","content":"leak"},"headers":[["English",""]]}),
++                )
++            },
++        );
++        assert!(matches!(result, Err(Error::Scope)), "{flags}");
++        assert_eq!(
++            fs::read(cfg.concepts.join("a.md")).unwrap(),
++            before,
++            "{flags}"
++        );
++    }
++    // Control: an explicitly public target still accepts promotion merges.
++    let (_dir, cfg) = fixture();
++    article(&cfg, "a", "Alpha", "private: false\n");
++    let result = run(
++        &cfg,
++        &json!({"mode":"promote","question":"What?","answer":"answer","consulted":[],"index":[]}),
++        |_, _| {
++            Ok(
++                json!({"decision":{"promote":true,"slug":"a","title":"Alpha","content":"leak"},"headers":[["English",""]]}),
++            )
++        },
++    )
++    .unwrap();
++    assert_eq!(result["value"]["promoted"], true);
++}
+diff --git a/crates/llmbase-core/tests/compat_compile.rs b/crates/llmbase-core/tests/compat_compile.rs
+--- a/crates/llmbase-core/tests/compat_compile.rs
++++ b/crates/llmbase-core/tests/compat_compile.rs
+@@ -214,3 +214,110 @@
+         serde_json::from_slice(&fs::read(cfg.meta.join("backlinks.json")).unwrap()).unwrap();
+     assert_eq!(backlinks["missing-target"], json!(["public"]));
+ }
++
++#[test]
++fn malformed_raw_private_and_visibility_flags_fail_closed() {
++    let (_dir, cfg) = fixture();
++    let cases = [
++        ("quoted-false", "private: \"false\"\n", "private"),
++        ("quoted-yes", "private: \"yes\"\n", "private"),
++        ("zero", "private: 0\n", "private"),
++        ("empty", "private: \"\"\n", "private"),
++        ("list", "private: []\n", "private"),
++        ("map", "private: {}\n", "private"),
++        ("yaml-on", "private: on\n", "private"),
++        ("vis-zero", "visibility: 0\n", "private"),
++        ("vis-caps", "visibility: PUBLIC\n", "private"),
++        ("internal", "visibility: internal\n", "internal"),
++        ("ctl-false", "private: false\n", "public"),
++        ("ctl-null", "private:\n", "public"),
++        ("ctl-public", "visibility: public\n", "public"),
++        ("ctl-absent", "", "public"),
++    ];
++    for (slug, flags, expected) in cases {
++        let raw = format!("---\ntitle: Raw {slug}\n{flags}---\nRaw body {slug}.");
++        fs::write(cfg.raw.join("book/index.md"), &raw).unwrap();
++        let guard = json!({"relative":"book/index.md","content_hash":hash(raw.as_bytes())});
++        let result = execute(
++            &cfg,
++            "compat_compile_write",
++            &json!({"article":article(&format!("derived-{slug}"),"Derived body."),"headers":headers(),"raw_source":guard}),
++        )
++        .unwrap();
++        assert_eq!(result["value"]["changed"], json!(true), "{slug}");
++        let doc =
++            Document::parse(fs::read(cfg.concepts.join(format!("derived-{slug}.md"))).unwrap())
++                .unwrap();
++        assert_eq!(
++            llmbase_core::visibility::visibility(&doc.metadata),
++            expected,
++            "{slug}"
++        );
++        if expected == "public" {
++            assert!(doc.metadata.get("visibility").is_none(), "{slug}");
++        } else {
++            assert_eq!(doc.metadata["visibility"], json!(expected), "{slug}");
++        }
++    }
++}
++
++#[test]
++fn raw_inheritance_never_downgrades_existing_target_restrictions() {
++    let (_dir, cfg) = fixture();
++    // Malformed visibility on the live target classifies as private; an internal
++    // raw source must not downgrade it to internal.
++    fs::write(
++        cfg.concepts.join("target.md"),
++        "---\ntitle: Target\nvisibility: 0\n---\nOld body.",
++    )
++    .unwrap();
++    let raw = "---\nvisibility: internal\n---\nInternal source.";
++    fs::write(cfg.raw.join("book/index.md"), raw).unwrap();
++    let guard = json!({"relative":"book/index.md","content_hash":hash(raw.as_bytes())});
++    execute(
++        &cfg,
++        "compat_compile_write",
++        &json!({"article":article("target","New expanded body."),"headers":headers(),"raw_source":guard}),
++    )
++    .unwrap();
++    let doc = Document::parse(fs::read(cfg.concepts.join("target.md")).unwrap()).unwrap();
++    assert_eq!(doc.metadata["visibility"], json!(0));
++    assert_eq!(
++        llmbase_core::visibility::visibility(&doc.metadata),
++        "private"
++    );
++    // Upgrade control: internal target + private raw becomes private.
++    fs::write(
++        cfg.concepts.join("up.md"),
++        "---\ntitle: Up\nvisibility: internal\n---\nOld body.",
++    )
++    .unwrap();
++    let raw = "---\nprivate: true\n---\nPrivate source.";
++    fs::write(cfg.raw.join("book/index.md"), raw).unwrap();
++    let guard = json!({"relative":"book/index.md","content_hash":hash(raw.as_bytes())});
++    execute(
++        &cfg,
++        "compat_compile_write",
++        &json!({"article":article("up","New expanded body."),"headers":headers(),"raw_source":guard}),
++    )
++    .unwrap();
++    let doc = Document::parse(fs::read(cfg.concepts.join("up.md")).unwrap()).unwrap();
++    assert_eq!(doc.metadata["visibility"], json!("private"));
++    // Retention control: internal target + public raw stays internal.
++    fs::write(
++        cfg.concepts.join("keep.md"),
++        "---\ntitle: Keep\nvisibility: internal\n---\nOld body.",
++    )
++    .unwrap();
++    let raw = "---\ntitle: Raw\n---\nPublic source.";
++    fs::write(cfg.raw.join("book/index.md"), raw).unwrap();
++    let guard = json!({"relative":"book/index.md","content_hash":hash(raw.as_bytes())});
++    execute(
++        &cfg,
++        "compat_compile_write",
++        &json!({"article":article("keep","New expanded body."),"headers":headers(),"raw_source":guard}),
++    )
++    .unwrap();
++    let doc = Document::parse(fs::read(cfg.concepts.join("keep.md")).unwrap()).unwrap();
++    assert_eq!(doc.metadata["visibility"], json!("internal"));
++}

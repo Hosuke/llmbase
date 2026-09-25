@@ -1,0 +1,19 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
+     Running tests/compat_query.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_query-d3264577599964eb)
+
+running 12 tests
+test corrupt_legacy_surrogates_are_repaired_and_static_summary_is_current ... ok
+test deep_actual_sequence_and_consulted_titles ... ok
+test callback_failure_is_error_and_no_default_save_side_effect ... ok
+test prefilter_native_unicode_and_live_tokens_keep_ranking_and_fallback ... ok
+test private_and_stale_static_index_never_enter_default_context ... ok
+test malformed_private_and_visibility_flags_fail_closed_across_query_paths ... ok
+test malformed_truncated_and_declined_judges_never_write ... ok
+test shallow_sequence_and_journal_fileback_preserve_originals ... ok
+test accepted_promotion_uses_shared_merge_and_real_metadata_rebuild ... ok
+test source_edit_during_generation_prevents_filing ... ok
+test private_target_and_mid_judge_private_change_fail_closed ... ok
+test public_only_promotion_rejects_non_public_target_before_mutation ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+

@@ -1,0 +1,1 @@
+PASS: 4 archived before hashes, git apply --check/apply, 4 after hashes, and current working files match.
