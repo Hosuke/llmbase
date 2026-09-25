@@ -1,0 +1,53 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b4-atomic-journal-pretask/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.22s
+     Running tests/compat_io.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_io-d492e9444020b5cd)
+
+running 7 tests
+test explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape ... FAILED
+test rejected_writer_lock_replacement_keeps_inode_and_fencing ... ok
+test case_aliases_of_protected_names_are_scope_refused ... FAILED
+test parent_symlink_alias_cannot_bypass_protected_paths ... FAILED
+test engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects ... FAILED
+test standalone_atomic_write_is_durable_exact_and_fenced ... ok
+test standalone_write_keeps_existing_contract_without_library_ancestor ... ok
+
+failures:
+
+---- explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape stdout ----
+
+thread 'explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape' (3311085) panicked at crates/llmbase-core/tests/compat_io.rs:45:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- case_aliases_of_protected_names_are_scope_refused stdout ----
+
+thread 'case_aliases_of_protected_names_are_scope_refused' (3311083) panicked at crates/llmbase-core/tests/compat_io.rs:325:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+
+---- parent_symlink_alias_cannot_bypass_protected_paths stdout ----
+
+thread 'parent_symlink_alias_cannot_bypass_protected_paths' (3311086) panicked at crates/llmbase-core/tests/compat_io.rs:229:5:
+assertion failed: matches!(compat_io::atomic_write(&link, b"new", Some(&config)),
+    Err(llmbase_core::Error::Scope))
+
+---- engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects stdout ----
+
+thread 'engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects' (3311084) panicked at crates/llmbase-core/tests/compat_io.rs:141:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+
+
+failures:
+    case_aliases_of_protected_names_are_scope_refused
+    engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects
+    explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape
+    parent_symlink_alias_cannot_bypass_protected_paths
+
+test result: FAILED. 3 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_io`

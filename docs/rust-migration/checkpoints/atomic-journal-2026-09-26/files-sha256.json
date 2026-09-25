@@ -1,0 +1,18 @@
+{
+  "crates/llmbase-core/src/compat_io.rs": {
+    "before": "937d1d37df8fdbb5f5e3de8f398781b8fde74c9bd98118a189477b8b4dc8f0da",
+    "after": "2222ed34bff6fcc1a650297d91314287153695523a56d58967d697a3d5e66996"
+  },
+  "crates/llmbase-core/src/recovery.rs": {
+    "before": "8bf553c2955b993667bc6ea6a974d28abb5d87c5b400b213ddc5482623590689",
+    "after": "be2c41bdca878e1c9cb9940210973ebf4a670906a4e7bbf12391ceee8d788d6a"
+  },
+  "crates/llmbase-core/src/store.rs": {
+    "before": "ee0f9c6231f1f83048ea64e1df037cae94cc4aa36623b98e8196a3e30c4d71f5",
+    "after": "f21534d3e834a22f06fe37c77a83b53beb91687e4ecf6fcadb906040984ac2ab"
+  },
+  "crates/llmbase-core/tests/compat_io.rs": {
+    "before": "0a16b09e9e3cc17697f1e0f1f214097e466343f93d986f3231df451fbb0df78c",
+    "after": "b7de0ec714a49465b1f2c8b36cbe5480c4e934d962f49c8413fb8e892dbe248f"
+  }
+}

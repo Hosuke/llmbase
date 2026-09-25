@@ -1,0 +1,933 @@
+diff --git a/crates/llmbase-core/src/compat_io.rs b/crates/llmbase-core/src/compat_io.rs
+--- a/crates/llmbase-core/src/compat_io.rs
++++ b/crates/llmbase-core/src/compat_io.rs
+@@ -1,6 +1,6 @@
+ //! Local compatibility file transport. Callers provide an explicit configured
+ //! library or a standalone path; this module never guesses a library ancestor.
+-use crate::{Error, LibraryConfig, Result, document::hash, store::WriterSession};
++use crate::{Error, Library, LibraryConfig, Result, document::hash, store::WriterSession};
+ use fs2::FileExt;
+ use serde_json::{Value, json};
+ use std::{
+@@ -28,6 +28,54 @@
+         .file_name()
+         .ok_or_else(|| Error::Invalid("path has no filename".into()))?;
+     Ok(resolve_path(parent)?.join(name))
++}
++
++/// The per-file coordination lock spelled beside any destination, shared by
++/// standalone writes, journaled writes and journal recovery.
++pub(crate) fn file_lock_path(destination: &Path) -> Result<PathBuf> {
++    let parent = destination
++        .parent()
++        .ok_or_else(|| Error::Invalid("file path is required".into()))?;
++    let name = destination
++        .file_name()
++        .ok_or_else(|| Error::Invalid("file path is required".into()))?;
++    Ok(parent.join(format!(".{}.llmbase.lock", name.to_string_lossy())))
++}
++
++/// Engine-owned and coordination artifacts are never valid destinations. The
++/// destination is compared after parent symlink resolution, so an alias into
++/// meta cannot bypass this. Replacing the database corrupts persistent state;
++/// renaming over the held writer lock swaps its inode and defeats flock
++/// coordination. The per-write spellings this module generates next to every
++/// destination — `.<name>.llmbase.lock` and `.llmbase-<id>.stage` — are
++/// reserved within configured roots, so a direct write can never replace a
++/// live lock or collide with a stage. ASCII case-insensitive comparison is
++/// applied uniformly on every platform: on case-insensitive filesystems
++/// `LLMBASE.SQLITE3` is the same inode as `llmbase.sqlite3`, so folding case
++/// reserves those aliases everywhere, including Linux CI. The spelled meta
++/// parent is checked as well so recovery replay stays safe even if a stored
++/// path was built before a meta symlink swap.
++pub(crate) fn reserved_destination(config: &LibraryConfig, destination: &Path) -> Result<bool> {
++    let meta = resolve_path(&config.meta)?;
++    let Some(name) = destination.file_name() else {
++        return Ok(false);
++    };
++    let name = name.to_string_lossy();
++    let parent = destination.parent();
++    let engine_owned = (parent == Some(meta.as_path()) || parent == Some(config.meta.as_path()))
++        && [
++            "llmbase.sqlite3",
++            "llmbase.sqlite3-wal",
++            "llmbase.sqlite3-shm",
++            "llmbase.sqlite3-journal",
++            "llmbase.writer.lock",
++        ]
++        .iter()
++        .any(|reserved| name.eq_ignore_ascii_case(reserved));
++    let folded = name.to_ascii_lowercase();
++    Ok(engine_owned
++        || (folded.starts_with('.') && folded.ends_with(".llmbase.lock"))
++        || (folded.starts_with(".llmbase-") && folded.ends_with(".stage")))
+ }
+ 
+ pub fn atomic_write(path: &Path, bytes: &[u8], config: Option<&LibraryConfig>) -> Result<Value> {
+@@ -39,61 +87,54 @@
+         .file_name()
+         .ok_or_else(|| Error::Invalid("file path is required".into()))?;
+     let destination = resolve_path(parent)?.join(name);
++    let mut journal_root: Option<(&'static str, PathBuf)> = None;
+     if let Some(config) = config {
+-        let mut inside = false;
+-        for root in [&config.raw, &config.concepts, &config.outputs, &config.meta] {
+-            if destination.starts_with(resolve_path(root)?) {
+-                inside = true;
++        for (key, root) in [
++            ("raw", &config.raw),
++            ("concepts", &config.concepts),
++            ("outputs", &config.outputs),
++            ("meta", &config.meta),
++        ] {
++            let resolved = resolve_path(root)?;
++            if destination.starts_with(&resolved) {
++                journal_root = Some((key, resolved));
+                 break;
+             }
+         }
+-        if !inside {
++        if journal_root.is_none() {
+             return Err(Error::Scope);
+         }
+-        // Engine-owned and coordination artifacts are never valid destinations.
+-        // The destination is compared after parent symlink resolution, so an
+-        // alias into meta cannot bypass this. Replacing the database corrupts
+-        // persistent state; renaming over the held writer lock swaps its inode
+-        // and defeats flock coordination. The per-write spellings this module
+-        // generates next to every destination — `.<name>.llmbase.lock` and
+-        // `.llmbase-<id>.stage` — are reserved within configured roots, so a
+-        // direct write can never replace a live lock or collide with a stage.
+         // Refusal happens before any session, directory, lock or stage is made.
+-        let meta = resolve_path(&config.meta)?;
+-        let name = name.to_string_lossy();
+-        // ASCII case-insensitive comparison, applied uniformly on every
+-        // platform: on case-insensitive filesystems `LLMBASE.SQLITE3` is the
+-        // same inode as `llmbase.sqlite3`, so a case-sensitive rule lets a
+-        // mixed-case alias replace the live database or writer lock. Folding
+-        // case here reserves those aliases everywhere, including Linux CI.
+-        let engine_owned = destination.parent() == Some(meta.as_path())
+-            && [
+-                "llmbase.sqlite3",
+-                "llmbase.sqlite3-wal",
+-                "llmbase.sqlite3-shm",
+-                "llmbase.sqlite3-journal",
+-                "llmbase.writer.lock",
+-            ]
+-            .iter()
+-            .any(|reserved| name.eq_ignore_ascii_case(reserved));
+-        let folded = name.to_ascii_lowercase();
+-        if engine_owned
+-            || (folded.starts_with('.') && folded.ends_with(".llmbase.lock"))
+-            || (folded.starts_with(".llmbase-") && folded.ends_with(".stage"))
++        if reserved_destination(config, &destination)? {
++            return Err(Error::Scope);
++        }
++        // Journaled writes never replace a final-component symlink: the
++        // before-image would otherwise capture an external referent's bytes
++        // and the rename would silently swap the link. Parent aliases may
++        // still resolve into permitted roots above. Standalone writes keep
++        // the replace-the-link behavior.
++        if let Ok(meta) = fs::symlink_metadata(&destination)
++            && meta.file_type().is_symlink()
+         {
+             return Err(Error::Scope);
+         }
+     }
+     let _writer = config.map(WriterSession::acquire).transpose()?;
++    // The explicit-library path journals through the real core database.
++    // Opening it under the shared lease also replays any pending intents
++    // before this new write is authorized.
++    let library = match config {
++        Some(config) => Some(Library::open(config.clone())?),
++        None => None,
++    };
+     let parent = destination.parent().unwrap();
+     fs::create_dir_all(parent)?;
+-    let lock_path = parent.join(format!(".{}.llmbase.lock", name.to_string_lossy()));
+     let lock = OpenOptions::new()
+         .read(true)
+         .write(true)
+         .create(true)
+         .truncate(false)
+-        .open(lock_path)?;
++        .open(file_lock_path(&destination)?)?;
+     FileExt::try_lock_exclusive(&lock).map_err(|e| {
+         if e.kind() == std::io::ErrorKind::WouldBlock {
+             Error::Busy
+@@ -101,6 +142,41 @@
+             e.into()
+         }
+     })?;
++    // The per-file lock is held before the intent is committed, so a Busy
++    // refusal can never leave a new pending write that later takes effect.
++    let intent_id = match (&library, &journal_root) {
++        (Some(library), Some((root_key, root_path))) => {
++            if let Ok(meta) = fs::symlink_metadata(&destination)
++                && meta.file_type().is_symlink()
++            {
++                return Err(Error::Scope);
++            }
++            let before = match fs::read(&destination) {
++                Ok(bytes) => Some(bytes),
++                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
++                Err(e) => return Err(e.into()),
++            };
++            let relative = destination
++                .strip_prefix(root_path)
++                .map_err(|_| Error::Scope)?
++                .to_str()
++                .ok_or_else(|| Error::Invalid("non-UTF-8 library path cannot be journaled".into()))?
++                .to_owned();
++            if relative.is_empty() {
++                return Err(Error::Invalid("file path is required".into()));
++            }
++            let intent = crate::recovery::JournalIntent {
++                id: Uuid::new_v4().to_string(),
++                root: (*root_key).into(),
++                relative,
++                before,
++                after: bytes.to_vec(),
++            };
++            library.record_journal(&intent)?;
++            Some(intent.id)
++        }
++        _ => None,
++    };
+     let temporary = parent.join(format!(".llmbase-{}.stage", Uuid::new_v4()));
+     let result = (|| -> Result<()> {
+         let mut options = OpenOptions::new();
+@@ -121,9 +197,14 @@
+         let _ = fs::remove_file(&temporary);
+     }
+     result?;
+-    Ok(
+-        json!({"path":destination,"content_hash":hash(bytes),"bytes":bytes.len(),
++    if let (Some(library), Some(intent_id)) = (&library, &intent_id) {
++        library.mark_journal_applied(intent_id)?;
++    }
++    let mut receipt = json!({"path":destination,"content_hash":hash(bytes),"bytes":bytes.len(),
+         "coordination":if config.is_some(){"library_writer_and_file_lock"}else{"standalone_file_lock"},
+-        "durability":"file_fsync_rename_directory_fsync","journal":false}),
+-    )
+-}
++        "durability":"file_fsync_rename_directory_fsync","journal":intent_id.is_some()});
++    if let Some(intent_id) = intent_id {
++        receipt["intent_id"] = json!(intent_id);
++    }
++    Ok(receipt)
++}
+diff --git a/crates/llmbase-core/src/recovery.rs b/crates/llmbase-core/src/recovery.rs
+--- a/crates/llmbase-core/src/recovery.rs
++++ b/crates/llmbase-core/src/recovery.rs
+@@ -4,6 +4,7 @@
+ use crate::document::{Document, hash};
+ use crate::store::WriterLock;
+ use crate::{Error, IndexReport, Library, Result};
++use fs2::FileExt;
+ use rusqlite::params;
+ use std::fs::{self, File, OpenOptions};
+ use std::io::Write;
+@@ -18,6 +19,19 @@
+     expected: Option<String>,
+     content: Option<Vec<u8>>,
+     destination: Option<String>,
++}
++
++/// Exact-byte journal intent for explicit-library compatibility writes. Unlike
++/// source intents these bytes are opaque: never parsed, never indexed. `root`
++/// names a configured root ("raw", "concepts", "outputs" or "meta") and
++/// `relative` is the exact path beneath it; `before: None` records that the
++/// destination was absent, distinct from an existing empty file.
++pub(crate) struct JournalIntent {
++    pub id: String,
++    pub root: String,
++    pub relative: String,
++    pub before: Option<Vec<u8>>,
++    pub after: Vec<u8>,
+ }
+ 
+ /// Revision on which an accepted derived write depends. Checked under the writer lock.
+@@ -203,6 +217,94 @@
+ 
+     fn record_intent(&self, intent: &Intent) -> Result<()> {
+         self.db.execute("INSERT INTO write_intents(id,library_id,kind,relative_path,operation,expected_hash,content,destination) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![intent.id,self.config.library_id,intent.kind,intent.relative,intent.operation,intent.expected,intent.content,intent.destination])?;
++        Ok(())
++    }
++
++    /// Durably commit an exact-byte intent before its destination is replaced.
++    /// Autocommit under synchronous=FULL makes the row survive a crash.
++    pub(crate) fn record_journal(&self, intent: &JournalIntent) -> Result<()> {
++        self.db.execute("INSERT INTO write_journal(id,library_id,root,relative_path,before_hash,before_bytes,after_hash,after_bytes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![intent.id,self.config.library_id,intent.root,intent.relative,intent.before.as_deref().map(hash),intent.before,hash(&intent.after),intent.after])?;
++        Ok(())
++    }
++
++    pub(crate) fn mark_journal_applied(&self, intent_id: &str) -> Result<()> {
++        self.db.execute(
++            "UPDATE write_journal SET status='applied' WHERE id=?1 AND library_id=?2",
++            params![intent_id, self.config.library_id],
++        )?;
++        Ok(())
++    }
++
++    /// Replay pending exact-byte intents. The caller holds the shared writer
++    /// lock. Stored rows are data, never trusted: scope, symlink and
++    /// reserved-path rules are revalidated before any replay touches the
++    /// filesystem, and each replay takes the same per-file lock as a live
++    /// write. Applied rows keep both images for audit and backup.
++    pub(crate) fn recover_journal_locked(&mut self) -> Result<()> {
++        let intents = {
++            let mut stmt = self.db.prepare("SELECT id,root,relative_path,before_bytes,after_bytes FROM write_journal WHERE library_id=?1 AND status='pending' ORDER BY created_at,rowid")?;
++            stmt.query_map([&self.config.library_id], |r| {
++                Ok(JournalIntent {
++                    id: r.get(0)?,
++                    root: r.get(1)?,
++                    relative: r.get(2)?,
++                    before: r.get(3)?,
++                    after: r.get(4)?,
++                })
++            })?
++            .collect::<std::result::Result<Vec<_>, _>>()?
++        };
++        for intent in intents {
++            let root = match intent.root.as_str() {
++                "raw" => &self.config.raw,
++                "concepts" => &self.config.concepts,
++                "outputs" => &self.config.outputs,
++                "meta" => &self.config.meta,
++                _ => return Err(Error::Scope),
++            };
++            let destination = scoped_path(root, &intent.relative)?;
++            if crate::compat_io::reserved_destination(&self.config, &destination)? {
++                return Err(Error::Scope);
++            }
++            let lock = OpenOptions::new()
++                .read(true)
++                .write(true)
++                .create(true)
++                .truncate(false)
++                .open(crate::compat_io::file_lock_path(&destination)?)?;
++            FileExt::try_lock_exclusive(&lock).map_err(|e| {
++                if e.kind() == std::io::ErrorKind::WouldBlock {
++                    Error::Busy
++                } else {
++                    e.into()
++                }
++            })?;
++            let current = match fs::read(&destination) {
++                Ok(bytes) => Some(bytes),
++                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
++                Err(e) => return Err(e.into()),
++            };
++            if current.as_deref() == Some(intent.after.as_slice()) {
++                // Crash after install but before acknowledgement: the rename
++                // may still lack its durability step, so fsync the file and
++                // its directory before the applied status is committed.
++                File::open(&destination)?.sync_all()?;
++                if let Some(parent) = destination.parent() {
++                    File::open(parent)?.sync_all()?;
++                }
++            } else if current == intent.before {
++                install_journaled(&destination, &intent.after)?;
++            } else {
++                // An unrelated external edit wins. The pending row and both
++                // captured images stay as conflict evidence; nothing is
++                // discarded or acknowledged.
++                return Err(Error::Conflict(format!(
++                    "journaled write to {} changed outside the captured before-image",
++                    intent.relative
++                )));
++            }
++            self.mark_journal_applied(&intent.id)?;
++        }
+         Ok(())
+     }
+ 
+@@ -307,6 +409,36 @@
+     fs::rename(&temp, path)?;
+     File::open(parent)?.sync_all()?;
+     Ok(())
++}
++
++/// Stage/write/fsync/rename/directory-fsync for journaled opaque bytes. The
++/// stage keeps the compatibility writer's Unix 0600 mode so a new file never
++/// silently gets broader permissions than the standalone path would create.
++fn install_journaled(path: &Path, bytes: &[u8]) -> Result<()> {
++    let parent = path
++        .parent()
++        .ok_or_else(|| Error::Invalid("journal path has no parent".into()))?;
++    fs::create_dir_all(parent)?;
++    let temp = parent.join(format!(".llmbase-{}.stage", Uuid::new_v4()));
++    let mut options = OpenOptions::new();
++    options.write(true).create_new(true);
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::OpenOptionsExt;
++        options.mode(0o600);
++    }
++    let result = (|| -> Result<()> {
++        let mut file = options.open(&temp)?;
++        file.write_all(bytes)?;
++        file.sync_all()?;
++        fs::rename(&temp, path)?;
++        File::open(parent)?.sync_all()?;
++        Ok(())
++    })();
++    if result.is_err() {
++        let _ = fs::remove_file(&temp);
++    }
++    result
+ }
+ 
+ fn remove(path: &Path, expected: Option<&str>) -> Result<()> {
+@@ -440,4 +572,414 @@
+             "external edit"
+         );
+     }
++
++    #[test]
++    fn journal_recovers_before_and_after_file_crash_windows_once() {
++        for after_file in [false, true] {
++            let dir = TempDir::new().unwrap();
++            let config = LibraryConfig::load(dir.path(), "journal").unwrap();
++            let library = Library::open(config.clone()).unwrap();
++            let intent = JournalIntent {
++                id: "crash-window".into(),
++                root: "meta".into(),
++                relative: "custom.json".into(),
++                before: None,
++                after: b"{\"v\":NaN}".to_vec(),
++            };
++            library.record_journal(&intent).unwrap();
++            if after_file {
++                // Crash after the rename but before the applied commit.
++                fs::create_dir_all(&config.meta).unwrap();
++                fs::write(config.meta.join("custom.json"), &intent.after).unwrap();
++            }
++            drop(library);
++            // Recovery happens once; a repeated reopen changes nothing.
++            for _ in 0..2 {
++                let reopened = Library::open(config.clone()).unwrap();
++                assert_eq!(
++                    fs::read(config.meta.join("custom.json")).unwrap(),
++                    b"{\"v\":NaN}"
++                );
++                let (status, count): (String, i64) = reopened
++                    .db
++                    .query_row(
++                        "SELECT status,(SELECT count(*) FROM write_journal) FROM write_journal WHERE id='crash-window'",
++                        [],
++                        |r| Ok((r.get(0)?, r.get(1)?)),
++                    )
++                    .unwrap();
++                assert_eq!(status, "applied");
++                assert_eq!(count, 1);
++                drop(reopened);
++            }
++        }
++    }
++
++    #[test]
++    fn journaled_atomic_write_stores_exact_images_without_indexing() {
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "journal").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        let nonstandard = b"{\"v\":NaN}".as_slice();
++        let binary_v1 = b"\xff\xfenot frontmatter".as_slice();
++        let binary_v2 = b"\x00\x01\xffbinary\x02".as_slice();
++        // First write: absent before-image; nonstandard JSON stays exact.
++        let receipt_first = crate::compat_io::atomic_write(
++            &config.meta.join("custom.json"),
++            nonstandard,
++            Some(&config),
++        )
++        .unwrap();
++        assert_eq!(receipt_first["journal"], true);
++        assert!(
++            receipt_first["intent_id"]
++                .as_str()
++                .is_some_and(|id| !id.is_empty())
++        );
++        // Invalid UTF-8 in a .md destination: exact bytes, never parsed.
++        fs::create_dir_all(&config.concepts).unwrap();
++        let receipt_blob = crate::compat_io::atomic_write(
++            &config.concepts.join("blob.md"),
++            binary_v1,
++            Some(&config),
++        )
++        .unwrap();
++        // Nonempty overwrite of the binary payload: the before-image is the
++        // previous exact on-disk bytes, not an absent marker.
++        let receipt_overwrite = crate::compat_io::atomic_write(
++            &config.concepts.join("blob.md"),
++            binary_v2,
++            Some(&config),
++        )
++        .unwrap();
++        // An existing empty file is a distinct before-image from an absent one.
++        let receipt_empty =
++            crate::compat_io::atomic_write(&config.meta.join("empty.bin"), b"", Some(&config))
++                .unwrap();
++        let receipt_filled = crate::compat_io::atomic_write(
++            &config.meta.join("empty.bin"),
++            b"filled",
++            Some(&config),
++        )
++        .unwrap();
++        // Every write committed its own durable intent.
++        let ids: std::collections::HashSet<String> = [
++            &receipt_first,
++            &receipt_blob,
++            &receipt_overwrite,
++            &receipt_empty,
++            &receipt_filled,
++        ]
++        .iter()
++        .map(|receipt| receipt["intent_id"].as_str().unwrap().to_owned())
++        .collect();
++        assert_eq!(ids.len(), 5);
++        let rows: Vec<(Option<String>, Option<Vec<u8>>, String, Vec<u8>, String)> = {
++            let mut stmt = library
++                .db
++                .prepare("SELECT before_hash,before_bytes,after_hash,after_bytes,status FROM write_journal ORDER BY rowid")
++                .unwrap();
++            stmt.query_map([], |r| {
++                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
++            })
++            .unwrap()
++            .collect::<std::result::Result<Vec<_>, _>>()
++            .unwrap()
++        };
++        assert_eq!(rows.len(), 5);
++        assert_eq!(
++            rows[0],
++            (
++                None,
++                None,
++                hash(nonstandard),
++                nonstandard.to_vec(),
++                "applied".into()
++            )
++        );
++        assert_eq!(
++            rows[1],
++            (
++                None,
++                None,
++                hash(binary_v1),
++                binary_v1.to_vec(),
++                "applied".into()
++            )
++        );
++        assert_eq!(
++            rows[2],
++            (
++                Some(hash(binary_v1)),
++                Some(binary_v1.to_vec()),
++                hash(binary_v2),
++                binary_v2.to_vec(),
++                "applied".into()
++            )
++        );
++        assert_eq!(
++            rows[3],
++            (None, None, hash(b""), Vec::new(), "applied".into())
++        );
++        assert_eq!(
++            rows[4],
++            (
++                Some(hash(b"")),
++                Some(Vec::new()),
++                hash(b"filled"),
++                b"filled".to_vec(),
++                "applied".into()
++            )
++        );
++        // Final on-disk bytes are exactly the last accepted images.
++        assert_eq!(
++            fs::read(config.meta.join("custom.json")).unwrap(),
++            nonstandard
++        );
++        assert_eq!(
++            fs::read(config.concepts.join("blob.md")).unwrap(),
++            binary_v2
++        );
++        assert_eq!(fs::read(config.meta.join("empty.bin")).unwrap(), b"filled");
++        // Opaque writes never created source rows, not even for .md names.
++        let sources: i64 = library
++            .db
++            .query_row("SELECT count(*) FROM sources", [], |r| r.get(0))
++            .unwrap();
++        assert_eq!(sources, 0);
++    }
++
++    #[test]
++    fn journal_recovery_preserves_external_edit_and_keeps_evidence() {
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "journal").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        library
++            .record_journal(&JournalIntent {
++                id: "conflict".into(),
++                root: "meta".into(),
++                relative: "custom.json".into(),
++                before: Some(b"v1".to_vec()),
++                after: b"v2".to_vec(),
++            })
++            .unwrap();
++        fs::create_dir_all(&config.meta).unwrap();
++        fs::write(config.meta.join("custom.json"), b"external edit").unwrap();
++        drop(library);
++        assert!(matches!(
++            Library::open(config.clone()),
++            Err(Error::Conflict(_))
++        ));
++        assert_eq!(
++            fs::read(config.meta.join("custom.json")).unwrap(),
++            b"external edit"
++        );
++        let db = rusqlite::Connection::open(config.database()).unwrap();
++        let status: String = db
++            .query_row(
++                "SELECT status FROM write_journal WHERE id='conflict'",
++                [],
++                |r| r.get(0),
++            )
++            .unwrap();
++        assert_eq!(status, "pending");
++    }
++
++    #[test]
++    fn journal_busy_leaves_bytes_and_intent_count_unchanged() {
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "journal").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        crate::compat_io::atomic_write(&config.meta.join("custom.json"), b"v1", Some(&config))
++            .unwrap();
++        let lock = OpenOptions::new()
++            .read(true)
++            .write(true)
++            .open(crate::compat_io::file_lock_path(&config.meta.join("custom.json")).unwrap())
++            .unwrap();
++        FileExt::try_lock_exclusive(&lock).unwrap();
++        assert!(matches!(
++            crate::compat_io::atomic_write(&config.meta.join("custom.json"), b"v2", Some(&config)),
++            Err(Error::Busy)
++        ));
++        assert_eq!(fs::read(config.meta.join("custom.json")).unwrap(), b"v1");
++        let (pending, total): (i64, i64) = library
++            .db
++            .query_row(
++                "SELECT count(*) FILTER (WHERE status='pending'),count(*) FROM write_journal",
++                [],
++                |r| Ok((r.get(0)?, r.get(1)?)),
++            )
++            .unwrap();
++        assert_eq!((pending, total), (0, 1));
++    }
++
++    #[test]
++    fn journal_replay_fails_safely_for_foreign_escaping_and_reserved_records() {
++        // A record scoped to another library is never replayed by this one.
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "mine").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        library
++            .db
++            .execute(
++                "INSERT INTO write_journal(id,library_id,root,relative_path,before_hash,before_bytes,after_hash,after_bytes) VALUES ('foreign','other','meta','x.json',NULL,NULL,?1,?2)",
++                params![hash(b"x"), b"x".to_vec()],
++            )
++            .unwrap();
++        drop(library);
++        let reopened = Library::open(config.clone()).unwrap();
++        assert!(!config.meta.join("x.json").exists());
++        let status: String = reopened
++            .db
++            .query_row(
++                "SELECT status FROM write_journal WHERE id='foreign'",
++                [],
++                |r| r.get(0),
++            )
++            .unwrap();
++        assert_eq!(status, "pending");
++        drop(reopened);
++        // Traversal out of the configured root aborts open; nothing installs.
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "escape").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        library
++            .record_journal(&JournalIntent {
++                id: "escape".into(),
++                root: "meta".into(),
++                relative: "../escape.txt".into(),
++                before: None,
++                after: b"x".to_vec(),
++            })
++            .unwrap();
++        drop(library);
++        assert!(Library::open(config.clone()).is_err());
++        assert!(!dir.path().join("escape.txt").exists());
++        // A stored reserved destination is refused during replay.
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "reserved").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        library
++            .record_journal(&JournalIntent {
++                id: "reserved".into(),
++                root: "meta".into(),
++                relative: "llmbase.sqlite3".into(),
++                before: None,
++                after: b"x".to_vec(),
++            })
++            .unwrap();
++        drop(library);
++        assert!(matches!(Library::open(config.clone()), Err(Error::Scope)));
++    }
++
++    #[test]
++    fn journal_table_is_additive_for_existing_version_one_databases() {
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "legacy").unwrap();
++        let mut library = Library::open(config.clone()).unwrap();
++        library
++            .write_source("raw", "a.md", b"accepted original bytes".to_vec(), None)
++            .unwrap();
++        let accepted = library.get("a", None, false).unwrap();
++        drop(library);
++        // Recreate the pre-task schema in this disposable DB: remove ONLY the
++        // newly introduced journal table, leaving every prior row untouched.
++        {
++            let db = rusqlite::Connection::open(config.database()).unwrap();
++            db.execute_batch("DROP TABLE write_journal").unwrap();
++        }
++        let reopened = Library::open(config.clone()).unwrap();
++        let version: i64 = reopened
++            .db
++            .query_row("SELECT schema_version FROM library", [], |r| r.get(0))
++            .unwrap();
++        assert_eq!(version, 1);
++        // The accepted source, revision and original bytes survived unchanged.
++        let current = reopened.get("a", None, false).unwrap();
++        assert_eq!(current.source_id, accepted.source_id);
++        assert_eq!(current.revision, accepted.revision);
++        assert_eq!(current.content_hash, accepted.content_hash);
++        assert_eq!(current.content, "accepted original bytes");
++        // Open re-created the additive table, and it serves an ordinary write.
++        let table: i64 = reopened
++            .db
++            .query_row(
++                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='write_journal'",
++                [],
++                |r| r.get(0),
++            )
++            .unwrap();
++        assert_eq!(table, 1);
++        let receipt = crate::compat_io::atomic_write(
++            &config.meta.join("custom.json"),
++            b"{\"v\":NaN}",
++            Some(&config),
++        )
++        .unwrap();
++        assert_eq!(receipt["journal"], true);
++        assert_eq!(
++            fs::read(config.meta.join("custom.json")).unwrap(),
++            b"{\"v\":NaN}"
++        );
++    }
++
++    #[test]
++    fn journal_recovery_respects_the_per_file_lock() {
++        let dir = TempDir::new().unwrap();
++        let config = LibraryConfig::load(dir.path(), "journal").unwrap();
++        let library = Library::open(config.clone()).unwrap();
++        let destination = config.meta.join("custom.json");
++        crate::compat_io::atomic_write(&destination, b"v1", Some(&config)).unwrap();
++        library
++            .record_journal(&JournalIntent {
++                id: "fenced".into(),
++                root: "meta".into(),
++                relative: "custom.json".into(),
++                before: Some(b"v1".to_vec()),
++                after: b"v2".to_vec(),
++            })
++            .unwrap();
++        drop(library);
++        // Holding the destination's per-file lock fences recovery: open refuses
++        // Busy, the bytes stay and the same row stays pending.
++        let lock = OpenOptions::new()
++            .read(true)
++            .write(true)
++            .open(crate::compat_io::file_lock_path(&destination).unwrap())
++            .unwrap();
++        FileExt::try_lock_exclusive(&lock).unwrap();
++        assert!(matches!(Library::open(config.clone()), Err(Error::Busy)));
++        assert_eq!(fs::read(&destination).unwrap(), b"v1");
++        {
++            let db = rusqlite::Connection::open(config.database()).unwrap();
++            let status: String = db
++                .query_row(
++                    "SELECT status FROM write_journal WHERE id='fenced'",
++                    [],
++                    |r| r.get(0),
++                )
++                .unwrap();
++            assert_eq!(status, "pending");
++        }
++        FileExt::unlock(&lock).unwrap();
++        drop(lock);
++        // Released: recovery applies the same intent once; a repeated reopen
++        // changes nothing and records no duplicate history.
++        for _ in 0..2 {
++            let reopened = Library::open(config.clone()).unwrap();
++            assert_eq!(fs::read(&destination).unwrap(), b"v2");
++            let (status, count): (String, i64) = reopened
++                .db
++                .query_row(
++                    "SELECT status,(SELECT count(*) FROM write_journal) FROM write_journal WHERE id='fenced'",
++                    [],
++                    |r| Ok((r.get(0)?, r.get(1)?)),
++                )
++                .unwrap();
++            assert_eq!(status, "applied");
++            assert_eq!(count, 2);
++            drop(reopened);
++        }
++    }
+ }
+diff --git a/crates/llmbase-core/src/store.rs b/crates/llmbase-core/src/store.rs
+--- a/crates/llmbase-core/src/store.rs
++++ b/crates/llmbase-core/src/store.rs
+@@ -46,6 +46,14 @@
+  operation TEXT NOT NULL, expected_hash TEXT, content BLOB, destination TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
++-- Additive exact-byte journal for explicit-library compatibility writes.
++-- before_bytes NULL means the destination was absent; an empty BLOB means an
++-- existing empty file. Version-1 databases gain this table on open, untouched.
++CREATE TABLE IF NOT EXISTS write_journal (
++ id TEXT PRIMARY KEY, library_id TEXT NOT NULL, root TEXT NOT NULL, relative_path TEXT NOT NULL,
++ before_hash TEXT, before_bytes BLOB, after_hash TEXT NOT NULL, after_bytes BLOB NOT NULL,
++ status TEXT NOT NULL DEFAULT 'pending',
++ created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+ "#;
+ 
+ pub struct Library {
+@@ -199,6 +207,7 @@
+             normalizer,
+         };
+         library.recover_locked()?;
++        library.recover_journal_locked()?;
+         library.recover_projections_locked()?;
+         Ok(library)
+     }
+diff --git a/crates/llmbase-core/tests/compat_io.rs b/crates/llmbase-core/tests/compat_io.rs
+--- a/crates/llmbase-core/tests/compat_io.rs
++++ b/crates/llmbase-core/tests/compat_io.rs
+@@ -41,7 +41,20 @@
+     let session = WriterSession::acquire(&config).unwrap();
+     let receipt = compat_io::atomic_write(&path, b"{}", Some(&config)).unwrap();
+     assert_eq!(receipt["coordination"], "library_writer_and_file_lock");
+-    assert!(!config.database().exists());
++    // Journaled contract: the real core database stores the exact-byte intent.
++    assert_eq!(receipt["journal"], true);
++    assert!(
++        receipt["intent_id"]
++            .as_str()
++            .is_some_and(|id| !id.is_empty())
++    );
++    assert!(config.database().exists());
++    #[cfg(unix)]
++    assert_eq!(
++        std::os::unix::fs::PermissionsExt::mode(&fs::metadata(&path).unwrap().permissions())
++            & 0o777,
++        0o600
++    );
+     assert!(matches!(
+         compat_io::atomic_write(&temp.path().join("outside.json"), b"{}", Some(&config)),
+         Err(llmbase_core::Error::Scope)
+@@ -125,7 +138,12 @@
+         Some(&config),
+     )
+     .unwrap();
+-    assert_eq!(receipt["journal"], false);
++    assert_eq!(receipt["journal"], true);
++    assert!(
++        receipt["intent_id"]
++            .as_str()
++            .is_some_and(|id| !id.is_empty())
++    );
+     assert_eq!(
+         fs::read(config.meta.join("custom.json")).unwrap(),
+         b"{\"v\":NaN}"
+@@ -192,19 +210,37 @@
+         Err(llmbase_core::Error::Scope)
+     ));
+     assert_eq!(fs::read(config.database()).unwrap(), b"SENTINEL");
++    // The journaled contract opens the real core database, so the sentinel
++    // stub is removed once the refusal checks above have passed.
++    fs::remove_file(config.database()).unwrap();
+     // An ordinary write through the alias lands in meta with exact bytes.
+     compat_io::atomic_write(&alias.join("custom.json"), b"{\"v\":NaN}", Some(&config)).unwrap();
+     assert_eq!(
+         fs::read(config.meta.join("custom.json")).unwrap(),
+         b"{\"v\":NaN}"
+     );
+-    // A final-component symlink is atomically replaced, never written through:
+-    // rename swaps the link itself, so the external target keeps its bytes.
++    // A final-component symlink is REFUSED for journaled library writes: both
++    // the link and its external referent survive untouched, because the
++    // before-image must never capture an external referent's bytes.
+     let outside = temp.path().join("outside-target.json");
+     fs::write(&outside, b"TARGET").unwrap();
+     let link = config.meta.join("link.json");
+     std::os::unix::fs::symlink(&outside, &link).unwrap();
+-    compat_io::atomic_write(&link, b"new", Some(&config)).unwrap();
++    assert!(matches!(
++        compat_io::atomic_write(&link, b"new", Some(&config)),
++        Err(llmbase_core::Error::Scope)
++    ));
++    assert_eq!(fs::read(&outside).unwrap(), b"TARGET");
++    assert!(
++        fs::symlink_metadata(&link)
++            .unwrap()
++            .file_type()
++            .is_symlink()
++    );
++    assert_eq!(fs::read(&link).unwrap(), b"TARGET");
++    // Standalone writes keep the replace-the-link behavior: rename swaps the
++    // link itself, so the external target keeps its bytes.
++    compat_io::atomic_write(&link, b"new", None).unwrap();
+     assert_eq!(fs::read(&outside).unwrap(), b"TARGET");
+     assert_eq!(fs::read(&link).unwrap(), b"new");
+     assert!(
+@@ -280,18 +316,24 @@
+     entries.sort();
+     assert_eq!(entries, vec!["llmbase.sqlite3", "llmbase.writer.lock"]);
+     assert_eq!(fs::read_dir(&config.concepts).unwrap().count(), 0);
+-    // Ordinary mixed-case names that are not reserved still write fine.
+-    compat_io::atomic_write(&config.meta.join("Custom.JSON"), b"{}", Some(&config)).unwrap();
++    // Ordinary mixed-case names that are not reserved still write fine. The
++    // journaled contract opens the real core database, so the sentinel stub
++    // is removed once its refusal checks above have passed.
++    fs::remove_file(config.database()).unwrap();
++    let receipt =
++        compat_io::atomic_write(&config.meta.join("Custom.JSON"), b"{}", Some(&config)).unwrap();
++    assert_eq!(receipt["journal"], true);
+     assert_eq!(fs::read(config.meta.join("Custom.JSON")).unwrap(), b"{}");
+     // A parent symlink alias plus a case alias still cannot reach the database.
+     #[cfg(unix)]
+     {
+         let alias_dir = temp.path().join("case-alias");
+         std::os::unix::fs::symlink(&config.meta, &alias_dir).unwrap();
++        let before = fs::read(config.database()).unwrap();
+         assert!(matches!(
+             compat_io::atomic_write(&alias_dir.join("LLMBASE.SQLITE3"), b"bad", Some(&config)),
+             Err(llmbase_core::Error::Scope)
+         ));
+-        assert_eq!(fs::read(config.database()).unwrap(), b"SENTINEL");
+-    }
+-}
++        assert_eq!(fs::read(config.database()).unwrap(), before);
++    }
++}

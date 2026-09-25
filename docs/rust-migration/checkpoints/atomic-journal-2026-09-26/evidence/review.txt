@@ -1,0 +1,35 @@
+Primary review: accepted, 2026-09-26.
+User explicitly authorized primary-agent review and sequential task commits.
+The reviewer did not implement the feature or the requested extra test cases.
+
+Reviewed all four source deltas against the recorded pre-B4 snapshot. Verified
+reserved-target refusal before mutation, final-symlink refusal before capture,
+shared writer lease reuse, no nested per-file lock during open, lock-before-new-
+intent ordering, before/after BLOB and hash storage, additive schema-v1 opening,
+file/parent fsync before applied acknowledgement, opaque writes without parsing,
+scoped recovery, external-edit conflict preservation, and standalone controls.
+
+The first 7 + 22 passing run lacked explicit proof for nonempty before-images,
+old schema-v1 preservation and replay lock fencing. Returned those bounded test
+requests to the implementer. Reviewed the resulting tests; production source was
+unchanged by this revision. No outstanding HIGH finding in this bounded change.
+
+Independent remote acceptance: compat_io 7 passed; core --lib 24 passed; scoped
+fmt exit 0. The extra nested one-test output in the unit log is a child process,
+not an additional test count. Core artifacts were cleaned before verification
+to avoid the observed shared-cache baseline collision. All 108 current source
+hashes match the remote manifest. Frontend tsc and Python lint import each exit 0;
+their inputs were unchanged by this Rust-only revision.
+
+Archive/patch replay is independently checked by replay.json. Raw cargo logs
+are retained byte-for-byte; their trailing blank EOF lines may produce harmless
+git whitespace notices. Do not alter evidence logs to silence those notices.
+The saved unified patch also has mandatory single-space prefixes for unchanged
+blank context lines; outer git diff --check reports these as trailing whitespace.
+They are patch syntax, not source whitespace. Scoped rustfmt and exact replay
+pass. Staged bundle scope, evidence and metadata were reviewed before commit.
+
+Limits: deterministic crash-window fixtures, not physical power-loss or process-
+kill proof; no wheel/workspace/release acceptance. Known unrelated unexported
+maintenance draft remains outside this task. Both implementation sessions and
+all B4 remote runner sessions were confirmed exited before checkpointing.

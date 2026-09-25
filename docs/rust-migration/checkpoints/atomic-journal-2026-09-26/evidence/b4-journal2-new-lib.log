@@ -1,0 +1,36 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b4-atomic-journal-source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.17s
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_core-eddc52d963515cf1)
+
+running 22 tests
+test ask::tests::citation_marker_parser_does_not_invent_used_evidence ... ok
+test compat_pipeline::extended_json::tests::strings_escapes_big_numbers_and_bad_tokens_are_not_tags ... ok
+test compat_pipeline::extended_json::tests::actual_marker_collision_is_escaped_and_restored_once ... ok
+
+running 1 test
+test fetch::tests::redirects_bounded_and_dns_mixed_answers_denied ... ok
+test fetch::tests::bounded_chunked_declared_and_compressed_bodies ... ok
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+test fetch::tests::redirect_to_private_or_userinfo_never_connects ... ok
+test jobs::tests::cancellation_fences_running_owner_and_credentials_are_not_persisted ... ok
+test fetch::tests::stalled_response_obeys_total_deadline_and_cancellation ... ok
+test migration::tests::overlapping_destination_is_rejected_before_creating_any_directory ... ok
+test jobs::tests::jobs_survive_reopen_and_expired_owners_cannot_complete ... ok
+test recovery::tests::journal_busy_leaves_bytes_and_intent_count_unchanged ... ok
+test recovery::tests::accepted_writes_require_compare_and_swap_and_preserve_old_citations ... ok
+test recovery::tests::journal_recovery_preserves_external_edit_and_keeps_evidence ... ok
+test migration::tests::backup_keeps_deleted_revisions_jobs_and_tampering_is_detected ... ok
+test migration::tests::dry_run_copy_verify_restore_and_rollback_preserve_unknown_fields_and_original_bytes ... ok
+test recovery::tests::journal_recovers_before_and_after_file_crash_windows_once ... ok
+test recovery::tests::recovery_does_not_overwrite_an_unrelated_external_edit ... ok
+test visibility::tests::malformed_flags_and_visibility_fail_closed ... ok
+test recovery::tests::journal_replay_fails_safely_for_foreign_escaping_and_reserved_records ... ok
+test recovery::tests::journaled_atomic_write_stores_exact_images_without_indexing ... ok
+test recovery::tests::recovery_handles_before_file_and_after_file_crash_windows ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
