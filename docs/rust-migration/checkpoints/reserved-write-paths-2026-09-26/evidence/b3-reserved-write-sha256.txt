@@ -1,0 +1,2 @@
+974abd799bc4d18daf71502ff6487d2795a33edbc95433a7a3027ac9b55146eb  crates/llmbase-core/src/compat_io.rs
+adcfcab2a1905d81120e81acc082872ebec13afea6b135241672c645a932fbfe  crates/llmbase-core/tests/compat_io.rs

@@ -1,0 +1,28 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b3-reserved-write-source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.12s
+     Running tests/compat_io.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_io-d492e9444020b5cd)
+
+running 7 tests
+test case_aliases_of_protected_names_are_scope_refused ... FAILED
+test rejected_writer_lock_replacement_keeps_inode_and_fencing ... ok
+test explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape ... ok
+test parent_symlink_alias_cannot_bypass_protected_paths ... ok
+test engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects ... ok
+test standalone_atomic_write_is_durable_exact_and_fenced ... ok
+test standalone_write_keeps_existing_contract_without_library_ancestor ... ok
+
+failures:
+
+---- case_aliases_of_protected_names_are_scope_refused stdout ----
+
+thread 'case_aliases_of_protected_names_are_scope_refused' (3283596) panicked at crates/llmbase-core/tests/compat_io.rs:248:9:
+LLMBASE.SQLITE3
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    case_aliases_of_protected_names_are_scope_refused
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_io`

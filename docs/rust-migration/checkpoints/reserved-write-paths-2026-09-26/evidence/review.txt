@@ -1,0 +1,18 @@
+Primary-agent review — 2026-09-26
+User authorization: direct primary-agent review of delegated implementations.
+Disposition: accepted for this bounded explicit-library destination guard.
+
+The first pass had a HIGH case-alias bypass, reproduced in a disposable local
+filesystem probe. It was returned for a scoped revision, not fixed by the
+reviewer. Final code reserves ASCII case variants before any mutation. The new
+real-entrypoint case test fails the first-pass code and passes the final code.
+
+Reviewed both changed files, before/after diffs, shared-writer behavior, rejection
+ordering, parent/final symlink semantics, standalone controls and raw evidence.
+Seven focused tests, scoped formatting and required local checks pass. Exact
+108-file remote/local provenance and two-file archive replay are verified.
+No remaining HIGH issue was found in this delta. Journaling and full release
+acceptance remain open. No claim of compiled macOS integration testing.
+
+Staged review is limited to this checkpoint directory. Original Cargo logs may
+retain their trailing blank line at EOF; raw evidence is not normalized.

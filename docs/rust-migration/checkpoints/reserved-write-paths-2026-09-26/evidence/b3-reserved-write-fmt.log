@@ -1,0 +1,58 @@
+Diff in /root/llmbase-rust-migration-20260920/b3-reserved-write-source/crates/llmbase-core/tests/compat_io.rs:113:
+     assert_eq!(fs::read_dir(&config.meta).unwrap().count(), 0);
+     assert_eq!(fs::read_dir(&config.concepts).unwrap().count(), 0);
+     // Ordinary exact-byte writes to content/metadata roots still work.
+[31m-    compat_io::atomic_write(&config.concepts.join("a.md"), b"---\n---\nbody", Some(&config))
+[m[31m-        .unwrap();
+[m[31m-    let receipt =
+[m[31m-        compat_io::atomic_write(&config.meta.join("custom.json"), b"{\"v\":NaN}", Some(&config))
+[m[31m-            .unwrap();
+[m[32m+    compat_io::atomic_write(
+[m[32m+        &config.concepts.join("a.md"),
+[m[32m+        b"---\n---\nbody",
+[m[32m+        Some(&config),
+[m[32m+    )
+[m[32m+    .unwrap();
+[m[32m+    let receipt = compat_io::atomic_write(
+[m[32m+        &config.meta.join("custom.json"),
+[m[32m+        b"{\"v\":NaN}",
+[m[32m+        Some(&config),
+[m[32m+    )
+[m[32m+    .unwrap();
+[m     assert_eq!(receipt["journal"], false);
+[31m-    assert_eq!(fs::read(config.meta.join("custom.json")).unwrap(), b"{\"v\":NaN}");
+[m[32m+    assert_eq!(
+[m[32m+        fs::read(config.meta.join("custom.json")).unwrap(),
+[m[32m+        b"{\"v\":NaN}"
+[m[32m+    );
+[m }
+ 
+ #[test]
+Diff in /root/llmbase-rust-migration-20260920/b3-reserved-write-source/crates/llmbase-core/tests/compat_io.rs:148:
+     assert!(second.try_lock_exclusive().is_err());
+     drop(second);
+     // The refused write created no per-file lock or stage of its own.
+[31m-    assert!(!config.meta.join(".llmbase.writer.lock.llmbase.lock").exists());
+[m[32m+    assert!(
+[m[32m+        !config
+[m[32m+            .meta
+[m[32m+            .join(".llmbase.writer.lock.llmbase.lock")
+[m[32m+            .exists()
+[m[32m+    );
+[m     drop(session);
+     let released = fs::OpenOptions::new()
+         .read(true)
+Diff in /root/llmbase-rust-migration-20260920/b3-reserved-write-source/crates/llmbase-core/tests/compat_io.rs:192:
+     compat_io::atomic_write(&link, b"new", Some(&config)).unwrap();
+     assert_eq!(fs::read(&outside).unwrap(), b"TARGET");
+     assert_eq!(fs::read(&link).unwrap(), b"new");
+[31m-    assert!(!fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+[m[32m+    assert!(
+[m[32m+        !fs::symlink_metadata(&link)
+[m[32m+            .unwrap()
+[m[32m+            .file_type()
+[m[32m+            .is_symlink()
+[m[32m+    );
+[m }
+ 
+ #[test]

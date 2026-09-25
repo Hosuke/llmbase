@@ -1,0 +1,286 @@
+diff --git a/crates/llmbase-core/src/compat_io.rs b/crates/llmbase-core/src/compat_io.rs
+--- a/crates/llmbase-core/src/compat_io.rs
++++ b/crates/llmbase-core/src/compat_io.rs
+@@ -50,6 +50,39 @@
+         if !inside {
+             return Err(Error::Scope);
+         }
++        // Engine-owned and coordination artifacts are never valid destinations.
++        // The destination is compared after parent symlink resolution, so an
++        // alias into meta cannot bypass this. Replacing the database corrupts
++        // persistent state; renaming over the held writer lock swaps its inode
++        // and defeats flock coordination. The per-write spellings this module
++        // generates next to every destination — `.<name>.llmbase.lock` and
++        // `.llmbase-<id>.stage` — are reserved within configured roots, so a
++        // direct write can never replace a live lock or collide with a stage.
++        // Refusal happens before any session, directory, lock or stage is made.
++        let meta = resolve_path(&config.meta)?;
++        let name = name.to_string_lossy();
++        // ASCII case-insensitive comparison, applied uniformly on every
++        // platform: on case-insensitive filesystems `LLMBASE.SQLITE3` is the
++        // same inode as `llmbase.sqlite3`, so a case-sensitive rule lets a
++        // mixed-case alias replace the live database or writer lock. Folding
++        // case here reserves those aliases everywhere, including Linux CI.
++        let engine_owned = destination.parent() == Some(meta.as_path())
++            && [
++                "llmbase.sqlite3",
++                "llmbase.sqlite3-wal",
++                "llmbase.sqlite3-shm",
++                "llmbase.sqlite3-journal",
++                "llmbase.writer.lock",
++            ]
++            .iter()
++            .any(|reserved| name.eq_ignore_ascii_case(reserved));
++        let folded = name.to_ascii_lowercase();
++        if engine_owned
++            || (folded.starts_with('.') && folded.ends_with(".llmbase.lock"))
++            || (folded.starts_with(".llmbase-") && folded.ends_with(".stage"))
++        {
++            return Err(Error::Scope);
++        }
+     }
+     let _writer = config.map(WriterSession::acquire).transpose()?;
+     let parent = destination.parent().unwrap();
+diff --git a/crates/llmbase-core/tests/compat_io.rs b/crates/llmbase-core/tests/compat_io.rs
+--- a/crates/llmbase-core/tests/compat_io.rs
++++ b/crates/llmbase-core/tests/compat_io.rs
+@@ -59,3 +59,239 @@
+     ));
+     assert_eq!(fs::read(path).unwrap(), b"{}");
+ }
++
++#[test]
++fn engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects() {
++    let temp = tempfile::tempdir().unwrap();
++    let config = LibraryConfig::load(temp.path(), "fixture").unwrap();
++    fs::create_dir_all(&config.meta).unwrap();
++    fs::create_dir_all(&config.concepts).unwrap();
++    let mut protected = vec![config.meta.join("llmbase.writer.lock")];
++    for suffix in ["", "-wal", "-shm", "-journal"] {
++        protected.push(config.meta.join(format!("llmbase.sqlite3{suffix}")));
++    }
++    for target in &protected {
++        // Existing destination: sentinel bytes and file identity survive.
++        fs::write(target, b"SENTINEL").unwrap();
++        #[cfg(unix)]
++        let inode = std::os::unix::fs::MetadataExt::ino(&fs::metadata(target).unwrap());
++        assert!(
++            matches!(
++                compat_io::atomic_write(target, b"bad", Some(&config)),
++                Err(llmbase_core::Error::Scope)
++            ),
++            "{target:?}"
++        );
++        assert_eq!(fs::read(target).unwrap(), b"SENTINEL");
++        #[cfg(unix)]
++        assert_eq!(
++            inode,
++            std::os::unix::fs::MetadataExt::ino(&fs::metadata(target).unwrap())
++        );
++        // Missing destination: refused before anything is created.
++        fs::remove_file(target).unwrap();
++        assert!(matches!(
++            compat_io::atomic_write(target, b"bad", Some(&config)),
++            Err(llmbase_core::Error::Scope)
++        ));
++        assert!(!target.exists());
++    }
++    // This module's own per-write lock/stage spellings are reserved in any root.
++    for target in [
++        config.meta.join(".custom.json.llmbase.lock"),
++        config.concepts.join(".a.md.llmbase.lock"),
++        config.meta.join(".llmbase-deadbeef.stage"),
++        config.concepts.join(".llmbase-0123456789abcdef.stage"),
++    ] {
++        assert!(matches!(
++            compat_io::atomic_write(&target, b"bad", Some(&config)),
++            Err(llmbase_core::Error::Scope)
++        ));
++        assert!(!target.exists());
++    }
++    // No refused operation created a session lock, per-file lock or stage.
++    assert_eq!(fs::read_dir(&config.meta).unwrap().count(), 0);
++    assert_eq!(fs::read_dir(&config.concepts).unwrap().count(), 0);
++    // Ordinary exact-byte writes to content/metadata roots still work.
++    compat_io::atomic_write(
++        &config.concepts.join("a.md"),
++        b"---\n---\nbody",
++        Some(&config),
++    )
++    .unwrap();
++    let receipt = compat_io::atomic_write(
++        &config.meta.join("custom.json"),
++        b"{\"v\":NaN}",
++        Some(&config),
++    )
++    .unwrap();
++    assert_eq!(receipt["journal"], false);
++    assert_eq!(
++        fs::read(config.meta.join("custom.json")).unwrap(),
++        b"{\"v\":NaN}"
++    );
++}
++
++#[test]
++fn rejected_writer_lock_replacement_keeps_inode_and_fencing() {
++    let temp = tempfile::tempdir().unwrap();
++    let config = LibraryConfig::load(temp.path(), "fixture").unwrap();
++    let session = WriterSession::acquire(&config).unwrap();
++    let lock_path = config.meta.join("llmbase.writer.lock");
++    #[cfg(unix)]
++    let inode = std::os::unix::fs::MetadataExt::ino(&fs::metadata(&lock_path).unwrap());
++    assert!(matches!(
++        compat_io::atomic_write(&lock_path, b"bad", Some(&config)),
++        Err(llmbase_core::Error::Scope)
++    ));
++    // The held lock's inode is unchanged and a second OS acquisition stays fenced.
++    #[cfg(unix)]
++    assert_eq!(
++        inode,
++        std::os::unix::fs::MetadataExt::ino(&fs::metadata(&lock_path).unwrap())
++    );
++    let second = fs::OpenOptions::new()
++        .read(true)
++        .write(true)
++        .open(&lock_path)
++        .unwrap();
++    assert!(second.try_lock_exclusive().is_err());
++    drop(second);
++    // The refused write created no per-file lock or stage of its own.
++    assert!(
++        !config
++            .meta
++            .join(".llmbase.writer.lock.llmbase.lock")
++            .exists()
++    );
++    drop(session);
++    let released = fs::OpenOptions::new()
++        .read(true)
++        .write(true)
++        .open(&lock_path)
++        .unwrap();
++    released.try_lock_exclusive().unwrap();
++}
++
++#[cfg(unix)]
++#[test]
++fn parent_symlink_alias_cannot_bypass_protected_paths() {
++    let temp = tempfile::tempdir().unwrap();
++    let config = LibraryConfig::load(temp.path(), "fixture").unwrap();
++    fs::create_dir_all(&config.meta).unwrap();
++    fs::write(config.database(), b"SENTINEL").unwrap();
++    let alias = temp.path().join("alias");
++    std::os::unix::fs::symlink(&config.meta, &alias).unwrap();
++    // The alias resolves into meta before the protected-path rule runs.
++    assert!(matches!(
++        compat_io::atomic_write(&alias.join("llmbase.sqlite3"), b"bad", Some(&config)),
++        Err(llmbase_core::Error::Scope)
++    ));
++    assert!(matches!(
++        compat_io::atomic_write(&alias.join("llmbase.writer.lock"), b"bad", Some(&config)),
++        Err(llmbase_core::Error::Scope)
++    ));
++    assert_eq!(fs::read(config.database()).unwrap(), b"SENTINEL");
++    // An ordinary write through the alias lands in meta with exact bytes.
++    compat_io::atomic_write(&alias.join("custom.json"), b"{\"v\":NaN}", Some(&config)).unwrap();
++    assert_eq!(
++        fs::read(config.meta.join("custom.json")).unwrap(),
++        b"{\"v\":NaN}"
++    );
++    // A final-component symlink is atomically replaced, never written through:
++    // rename swaps the link itself, so the external target keeps its bytes.
++    let outside = temp.path().join("outside-target.json");
++    fs::write(&outside, b"TARGET").unwrap();
++    let link = config.meta.join("link.json");
++    std::os::unix::fs::symlink(&outside, &link).unwrap();
++    compat_io::atomic_write(&link, b"new", Some(&config)).unwrap();
++    assert_eq!(fs::read(&outside).unwrap(), b"TARGET");
++    assert_eq!(fs::read(&link).unwrap(), b"new");
++    assert!(
++        !fs::symlink_metadata(&link)
++            .unwrap()
++            .file_type()
++            .is_symlink()
++    );
++}
++
++#[test]
++fn standalone_write_keeps_existing_contract_without_library_ancestor() {
++    let temp = tempfile::tempdir().unwrap();
++    // config=None never guesses a library ancestor and reserves no spellings.
++    let path = temp.path().join("meta/llmbase.sqlite3");
++    compat_io::atomic_write(&path, b"{\"v\":NaN}", None).unwrap();
++    assert_eq!(fs::read(&path).unwrap(), b"{\"v\":NaN}");
++    let artifact = temp.path().join("meta/.llmbase-deadbeef.stage");
++    compat_io::atomic_write(&artifact, b"caller-managed", None).unwrap();
++    assert_eq!(fs::read(&artifact).unwrap(), b"caller-managed");
++}
++
++#[test]
++fn case_aliases_of_protected_names_are_scope_refused() {
++    let temp = tempfile::tempdir().unwrap();
++    let config = LibraryConfig::load(temp.path(), "fixture").unwrap();
++    fs::create_dir_all(&config.meta).unwrap();
++    fs::create_dir_all(&config.concepts).unwrap();
++    fs::write(config.database(), b"SENTINEL").unwrap();
++    fs::write(config.meta.join("llmbase.writer.lock"), b"LOCK").unwrap();
++    // Case aliases of engine-owned basenames are refused within meta.
++    for alias in [
++        "LLMBASE.SQLITE3",
++        "Llmbase.Sqlite3",
++        "LLMBASE.SQLITE3-WAL",
++        "llmbase.SQLITE3-shm",
++        "LLMBASE.SQLITE3-JOURNAL",
++        "LLMBASE.WRITER.LOCK",
++        "Llmbase.Writer.Lock",
++    ] {
++        assert!(
++            matches!(
++                compat_io::atomic_write(&config.meta.join(alias), b"bad", Some(&config)),
++                Err(llmbase_core::Error::Scope)
++            ),
++            "{alias}"
++        );
++    }
++    // Coordination spellings fold case in every configured root.
++    for alias in [
++        config.meta.join(".CUSTOM.JSON.LLMBASE.LOCK"),
++        config.concepts.join(".A.MD.LLMBASE.LOCK"),
++        config.meta.join(".LLMBASE-DEADBEEF.STAGE"),
++        config.concepts.join(".Llmbase-X.Stage"),
++    ] {
++        assert!(matches!(
++            compat_io::atomic_write(&alias, b"bad", Some(&config)),
++            Err(llmbase_core::Error::Scope)
++        ));
++        assert!(!alias.exists());
++    }
++    // Existing bytes survived every refusal, and no alias-named file, per-file
++    // lock or stage was created.
++    assert_eq!(fs::read(config.database()).unwrap(), b"SENTINEL");
++    assert_eq!(
++        fs::read(config.meta.join("llmbase.writer.lock")).unwrap(),
++        b"LOCK"
++    );
++    let mut entries: Vec<_> = fs::read_dir(&config.meta)
++        .unwrap()
++        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
++        .collect();
++    entries.sort();
++    assert_eq!(entries, vec!["llmbase.sqlite3", "llmbase.writer.lock"]);
++    assert_eq!(fs::read_dir(&config.concepts).unwrap().count(), 0);
++    // Ordinary mixed-case names that are not reserved still write fine.
++    compat_io::atomic_write(&config.meta.join("Custom.JSON"), b"{}", Some(&config)).unwrap();
++    assert_eq!(fs::read(config.meta.join("Custom.JSON")).unwrap(), b"{}");
++    // A parent symlink alias plus a case alias still cannot reach the database.
++    #[cfg(unix)]
++    {
++        let alias_dir = temp.path().join("case-alias");
++        std::os::unix::fs::symlink(&config.meta, &alias_dir).unwrap();
++        assert!(matches!(
++            compat_io::atomic_write(&alias_dir.join("LLMBASE.SQLITE3"), b"bad", Some(&config)),
++            Err(llmbase_core::Error::Scope)
++        ));
++        assert_eq!(fs::read(config.database()).unwrap(), b"SENTINEL");
++    }
++}

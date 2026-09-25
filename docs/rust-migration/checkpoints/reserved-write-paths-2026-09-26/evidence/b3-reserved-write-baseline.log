@@ -1,0 +1,41 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b3-reserved-write-source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.31s
+     Running tests/compat_io.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_io-d492e9444020b5cd)
+
+running 6 tests
+test engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects ... FAILED
+test rejected_writer_lock_replacement_keeps_inode_and_fencing ... FAILED
+test parent_symlink_alias_cannot_bypass_protected_paths ... FAILED
+test explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape ... ok
+test standalone_atomic_write_is_durable_exact_and_fenced ... ok
+test standalone_write_keeps_existing_contract_without_library_ancestor ... ok
+
+failures:
+
+---- engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects stdout ----
+
+thread 'engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects' (3270709) panicked at crates/llmbase-core/tests/compat_io.rs:78:9:
+"/tmp/.tmp5tjZRp/wiki/_meta/llmbase.writer.lock"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- rejected_writer_lock_replacement_keeps_inode_and_fencing stdout ----
+
+thread 'rejected_writer_lock_replacement_keeps_inode_and_fencing' (3270712) panicked at crates/llmbase-core/tests/compat_io.rs:133:5:
+assertion failed: matches!(compat_io::atomic_write(&lock_path, b"bad", Some(&config)),
+    Err(llmbase_core::Error::Scope))
+
+---- parent_symlink_alias_cannot_bypass_protected_paths stdout ----
+
+thread 'parent_symlink_alias_cannot_bypass_protected_paths' (3270711) panicked at crates/llmbase-core/tests/compat_io.rs:171:5:
+assertion failed: matches!(compat_io::atomic_write(&alias.join("llmbase.sqlite3"), b"bad",
+    Some(&config)), Err(llmbase_core::Error::Scope))
+
+
+failures:
+    engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects
+    parent_symlink_alias_cannot_bypass_protected_paths
+    rejected_writer_lock_replacement_keeps_inode_and_fencing
+
+test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_io`
