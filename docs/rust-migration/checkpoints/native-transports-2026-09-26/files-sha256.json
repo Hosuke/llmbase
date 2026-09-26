@@ -1,0 +1,10 @@
+{
+  "scripts/rust-migration/verify-standalone.py": {
+    "before": "8996857b5b4076fe8de786586b675b0425326d8d55ab2c7e3e5f897624356f38",
+    "after": "992e2b2a2bedec7fc4ed4c5bce62d960bca9e17baddbee711dc2b2b67c2d06e4"
+  },
+  "docs/rust-migration/runbook.md": {
+    "before": "48faa1f0d1177b52906a2b3c204e67f10a12bbb1a9f222d1844f04a4cce01f35",
+    "after": "efe43de3e2bc3a5e9620ea45d1c7ea354d0ef745af87089f2a40deb857445d70"
+  }
+}

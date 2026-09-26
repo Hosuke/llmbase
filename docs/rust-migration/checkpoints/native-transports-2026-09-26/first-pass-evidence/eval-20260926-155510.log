@@ -1,0 +1,51 @@
+=== evaluate_retrieval native b8-final-native ===
+{
+  "output": "/root/llmbase-rust-migration-20260920/b9-native-transports/retrieval-native-b9-20260926-155510.json",
+  "summary": {
+    "raw": {
+      "held_out": {
+        "query_count": 30,
+        "recall_at_5": 1.0,
+        "mrr_at_10": 1.0,
+        "first_pass_p50_ms": 5.3091314999999994,
+        "first_pass_p95_ms": 6.275232,
+        "warm_p50_ms": 5.229666,
+        "warm_p95_ms": 6.649316,
+        "required_failures": []
+      },
+      "tuning": {
+        "query_count": 6,
+        "recall_at_5": 1.0,
+        "mrr_at_10": 1.0,
+        "first_pass_p50_ms": 5.1740215,
+        "first_pass_p95_ms": 5.33058,
+        "warm_p50_ms": 5.1564135,
+        "warm_p95_ms": 6.246978,
+        "required_failures": []
+      }
+    },
+    "compiled": {
+      "held_out": {
+        "query_count": 30,
+        "recall_at_5": 1.0,
+        "mrr_at_10": 1.0,
+        "first_pass_p50_ms": 5.4899015,
+        "first_pass_p95_ms": 6.941306,
+        "warm_p50_ms": 5.3707525,
+        "warm_p95_ms": 6.45004,
+        "required_failures": []
+      },
+      "tuning": {
+        "query_count": 6,
+        "recall_at_5": 1.0,
+        "mrr_at_10": 1.0,
+        "first_pass_p50_ms": 5.1471615,
+        "first_pass_p95_ms": 8.869458,
+        "warm_p50_ms": 5.150688000000001,
+        "warm_p95_ms": 7.037066,
+        "required_failures": []
+      }
+    }
+  },
+  "comparison_failures": []
+}

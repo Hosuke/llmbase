@@ -1,0 +1,1170 @@
+{
+  "command": [
+    "/usr/sbin/chroot",
+    "/root/llmbase-rust-migration-20260920/b9-primary/accepted/runtime",
+    "/bin/llmbase",
+    "--base-dir",
+    "/library",
+    "--library-id",
+    "standalone",
+    "mcp"
+  ],
+  "stderr_log": "mcp-stderr.log",
+  "stdout": "protocol-only JSON lines",
+  "steps": [
+    {
+      "request": "initialize",
+      "id": 1,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-03-26",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "b9-transport-probe",
+            "version": "1"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "protocolVersion": "2025-03-26",
+          "capabilities": {
+            "tools": {}
+          },
+          "serverInfo": {
+            "name": "llmbase",
+            "version": "0.1.0"
+          },
+          "instructions": "Native library tools. Tool discovery lists available capabilities; unavailable legacy operations return explicit errors. The process is scoped to its configured library."
+        }
+      },
+      "wall_ms": 3.313
+    },
+    {
+      "request": "tools/list",
+      "id": 2,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "tools": [
+            {
+              "name": "kb_search",
+              "description": "Full-text search across the knowledge base wiki articles.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Search query"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "default": 10
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            },
+            {
+              "name": "kb_search_raw",
+              "description": "Fallback full-text search over the raw/ ingest directory (pre-compile source material). Use when kb_search misses — raw holds verbatim scraped sources, dictionaries, and book chapters that may contain exact wording lost during compile.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Search query"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "default": 10
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            },
+            {
+              "name": "kb_ask",
+              "description": "Ask a question against the knowledge base (deep research with context retrieval). Set promote=true to let the LLM judge whether to sediment the Q&A as a new wiki concept.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string"
+                  },
+                  "tone": {
+                    "type": "string",
+                    "default": "default"
+                  },
+                  "file_back": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "deep": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "promote": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "api_key": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "description": "Per-request LLM API key override. HTTP callers MUST use the X-LLM-Key header instead; the /api/ask body is rejected with 400 if any api_key-like field is present."
+                  }
+                },
+                "required": [
+                  "question"
+                ]
+              }
+            },
+            {
+              "name": "kb_get",
+              "description": "Get a wiki article by slug (alias-aware: accepts Chinese/pinyin/English names). Optional `section` param extracts just that section's subtree (heading + content + descendants); use kb_get_sections first to discover anchors.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "section": {
+                    "type": "string",
+                    "description": "Section anchor from kb_get_sections (e.g. h2-緒論-bb6572)"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_get_sections",
+              "description": "Get the section tree (table of contents) for an article. Each section has level, title, anchor, start/end character offsets, and nested children. Anchors are stable across cosmetic title edits and sibling reorders.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_list",
+              "description": "List all wiki articles with titles and tags. Optional tag filter.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            {
+              "name": "kb_backlinks",
+              "description": "Find all articles that reference a given article.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_taxonomy",
+              "description": "Get the hierarchical category tree of the knowledge base.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string",
+                    "default": "zh"
+                  }
+                }
+              }
+            },
+            {
+              "name": "kb_stats",
+              "description": "Knowledge-base statistics: article count, raw count, word count.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "kb_ingest",
+              "description": "Ingest a URL or local file path into the raw corpus.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "description": "URL or local file path"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Legacy alias for source"
+                  }
+                }
+              }
+            },
+            {
+              "name": "kb_compile",
+              "description": "Compile raw documents into wiki articles. full=true recompiles everything.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "full": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            },
+            {
+              "name": "kb_lint",
+              "description": "Run health checks on the KB. Legacy: fix=true delegates to kb_lint_fix.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "deep": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "fix": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Legacy: run auto_fix"
+                  }
+                }
+              }
+            },
+            {
+              "name": "kb_lint_fix",
+              "description": "Auto-fix lint issues (metadata, broken links, duplicates, categories).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "kb_export_article",
+              "description": "Export a single article with full context (linked articles, backlinks).",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_export_tag",
+              "description": "Export all articles with a given tag.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tag"
+                ]
+              }
+            },
+            {
+              "name": "kb_export_graph",
+              "description": "Export the subgraph around an article up to a given depth.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "default": 2
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_export",
+              "description": "Legacy unified export (type: article/tag/graph). Prefer kb_export_article/tag/graph.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "article",
+                      "tag",
+                      "graph"
+                    ]
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "default": 2
+                  }
+                },
+                "required": [
+                  "type",
+                  "slug"
+                ]
+              }
+            },
+            {
+              "name": "kb_rebuild_index",
+              "description": "Rebuild the wiki index, aliases, backlinks metadata.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "kb_xici",
+              "description": "Get the guided reading (导读) — an LLM-generated introduction.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string",
+                    "default": "zh"
+                  }
+                }
+              }
+            },
+            {
+              "name": "compile_source",
+              "description": "Compile one raw source into reviewable drafts without accepting them.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "source_id": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "source_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "get_draft",
+              "description": "Read the exact reviewed bytes and source revision of a compilation draft.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "draft_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "draft_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "apply_draft",
+              "description": "Accept a draft with an explicit compare-and-swap against its reviewed base hash.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "draft_id": {
+                    "type": "string"
+                  },
+                  "expected_hash": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "draft_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "ask_sources",
+              "description": "Answer from original versioned evidence. Does not save or promote the answer.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "raw",
+                      "compiled",
+                      "both"
+                    ],
+                    "default": "raw"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "answer_language": {
+                    "type": "string"
+                  },
+                  "short_answer": {
+                    "type": "boolean"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "context_token_budget": {
+                    "type": "integer"
+                  },
+                  "max_tokens": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "question"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "prepare_transcription",
+              "description": "Validate supplied transcript text and map it into a read-only native ask; does not perform OCR or model calls.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "const": 1
+                  },
+                  "transcription_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "input_kind": {
+                    "type": "string",
+                    "enum": [
+                      "supplied_transcription",
+                      "synthetic_transcription",
+                      "image",
+                      "handwriting"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "maxLength": 8388608
+                  },
+                  "answer_preferences": {
+                    "type": "object",
+                    "properties": {
+                      "short_answer": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "max_sentences": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "answer_language": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "version",
+                  "transcription_id",
+                  "session_id",
+                  "input_kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "ask_transcription",
+              "description": "Answer a supplied transcript using scoped original evidence; no source or answer writes. Images need a recognition adapter.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "const": 1
+                  },
+                  "transcription_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "input_kind": {
+                    "type": "string",
+                    "enum": [
+                      "supplied_transcription",
+                      "synthetic_transcription",
+                      "image",
+                      "handwriting"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384
+                  },
+                  "image_base64": {
+                    "type": "string",
+                    "maxLength": 8388608
+                  },
+                  "answer_preferences": {
+                    "type": "object",
+                    "properties": {
+                      "short_answer": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "max_sentences": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "answer_language": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "version",
+                  "transcription_id",
+                  "session_id",
+                  "input_kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "save_answer",
+              "description": "Explicitly save an accepted answer with validated citations and visibility.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "response": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "response",
+                  "request"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "get_saved_answer",
+              "description": "Read a saved answer and resolve its original evidence versions.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "answer_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "answer_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "promote_answer",
+              "description": "Judge a saved answer and optionally create a reviewable article draft; never applies it automatically.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "answer_id": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "answer_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "build_vectors",
+              "description": "Build or resume an embedding generation and activate it after complete snapshot validation.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "dimension": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "revision",
+                  "dimension"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "search_hybrid",
+              "description": "Fuse lexical and actual vector retrieval; explicitly reports degradation when vectors are unavailable.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "raw",
+                      "compiled",
+                      "note"
+                    ]
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "resolve_evidence",
+              "description": "Resolve an exact original passage and report whether it is stale or deleted.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "evidence": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "evidence"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "knowledge_graph",
+              "description": "Inspect a bounded graph of wikilinks and evidence-supported manual relations.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "string"
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4
+                  },
+                  "max_neighbors": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200
+                  },
+                  "max_nodes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5000
+                  },
+                  "max_edges": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20000
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "article_backlinks",
+              "description": "List visible articles linking to one scoped article or unambiguous alias.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "get_taxonomy",
+              "description": "Read accepted classification or its explicit tag fallback in the requested language.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string",
+                    "default": "en"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "set_taxonomy",
+              "description": "Accept a reviewed classification document with retained unknown metadata.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "document": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "document"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "generate_taxonomy",
+              "description": "Generate actual classification from scoped article metadata using the configured model.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "private_inputs": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "label_languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sync_category_tags": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "max_tokens": {
+                    "type": "integer"
+                  },
+                  "context_bytes": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "generate_introduction",
+              "description": "Generate and persist a guided introduction from a guarded source snapshot.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "lang": {
+                    "type": "string",
+                    "default": "en"
+                  },
+                  "private_inputs": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "strategy": {
+                    "type": "string",
+                    "enum": [
+                      "direct",
+                      "legacy_zh_base"
+                    ]
+                  },
+                  "max_tokens": {
+                    "type": "integer"
+                  },
+                  "context_bytes": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "generate_entities",
+              "description": "Extract people, events and places from guarded article context, with separate private output.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "private_inputs": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "max_tokens": {
+                    "type": "integer"
+                  },
+                  "context_bytes": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "repair_library",
+              "description": "Run an explicit maintenance stage with journaled changes and durable partial/failure status.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "clean",
+                      "heal_slugs",
+                      "dirty_tags",
+                      "normalize_tags",
+                      "metadata",
+                      "broken_links",
+                      "deduplicate",
+                      "auto_fix",
+                      "heal",
+                      "deep_lint"
+                    ]
+                  },
+                  "private_inputs": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "max_articles": {
+                    "type": "integer"
+                  },
+                  "max_merges": {
+                    "type": "integer"
+                  },
+                  "max_stubs": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_job",
+              "description": "Execute at most one scoped queued job with a renewable durable lease.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "worker_id": {
+                    "type": "string"
+                  },
+                  "job_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "ingest_with_adapter",
+              "description": "Run one operator-configured external parser and accept its scoped source documents through the native journal.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "adapter": {
+                    "type": "string"
+                  },
+                  "input": {}
+                },
+                "required": [
+                  "adapter",
+                  "input"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "add_relation",
+              "description": "Accept a typed manual relation with original-version evidence supports.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "supports": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "internal",
+                      "private"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "target",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "remove_relation",
+              "description": "Tombstone a manual relation while retaining its accepted revision history.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "relation_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "relation_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      },
+      "wall_ms": 0.844
+    },
+    {
+      "request": "tools/call kb_rebuild_index",
+      "id": 3,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "kb_rebuild_index",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"article_count\": 1\n}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "wall_ms": 42.62
+    },
+    {
+      "request": "tools/call kb_search_raw",
+      "id": 4,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+          "name": "kb_search_raw",
+          "arguments": {
+            "query": "學而時習之"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"results\": [\n    {\n      \"source_id\": \"3231727d-6521-4689-86fd-de82b5a9612c\",\n      \"slug\": \"orchard\",\n      \"title\": \"Orchard source\",\n      \"source_kind\": \"raw\",\n      \"score\": 9e-6,\n      \"snippet\": \"An orchard grows fruit. 學而時習之。\\n\",\n      \"evidence\": {\n        \"library_id\": \"standalone\",\n        \"source_id\": \"3231727d-6521-4689-86fd-de82b5a9612c\",\n        \"revision\": 1,\n        \"content_hash\": \"961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72\",\n        \"passage_id\": \"9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72\",\n        \"start\": 100,\n        \"end\": 143,\n        \"offset_unit\": \"utf8_byte\",\n        \"exact_quote\": \"An orchard grows fruit. 學而時習之。\\n\",\n        \"source_url\": \"https://example.invalid/orchard\",\n        \"locator\": null\n      }\n    }\n  ]\n}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "wall_ms": 2.34
+    },
+    {
+      "request": "tools/call resolve_evidence",
+      "id": 5,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_evidence",
+          "arguments": {
+            "evidence": {
+              "library_id": "standalone",
+              "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+              "revision": 1,
+              "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+              "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+              "start": 100,
+              "end": 143,
+              "offset_unit": "utf8_byte",
+              "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+              "source_url": "https://example.invalid/orchard",
+              "locator": null
+            }
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"evidence\": {\n    \"library_id\": \"standalone\",\n    \"source_id\": \"3231727d-6521-4689-86fd-de82b5a9612c\",\n    \"revision\": 1,\n    \"content_hash\": \"961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72\",\n    \"passage_id\": \"9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72\",\n    \"start\": 100,\n    \"end\": 143,\n    \"offset_unit\": \"utf8_byte\",\n    \"exact_quote\": \"An orchard grows fruit. 學而時習之。\\n\",\n    \"source_url\": \"https://example.invalid/orchard\",\n    \"locator\": null\n  },\n  \"stale\": false,\n  \"deleted\": false,\n  \"current_revision\": 1\n}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "wall_ms": 1.586
+    },
+    {
+      "request": "tools/call unknown_tool",
+      "id": 6,
+      "payload": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+          "name": "unknown_tool",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "error": {
+          "code": -32601,
+          "message": "tools/call"
+        }
+      },
+      "wall_ms": 0.144
+    }
+  ],
+  "exit": 0,
+  "shutdown": {
+    "clean_eof": true,
+    "signals": []
+  }
+}

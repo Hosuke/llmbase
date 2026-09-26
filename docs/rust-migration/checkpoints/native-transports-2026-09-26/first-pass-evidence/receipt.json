@@ -1,0 +1,509 @@
+{
+  "passed": true,
+  "binary_sha256": "f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8",
+  "isolated_runtime_without_python": true,
+  "steps": [
+    {
+      "command": [
+        "op",
+        "source_write"
+      ],
+      "exit": 0,
+      "wall_ms": 34.372
+    },
+    {
+      "command": [
+        "compile",
+        "source"
+      ],
+      "exit": 0,
+      "wall_ms": 35.24
+    },
+    {
+      "command": [
+        "compile",
+        "draft"
+      ],
+      "exit": 0,
+      "wall_ms": 4.959
+    },
+    {
+      "command": [
+        "compile",
+        "apply"
+      ],
+      "exit": 0,
+      "wall_ms": 23.998
+    },
+    {
+      "command": [
+        "index"
+      ],
+      "exit": 0,
+      "wall_ms": 7.299
+    },
+    {
+      "command": [
+        "op",
+        "job_enqueue"
+      ],
+      "exit": 0,
+      "wall_ms": 10.849
+    },
+    {
+      "command": [
+        "op",
+        "job_run_one"
+      ],
+      "exit": 0,
+      "wall_ms": 18.801
+    },
+    {
+      "command": [
+        "op",
+        "job_get"
+      ],
+      "exit": 0,
+      "wall_ms": 4.643
+    },
+    {
+      "command": [
+        "op",
+        "search"
+      ],
+      "exit": 0,
+      "wall_ms": 4.766
+    },
+    {
+      "command": [
+        "op",
+        "evidence"
+      ],
+      "exit": 0,
+      "wall_ms": 5.031
+    },
+    {
+      "command": [
+        "op",
+        "vector_build"
+      ],
+      "exit": 0,
+      "wall_ms": 25.442
+    },
+    {
+      "command": [
+        "op",
+        "vector_build"
+      ],
+      "exit": 0,
+      "wall_ms": 5.661
+    },
+    {
+      "command": [
+        "op",
+        "hybrid_search"
+      ],
+      "exit": 0,
+      "wall_ms": 13.69
+    },
+    {
+      "command": [
+        "ask",
+        "What grows in an orchard?"
+      ],
+      "exit": 0,
+      "wall_ms": 15.164
+    },
+    {
+      "command": [
+        "ask",
+        "What grows in an orchard?"
+      ],
+      "exit": 0,
+      "wall_ms": 10.494
+    },
+    {
+      "command": [
+        "op",
+        "answer_save"
+      ],
+      "exit": 0,
+      "wall_ms": 33.526
+    },
+    {
+      "command": [
+        "op",
+        "answer_promote"
+      ],
+      "exit": 0,
+      "wall_ms": 24.825
+    },
+    {
+      "command": [
+        "compile",
+        "apply"
+      ],
+      "exit": 0,
+      "wall_ms": 23.875
+    },
+    {
+      "command": [
+        "op",
+        "export_article"
+      ],
+      "exit": 0,
+      "wall_ms": 15.008
+    },
+    {
+      "command": [
+        "op",
+        "rebuild_metadata"
+      ],
+      "exit": 0,
+      "wall_ms": 39.131
+    },
+    {
+      "command": [
+        "op",
+        "source_write"
+      ],
+      "exit": 0,
+      "wall_ms": 21.862
+    },
+    {
+      "command": [
+        "op",
+        "evidence"
+      ],
+      "exit": 0,
+      "wall_ms": 4.776
+    },
+    {
+      "command": [
+        "op",
+        "get"
+      ],
+      "exit": 0,
+      "wall_ms": 4.776
+    },
+    {
+      "command": [
+        "op",
+        "source_delete"
+      ],
+      "exit": 0,
+      "wall_ms": 16.39
+    },
+    {
+      "command": [
+        "op",
+        "search"
+      ],
+      "exit": 0,
+      "wall_ms": 4.755
+    },
+    {
+      "command": [
+        "op",
+        "evidence"
+      ],
+      "exit": 0,
+      "wall_ms": 4.519
+    },
+    {
+      "command": [
+        "migration",
+        "backup"
+      ],
+      "exit": 0,
+      "wall_ms": 52.072
+    },
+    {
+      "command": [
+        "migration",
+        "verify"
+      ],
+      "exit": 0,
+      "wall_ms": 4.206
+    },
+    {
+      "command": [
+        "migration",
+        "restore"
+      ],
+      "exit": 0,
+      "wall_ms": 72.45
+    },
+    {
+      "command": [
+        "migration",
+        "verify"
+      ],
+      "exit": 0,
+      "wall_ms": 4.573
+    },
+    {
+      "command": [
+        "migration",
+        "rollback"
+      ],
+      "exit": 0,
+      "wall_ms": 4.961
+    }
+  ],
+  "transports": {
+    "binary": "same pinned release binary and chroot prefix as the CLI lifecycle",
+    "http": {
+      "command": [
+        "/usr/sbin/chroot",
+        "/root/llmbase-rust-migration-20260920/b9-native-transports/run-20260926-155510/runtime",
+        "/bin/llmbase",
+        "--base-dir",
+        "/library",
+        "--library-id",
+        "standalone",
+        "--library",
+        "other=/other",
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "0",
+        "--public-read"
+      ],
+      "stdout_log": "http-stdout.log",
+      "stderr_log": "http-stderr.log",
+      "owner_credential": "synthetic LLMBASE_API_SECRET in child env only; value redacted",
+      "port": 37011,
+      "steps": [
+        {
+          "request": "POST /api/v1/op search owner read",
+          "status": 200,
+          "wall_ms": 3.021
+        },
+        {
+          "request": "POST /api/v1/op evidence owner evidence resolve",
+          "status": 200,
+          "wall_ms": 2.084
+        },
+        {
+          "request": "POST /api/v1/op source_write visitor-cookie write rejected",
+          "status": 403,
+          "wall_ms": 0.542
+        },
+        {
+          "request": "POST /api/v1/op list owner targeting configured other library rejected",
+          "status": 403,
+          "wall_ms": 0.504
+        },
+        {
+          "request": "POST /api/v1/op source_write owner probe write",
+          "status": 200,
+          "wall_ms": 24.877
+        },
+        {
+          "request": "POST /api/v1/op index owner index",
+          "status": 200,
+          "wall_ms": 2.303
+        },
+        {
+          "request": "POST /api/v1/op search owner probe search",
+          "status": 200,
+          "wall_ms": 2.272
+        },
+        {
+          "request": "POST /api/v1/op evidence owner probe resolve",
+          "status": 200,
+          "wall_ms": 2.297
+        },
+        {
+          "request": "POST /api/v1/op source_delete owner probe delete",
+          "status": 200,
+          "wall_ms": 18.139
+        },
+        {
+          "request": "POST /api/v1/op search owner probe re-search",
+          "status": 200,
+          "wall_ms": 2.318
+        },
+        {
+          "request": "POST /api/v1/ask/stream",
+          "status": 200,
+          "wall_ms": 3.048,
+          "note": "first delta forwarded to controller before provider gate release"
+        }
+      ],
+      "sse_events": [
+        {
+          "event": "progress",
+          "sequence": 0,
+          "type": "progress"
+        },
+        {
+          "event": "evidence",
+          "sequence": 1,
+          "type": "evidence"
+        },
+        {
+          "event": "progress",
+          "sequence": 2,
+          "type": "progress"
+        },
+        {
+          "event": "delta",
+          "sequence": 3,
+          "type": "delta"
+        },
+        {
+          "event": "delta",
+          "sequence": 4,
+          "type": "delta"
+        },
+        {
+          "event": "usage",
+          "sequence": 5,
+          "type": "usage"
+        },
+        {
+          "event": "done",
+          "sequence": 6,
+          "type": "done"
+        }
+      ],
+      "sse_request_id": "b9ssedf78a7979020",
+      "exit": 0
+    },
+    "mcp": {
+      "command": [
+        "/usr/sbin/chroot",
+        "/root/llmbase-rust-migration-20260920/b9-native-transports/run-20260926-155510/runtime",
+        "/bin/llmbase",
+        "--base-dir",
+        "/library",
+        "--library-id",
+        "standalone",
+        "mcp"
+      ],
+      "stderr_log": "mcp-stderr.log",
+      "stdout": "protocol-only JSON lines",
+      "exit": 0,
+      "steps": [
+        {
+          "request": "initialize",
+          "id": 1,
+          "wall_ms": 2.124
+        },
+        {
+          "request": "tools/list",
+          "id": 2,
+          "wall_ms": 0.845
+        },
+        {
+          "request": "tools/call kb_rebuild_index",
+          "id": 3,
+          "wall_ms": 50.022
+        },
+        {
+          "request": "tools/call kb_search_raw",
+          "id": 4,
+          "wall_ms": 2.286
+        },
+        {
+          "request": "tools/call resolve_evidence",
+          "id": 5,
+          "wall_ms": 1.711
+        },
+        {
+          "request": "tools/call unknown_tool",
+          "id": 6,
+          "wall_ms": 0.119
+        }
+      ]
+    }
+  },
+  "provider_fixture_requests": [
+    {
+      "path": "/v1/chat/completions",
+      "stream": false
+    },
+    {
+      "path": "/v1/chat/completions",
+      "stream": true
+    },
+    {
+      "path": "/v1/embeddings",
+      "stream": false
+    },
+    {
+      "path": "/v1/embeddings",
+      "stream": false
+    },
+    {
+      "path": "/v1/embeddings",
+      "stream": false
+    },
+    {
+      "path": "/v1/chat/completions",
+      "stream": true
+    },
+    {
+      "path": "/v1/chat/completions",
+      "stream": true
+    },
+    {
+      "path": "/v1/chat/completions",
+      "stream": false
+    }
+  ],
+  "semantic_quality": "not evaluated",
+  "provider": "offline deterministic HTTP fixture; no credentials",
+  "runtime_files": [
+    "bin/llmbase",
+    "lib/x86_64-linux-gnu/libc.so.6",
+    "lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "lib/x86_64-linux-gnu/libm.so.6",
+    "lib64/ld-linux-x86-64.so.2",
+    "library/wiki/_meta/_index.md",
+    "library/wiki/_meta/aliases.json",
+    "library/wiki/_meta/backlinks.json",
+    "library/wiki/_meta/index.json",
+    "library/wiki/_meta/llmbase.sqlite3",
+    "library/wiki/_meta/llmbase.sqlite3-shm",
+    "library/wiki/_meta/llmbase.sqlite3-wal",
+    "library/wiki/_meta/llmbase.writer.lock",
+    "library/wiki/_meta/projection-generation.json",
+    "library/wiki/concepts/orchard-answer.md",
+    "library/wiki/concepts/orchard-knowledge.md",
+    "library/wiki/outputs/answers/b08cdd4c6b676936dc58718c96cad6a5ec30123df98da24e3dcbeb6c27bbe4a3.md",
+    "restored/config.yaml",
+    "restored/migration-original-config.yaml",
+    "restored/migration-receipt.json",
+    "restored/wiki/_meta/_index.md",
+    "restored/wiki/_meta/aliases.json",
+    "restored/wiki/_meta/backlinks.json",
+    "restored/wiki/_meta/index.json",
+    "restored/wiki/_meta/llmbase.sqlite3",
+    "restored/wiki/_meta/llmbase.sqlite3-shm",
+    "restored/wiki/_meta/llmbase.sqlite3-wal",
+    "restored/wiki/_meta/llmbase.writer.lock",
+    "restored/wiki/_meta/migration_receipts/71202b1c5339f76f4e342876ef273cf880d44a2557d2b9ebd85d0a02307bc1d2.json",
+    "restored/wiki/_meta/projection-generation.json",
+    "restored/wiki/concepts/orchard-answer.md",
+    "restored/wiki/concepts/orchard-knowledge.md",
+    "restored/wiki/outputs/answers/b08cdd4c6b676936dc58718c96cad6a5ec30123df98da24e3dcbeb6c27bbe4a3.md",
+    "snapshot/config.yaml",
+    "snapshot/migration-receipt.json",
+    "snapshot/wiki/_meta/_index.md",
+    "snapshot/wiki/_meta/aliases.json",
+    "snapshot/wiki/_meta/backlinks.json",
+    "snapshot/wiki/_meta/index.json",
+    "snapshot/wiki/_meta/llmbase.sqlite3",
+    "snapshot/wiki/_meta/llmbase.sqlite3-shm",
+    "snapshot/wiki/_meta/llmbase.sqlite3-wal",
+    "snapshot/wiki/_meta/llmbase.writer.lock",
+    "snapshot/wiki/_meta/projection-generation.json",
+    "snapshot/wiki/concepts/orchard-answer.md",
+    "snapshot/wiki/concepts/orchard-knowledge.md",
+    "snapshot/wiki/outputs/answers/b08cdd4c6b676936dc58718c96cad6a5ec30123df98da24e3dcbeb6c27bbe4a3.md"
+  ]
+}

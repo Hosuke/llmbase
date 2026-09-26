@@ -1,0 +1,349 @@
+{
+  "command": [
+    "/usr/sbin/chroot",
+    "/root/llmbase-rust-migration-20260920/b9-primary/expired-gate/runtime",
+    "/bin/llmbase",
+    "--base-dir",
+    "/library",
+    "--library-id",
+    "standalone",
+    "--library",
+    "other=/other",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--public-read"
+  ],
+  "stdout_log": "http-stdout.log",
+  "stderr_log": "http-stderr.log",
+  "owner_credential": "synthetic LLMBASE_API_SECRET in child env only; value redacted",
+  "steps": [
+    {
+      "request": "POST /api/v1/op search owner read",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "orchard",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "832f2509-11fa-47ad-9547-5a3ce5f5d0cc",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": [
+            {
+              "source_id": "145345a1-f69b-4cee-aec0-6e1d916ff1d2",
+              "slug": "orchard",
+              "title": "Orchard source",
+              "source_kind": "raw",
+              "score": 2.054945054945055e-06,
+              "snippet": "An orchard grows fruit. 學而時習之。\n",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "145345a1-f69b-4cee-aec0-6e1d916ff1d2",
+                "revision": 1,
+                "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+                "passage_id": "85c4f9178181d36278315692eec037a093dacf252f4aa0fdc49f02995e0649d8",
+                "start": 100,
+                "end": 143,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+                "source_url": "https://example.invalid/orchard",
+                "locator": null
+              }
+            }
+          ]
+        }
+      },
+      "wall_ms": 3.128
+    },
+    {
+      "request": "POST /api/v1/op evidence owner evidence resolve",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "evidence",
+        "args": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "145345a1-f69b-4cee-aec0-6e1d916ff1d2",
+            "revision": 1,
+            "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+            "passage_id": "85c4f9178181d36278315692eec037a093dacf252f4aa0fdc49f02995e0649d8",
+            "start": 100,
+            "end": 143,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+            "source_url": "https://example.invalid/orchard",
+            "locator": null
+          }
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "8935b859-5020-44e0-8ab9-81940656221f",
+        "result": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "145345a1-f69b-4cee-aec0-6e1d916ff1d2",
+            "revision": 1,
+            "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+            "passage_id": "85c4f9178181d36278315692eec037a093dacf252f4aa0fdc49f02995e0649d8",
+            "start": 100,
+            "end": 143,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+            "source_url": "https://example.invalid/orchard",
+            "locator": null
+          },
+          "stale": false,
+          "deleted": false,
+          "current_revision": 1
+        }
+      },
+      "wall_ms": 2.143
+    },
+    {
+      "request": "POST /api/v1/op source_write visitor-cookie write rejected",
+      "status": 403,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_write",
+        "args": {
+          "kind": "raw",
+          "path": "transport-probe.md",
+          "content": "---\ntitle: Transport probe\n---\nB9 transport probe b9probece7178d16fd84d17.\n"
+        }
+      },
+      "response": {
+        "status": "error",
+        "error": {
+          "code": "forbidden",
+          "message": "library or capability denied"
+        }
+      },
+      "wall_ms": 0.501
+    },
+    {
+      "request": "POST /api/v1/op list owner targeting configured other library rejected",
+      "status": 403,
+      "payload": {
+        "library_id": "other",
+        "operation": "list",
+        "args": {}
+      },
+      "response": {
+        "status": "error",
+        "error": {
+          "code": "forbidden",
+          "message": "library or capability denied"
+        }
+      },
+      "wall_ms": 0.496
+    },
+    {
+      "request": "POST /api/v1/op source_write owner probe write",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_write",
+        "args": {
+          "kind": "raw",
+          "path": "transport-probe.md",
+          "content": "---\ntitle: Transport probe\n---\nB9 transport probe b9probece7178d16fd84d17.\n"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "16a9e90e-e30c-4ef6-9b6e-39902ce9c247",
+        "result": {
+          "added": 1,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 0,
+          "unchanged": 2,
+          "passages_written": 1
+        }
+      },
+      "wall_ms": 19.555
+    },
+    {
+      "request": "POST /api/v1/op index owner index",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "index",
+        "args": {}
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "1c8fbaf4-6294-48d4-8315-2984ab35a48c",
+        "result": {
+          "added": 0,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 0,
+          "unchanged": 3,
+          "passages_written": 0
+        }
+      },
+      "wall_ms": 2.241
+    },
+    {
+      "request": "POST /api/v1/op search owner probe search",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "b9probece7178d16fd84d17",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "a5fedcbf-cca2-48df-b6c4-e55e5d4c5df1",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": [
+            {
+              "source_id": "3c367e44-628a-44f8-8654-e37c1bb1eced",
+              "slug": "transport-probe",
+              "title": "Transport probe",
+              "source_kind": "raw",
+              "score": 0.5843845135882935,
+              "snippet": "B9 transport probe b9probece7178d16fd84d17.\n",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "3c367e44-628a-44f8-8654-e37c1bb1eced",
+                "revision": 1,
+                "content_hash": "888ca1c5e2f90968082687b170e4c43a15541dba359da925b6d609ed301bc704",
+                "passage_id": "08c4fe9fcd7d86e017eb003d7ad5e0338348dea9d3afba3a02c19b584c0b159c",
+                "start": 31,
+                "end": 75,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "B9 transport probe b9probece7178d16fd84d17.\n",
+                "source_url": null,
+                "locator": null
+              }
+            }
+          ]
+        }
+      },
+      "wall_ms": 2.198
+    },
+    {
+      "request": "POST /api/v1/op evidence owner probe resolve",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "evidence",
+        "args": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "3c367e44-628a-44f8-8654-e37c1bb1eced",
+            "revision": 1,
+            "content_hash": "888ca1c5e2f90968082687b170e4c43a15541dba359da925b6d609ed301bc704",
+            "passage_id": "08c4fe9fcd7d86e017eb003d7ad5e0338348dea9d3afba3a02c19b584c0b159c",
+            "start": 31,
+            "end": 75,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "B9 transport probe b9probece7178d16fd84d17.\n",
+            "source_url": null,
+            "locator": null
+          }
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "2f45a7ce-ca7d-4e44-af84-40ae771cda8b",
+        "result": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "3c367e44-628a-44f8-8654-e37c1bb1eced",
+            "revision": 1,
+            "content_hash": "888ca1c5e2f90968082687b170e4c43a15541dba359da925b6d609ed301bc704",
+            "passage_id": "08c4fe9fcd7d86e017eb003d7ad5e0338348dea9d3afba3a02c19b584c0b159c",
+            "start": 31,
+            "end": 75,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "B9 transport probe b9probece7178d16fd84d17.\n",
+            "source_url": null,
+            "locator": null
+          },
+          "stale": false,
+          "deleted": false,
+          "current_revision": 1
+        }
+      },
+      "wall_ms": 1.984
+    },
+    {
+      "request": "POST /api/v1/op source_delete owner probe delete",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_delete",
+        "args": {
+          "source_id": "3c367e44-628a-44f8-8654-e37c1bb1eced",
+          "expected_hash": "888ca1c5e2f90968082687b170e4c43a15541dba359da925b6d609ed301bc704"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "8afd2c67-bddc-4ae5-a7db-1166039361ee",
+        "result": {
+          "added": 0,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 1,
+          "unchanged": 2,
+          "passages_written": 0
+        }
+      },
+      "wall_ms": 14.36
+    },
+    {
+      "request": "POST /api/v1/op search owner probe re-search",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "b9probece7178d16fd84d17",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "611b1de8-7515-4ad4-925a-20b8ec0810be",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": []
+        }
+      },
+      "wall_ms": 2.227
+    }
+  ],
+  "port": 39187,
+  "exit": 0,
+  "shutdown": {
+    "exit": 0,
+    "signals": [
+      "SIGINT"
+    ],
+    "forced": false
+  }
+}

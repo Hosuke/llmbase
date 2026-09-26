@@ -1,0 +1,582 @@
+{
+  "command": [
+    "/usr/sbin/chroot",
+    "/root/llmbase-rust-migration-20260920/b9-primary/accepted/runtime",
+    "/bin/llmbase",
+    "--base-dir",
+    "/library",
+    "--library-id",
+    "standalone",
+    "--library",
+    "other=/other",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--public-read"
+  ],
+  "stdout_log": "http-stdout.log",
+  "stderr_log": "http-stderr.log",
+  "owner_credential": "synthetic LLMBASE_API_SECRET in child env only; value redacted",
+  "steps": [
+    {
+      "request": "POST /api/v1/op search owner read",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "orchard",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "b525c9a4-6693-4c74-b99d-4b8b812e229a",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": [
+            {
+              "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+              "slug": "orchard",
+              "title": "Orchard source",
+              "source_kind": "raw",
+              "score": 2.054945054945055e-06,
+              "snippet": "An orchard grows fruit. 學而時習之。\n",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+                "revision": 1,
+                "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+                "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+                "start": 100,
+                "end": 143,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+                "source_url": "https://example.invalid/orchard",
+                "locator": null
+              }
+            }
+          ]
+        }
+      },
+      "wall_ms": 3.155
+    },
+    {
+      "request": "POST /api/v1/op evidence owner evidence resolve",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "evidence",
+        "args": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+            "revision": 1,
+            "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+            "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+            "start": 100,
+            "end": 143,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+            "source_url": "https://example.invalid/orchard",
+            "locator": null
+          }
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "b65294c0-6392-4a3d-8498-dd3fd665457b",
+        "result": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+            "revision": 1,
+            "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+            "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+            "start": 100,
+            "end": 143,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+            "source_url": "https://example.invalid/orchard",
+            "locator": null
+          },
+          "stale": false,
+          "deleted": false,
+          "current_revision": 1
+        }
+      },
+      "wall_ms": 2.994
+    },
+    {
+      "request": "POST /api/v1/op source_write visitor-cookie write rejected",
+      "status": 403,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_write",
+        "args": {
+          "kind": "raw",
+          "path": "transport-probe.md",
+          "content": "---\ntitle: Transport probe\n---\nB9 transport probe b9probe818e72b49d8b49c8.\n"
+        }
+      },
+      "response": {
+        "status": "error",
+        "error": {
+          "code": "forbidden",
+          "message": "library or capability denied"
+        }
+      },
+      "wall_ms": 0.656
+    },
+    {
+      "request": "POST /api/v1/op list owner targeting configured other library rejected",
+      "status": 403,
+      "payload": {
+        "library_id": "other",
+        "operation": "list",
+        "args": {}
+      },
+      "response": {
+        "status": "error",
+        "error": {
+          "code": "forbidden",
+          "message": "library or capability denied"
+        }
+      },
+      "wall_ms": 0.512
+    },
+    {
+      "request": "POST /api/v1/op source_write owner probe write",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_write",
+        "args": {
+          "kind": "raw",
+          "path": "transport-probe.md",
+          "content": "---\ntitle: Transport probe\n---\nB9 transport probe b9probe818e72b49d8b49c8.\n"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "85d27ec5-aef1-4352-8e65-76245f3b5a82",
+        "result": {
+          "added": 1,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 0,
+          "unchanged": 2,
+          "passages_written": 1
+        }
+      },
+      "wall_ms": 18.813
+    },
+    {
+      "request": "POST /api/v1/op index owner index",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "index",
+        "args": {}
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "91bceac8-608a-4739-9e96-ef3b7e9c66c9",
+        "result": {
+          "added": 0,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 0,
+          "unchanged": 3,
+          "passages_written": 0
+        }
+      },
+      "wall_ms": 3.326
+    },
+    {
+      "request": "POST /api/v1/op search owner probe search",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "b9probe818e72b49d8b49c8",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "58f110e3-b69f-4932-9599-f4ace2fe2160",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": [
+            {
+              "source_id": "6d4e4f45-6106-4643-89f2-2b70301c6bb5",
+              "slug": "transport-probe",
+              "title": "Transport probe",
+              "source_kind": "raw",
+              "score": 0.5843845135882935,
+              "snippet": "B9 transport probe b9probe818e72b49d8b49c8.\n",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "6d4e4f45-6106-4643-89f2-2b70301c6bb5",
+                "revision": 1,
+                "content_hash": "4147dda49d99e8829083ca2999432c7fada0663dd8fb26953d3cad828407d3ae",
+                "passage_id": "8429eb9efbaf0fa29b1911eb7c60f4611808ec760359757014eb1ea4a071b72e",
+                "start": 31,
+                "end": 75,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "B9 transport probe b9probe818e72b49d8b49c8.\n",
+                "source_url": null,
+                "locator": null
+              }
+            }
+          ]
+        }
+      },
+      "wall_ms": 3.12
+    },
+    {
+      "request": "POST /api/v1/op evidence owner probe resolve",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "evidence",
+        "args": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "6d4e4f45-6106-4643-89f2-2b70301c6bb5",
+            "revision": 1,
+            "content_hash": "4147dda49d99e8829083ca2999432c7fada0663dd8fb26953d3cad828407d3ae",
+            "passage_id": "8429eb9efbaf0fa29b1911eb7c60f4611808ec760359757014eb1ea4a071b72e",
+            "start": 31,
+            "end": 75,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "B9 transport probe b9probe818e72b49d8b49c8.\n",
+            "source_url": null,
+            "locator": null
+          }
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "842bf8d1-5855-4a84-9040-48ef28880eb7",
+        "result": {
+          "evidence": {
+            "library_id": "standalone",
+            "source_id": "6d4e4f45-6106-4643-89f2-2b70301c6bb5",
+            "revision": 1,
+            "content_hash": "4147dda49d99e8829083ca2999432c7fada0663dd8fb26953d3cad828407d3ae",
+            "passage_id": "8429eb9efbaf0fa29b1911eb7c60f4611808ec760359757014eb1ea4a071b72e",
+            "start": 31,
+            "end": 75,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "B9 transport probe b9probe818e72b49d8b49c8.\n",
+            "source_url": null,
+            "locator": null
+          },
+          "stale": false,
+          "deleted": false,
+          "current_revision": 1
+        }
+      },
+      "wall_ms": 2.722
+    },
+    {
+      "request": "POST /api/v1/op source_delete owner probe delete",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "source_delete",
+        "args": {
+          "source_id": "6d4e4f45-6106-4643-89f2-2b70301c6bb5",
+          "expected_hash": "4147dda49d99e8829083ca2999432c7fada0663dd8fb26953d3cad828407d3ae"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "e1e6a26a-a1f3-4331-9b27-0221728d3068",
+        "result": {
+          "added": 0,
+          "updated": 0,
+          "moved": 0,
+          "deleted": 1,
+          "unchanged": 2,
+          "passages_written": 0
+        }
+      },
+      "wall_ms": 18.267
+    },
+    {
+      "request": "POST /api/v1/op search owner probe re-search",
+      "status": 200,
+      "payload": {
+        "library_id": "standalone",
+        "operation": "search",
+        "args": {
+          "query": "b9probe818e72b49d8b49c8",
+          "kind": "raw"
+        }
+      },
+      "response": {
+        "schema_version": 1,
+        "request_id": "ffb1381f-3ab3-4e99-8adf-f1e9400c771c",
+        "result": {
+          "library_id": "standalone",
+          "mode": "lexical",
+          "degradation": "embedding index is not configured",
+          "results": []
+        }
+      },
+      "wall_ms": 2.39
+    },
+    {
+      "request": "POST /api/v1/ask/stream",
+      "status": 200,
+      "payload": {
+        "question": "What grows in an orchard?",
+        "library_id": "standalone",
+        "request_id": "b9ssefb3a451cdf58",
+        "short_answer": true,
+        "top_k": 1
+      },
+      "gate_held_at_first_delta": true,
+      "wall_ms": 3.4,
+      "note": "first delta forwarded to controller before provider gate release"
+    }
+  ],
+  "port": 45169,
+  "sse_events": [
+    {
+      "event": "progress",
+      "sequence": 0,
+      "type": "progress",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 0,
+        "session_id": null,
+        "type": "progress",
+        "stage": "retrieval"
+      }
+    },
+    {
+      "event": "evidence",
+      "sequence": 1,
+      "type": "evidence",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 1,
+        "session_id": null,
+        "type": "evidence",
+        "candidates": [
+          {
+            "library_id": "standalone",
+            "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+            "revision": 1,
+            "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+            "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+            "start": 100,
+            "end": 143,
+            "offset_unit": "utf8_byte",
+            "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+            "source_url": "https://example.invalid/orchard",
+            "locator": null
+          }
+        ],
+        "context_evidence": [
+          {
+            "label": "E1",
+            "evidence": {
+              "library_id": "standalone",
+              "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+              "revision": 1,
+              "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+              "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+              "start": 100,
+              "end": 143,
+              "offset_unit": "utf8_byte",
+              "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+              "source_url": "https://example.invalid/orchard",
+              "locator": null
+            }
+          }
+        ],
+        "retrieval_mode": "lexical",
+        "degradation": "embedding generation has not been built",
+        "context_budget": {
+          "max_evidence_bytes": 8192,
+          "used_evidence_bytes": 452,
+          "token_estimate": 452,
+          "estimate_method": "utf8_bytes_conservative_estimate"
+        }
+      }
+    },
+    {
+      "event": "progress",
+      "sequence": 2,
+      "type": "progress",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 2,
+        "session_id": null,
+        "type": "progress",
+        "stage": "generation"
+      }
+    },
+    {
+      "event": "delta",
+      "sequence": 3,
+      "type": "delta",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 3,
+        "session_id": null,
+        "type": "delta",
+        "content": "Orchards "
+      }
+    },
+    {
+      "event": "delta",
+      "sequence": 4,
+      "type": "delta",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 4,
+        "session_id": null,
+        "type": "delta",
+        "content": "grow fruit [E1]."
+      }
+    },
+    {
+      "event": "usage",
+      "sequence": 5,
+      "type": "usage",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 5,
+        "session_id": null,
+        "type": "usage",
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 8,
+          "reasoning_tokens": null,
+          "total_tokens": 18
+        }
+      }
+    },
+    {
+      "event": "done",
+      "sequence": 6,
+      "type": "done",
+      "data": {
+        "version": 1,
+        "request_id": "b9ssefb3a451cdf58",
+        "sequence": 6,
+        "session_id": null,
+        "type": "done",
+        "response": {
+          "request_id": "b9ssefb3a451cdf58",
+          "library_id": "standalone",
+          "session_id": null,
+          "generation": {
+            "content": "Orchards grow fruit [E1].",
+            "model": "fixture-generation",
+            "finish_reason": "stop",
+            "truncated": false,
+            "usage": {
+              "prompt_tokens": 10,
+              "completion_tokens": 8,
+              "reasoning_tokens": null,
+              "total_tokens": 18
+            },
+            "attempts": 1
+          },
+          "candidates": [
+            {
+              "library_id": "standalone",
+              "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+              "revision": 1,
+              "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+              "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+              "start": 100,
+              "end": 143,
+              "offset_unit": "utf8_byte",
+              "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+              "source_url": "https://example.invalid/orchard",
+              "locator": null
+            }
+          ],
+          "context_evidence": [
+            {
+              "label": "E1",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+                "revision": 1,
+                "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+                "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+                "start": 100,
+                "end": 143,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+                "source_url": "https://example.invalid/orchard",
+                "locator": null
+              }
+            }
+          ],
+          "used_evidence": [
+            {
+              "label": "E1",
+              "evidence": {
+                "library_id": "standalone",
+                "source_id": "3231727d-6521-4689-86fd-de82b5a9612c",
+                "revision": 1,
+                "content_hash": "961dfefd5a75d635412a3488ad48d65573775975559e2b7ad45f3da7f1bcec72",
+                "passage_id": "9ab19b48907b2fe383a108978f170693aacfdabec8bfd32b6090108285c4ef72",
+                "start": 100,
+                "end": 143,
+                "offset_unit": "utf8_byte",
+                "exact_quote": "An orchard grows fruit. 學而時習之。\n",
+                "source_url": "https://example.invalid/orchard",
+                "locator": null
+              },
+              "stale": false,
+              "deleted": false
+            }
+          ],
+          "unknown_citations": [],
+          "citation_semantics": "model_markers_only_not_entailment",
+          "retrieval_mode": "lexical",
+          "degradation": "embedding generation has not been built",
+          "context_budget": {
+            "max_evidence_bytes": 8192,
+            "used_evidence_bytes": 452,
+            "token_estimate": 452,
+            "estimate_method": "utf8_bytes_conservative_estimate"
+          }
+        }
+      }
+    }
+  ],
+  "sse_request_id": "b9ssefb3a451cdf58",
+  "exit": 0,
+  "shutdown": {
+    "exit": 0,
+    "signals": [
+      "SIGINT"
+    ],
+    "forced": false
+  }
+}

@@ -1,0 +1,22 @@
+binary sha256: f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8 (pinned B8 release CLI)
+scripts/rust-migration/verify-standalone.py: FAILED
+scripts/rust-migration/evaluate_retrieval.py: OK
+docs/rust-migration/results/retrieval-legacy-v1.json: OK
+tests/rust_migration/fixtures/retrieval/corpus.json: OK
+tests/rust_migration/fixtures/retrieval/queries.json: OK
+tests/rust_migration/fixtures/retrieval/README.md: OK
+tests/rust_migration/fixtures/retrieval/manifest.json: OK
+sha256sum: WARNING: 1 computed checksum did NOT match
+scripts/rust-migration/evaluate_retrieval.py: OK
+docs/rust-migration/results/retrieval-legacy-v1.json: OK
+tests/rust_migration/fixtures/retrieval/corpus.json: OK
+tests/rust_migration/fixtures/retrieval/queries.json: OK
+tests/rust_migration/fixtures/retrieval/README.md: OK
+tests/rust_migration/fixtures/retrieval/manifest.json: OK
+22a8d5de73ad73ef054b2be611b83c3d94497ad71ae09582357a226ff9f50696  scripts/rust-migration/verify-standalone.py
+=== verify-standalone --chroot run-20260926-155510 ===
+{
+  "passed": true,
+  "steps": 31,
+  "receipt": "/root/llmbase-rust-migration-20260920/b9-native-transports/run-20260926-155510/receipt.json"
+}

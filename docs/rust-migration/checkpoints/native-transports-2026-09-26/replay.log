@@ -1,0 +1,4 @@
+before hashes: pass
+git apply --check: 0
+git apply: 0
+after and current hashes: pass
