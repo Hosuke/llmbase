@@ -1,0 +1,26 @@
+{
+  "crates/llmbase-core/src/lib.rs": {
+    "before": "1856b458a8befe0106b93036d410a7357d5ca4fd236da3be120d01c66da51607",
+    "after": "1b284d9bf8995d516d619e1a9ed84dfed8fc701ad4f3d7296d5a98a32a22bf1d"
+  },
+  "crates/llmbase-core/src/catalog.rs": {
+    "before": "99f10bcb419f5006c943b7a811a58548ed45f81c1d6f849db3b330e927cf6d1e",
+    "after": "3da472b973f75634754c7f49e1b01c902e01c2c9e0d493eb05b4dd0da8d4241b"
+  },
+  "crates/llmbase-core/src/maintenance.rs": {
+    "before": "4b53b56bb348337ab9032912044f0012a3620b483a1ade98124bd558ee5d98c0",
+    "after": "bef223afd7c28ece03e787d46e3e637175c264210119ea96c98e49b3f5e5688b"
+  },
+  "crates/llmbase-core/src/recovery.rs": {
+    "before": "be2c41bdca878e1c9cb9940210973ebf4a670906a4e7bbf12391ceee8d788d6a",
+    "after": "bd664827f2ca40028c45dabcaedec5714b4d1a0808dd11d6f1b903b00d7cf9c3"
+  },
+  "crates/llmbase-core/src/compat_maintenance.rs": {
+    "before": "d9cac4aec1b687881e2992007cd93a2ec621deac99c5c9ac588734b8b39f6927",
+    "after": "ec53d265443d0bc6c0d41abea5c5f77d59b8b03b3b8f2989495745d6396531d6"
+  },
+  "crates/llmbase-core/tests/compat_maintenance.rs": {
+    "before": "853447739b268250cc5d05f706e0fc012cf63e0d1cd99d6fcfdb2db80e5766bf",
+    "after": "7f26293a5335518260f57ece4e69b62807808e71ba431785e4919056959e3a22"
+  }
+}

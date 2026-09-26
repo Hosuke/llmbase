@@ -1,0 +1,4 @@
+ec53d265443d0bc6c0d41abea5c5f77d59b8b03b3b8f2989495745d6396531d6  crates/llmbase-core/src/compat_maintenance.rs
+7f26293a5335518260f57ece4e69b62807808e71ba431785e4919056959e3a22  crates/llmbase-core/tests/compat_maintenance.rs
+d89c8b45267a6d63243032ae7ad732b231b4442c25094188e554b5aecc5f9781  crates/llmbase-core/src/visibility.rs
+post-run manifest OK files: 118 (only the owned module file differs, fixed hash above)

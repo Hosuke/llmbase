@@ -1,0 +1,287 @@
+Cargo.lock: OK
+Cargo.toml: OK
+crates/llmbase-cli/Cargo.toml: OK
+crates/llmbase-cli/README.md: OK
+crates/llmbase-cli/src/http.rs: OK
+crates/llmbase-cli/src/ingest_local.rs: OK
+crates/llmbase-cli/src/lib.rs: OK
+crates/llmbase-cli/src/main.rs: OK
+crates/llmbase-cli/src/mcp.rs: OK
+crates/llmbase-cli/src/model_env.rs: OK
+crates/llmbase-cli/src/operations.json: OK
+crates/llmbase-cli/src/search.html: OK
+crates/llmbase-cli/src/static_ui.rs: OK
+crates/llmbase-cli/tests/ask_sse.rs: OK
+crates/llmbase-cli/tests/compile_transports.rs: OK
+crates/llmbase-cli/tests/http_ingest_contracts.rs: OK
+crates/llmbase-cli/tests/http_model_contracts.rs: OK
+crates/llmbase-cli/tests/http_read_contracts.rs: OK
+crates/llmbase-cli/tests/http_write_contracts.rs: OK
+crates/llmbase-cli/tests/static_ui.rs: OK
+crates/llmbase-cli/tests/transports.rs: OK
+crates/llmbase-cli/tests/workflows.rs: OK
+crates/llmbase-core/Cargo.toml: OK
+crates/llmbase-core/src/answers.rs: OK
+crates/llmbase-core/src/application.rs: OK
+crates/llmbase-core/src/ask.rs: OK
+crates/llmbase-core/src/catalog.rs: OK
+crates/llmbase-core/src/compat_catalog_model.rs: OK
+crates/llmbase-core/src/compat_compile.rs: OK
+crates/llmbase-core/src/compat_io.rs: OK
+crates/llmbase-core/src/compat_kb.rs: OK
+crates/llmbase-core/src/compat_maintenance.rs: OK
+crates/llmbase-core/src/compat_pipeline.rs: OK
+crates/llmbase-core/src/compat_pipeline_json.rs: OK
+crates/llmbase-core/src/compat_query.rs: OK
+crates/llmbase-core/src/compat_resolve.rs: OK
+crates/llmbase-core/src/compat_search.rs: OK
+crates/llmbase-core/src/compat_util.rs: OK
+crates/llmbase-core/src/compat_workflows.rs: OK
+crates/llmbase-core/src/compat_yaml.rs: OK
+crates/llmbase-core/src/compile.rs: OK
+crates/llmbase-core/src/config.rs: OK
+crates/llmbase-core/src/document.rs: OK
+crates/llmbase-core/src/entities_model.rs: OK
+crates/llmbase-core/src/fetch.rs: OK
+crates/llmbase-core/src/ingest.rs: OK
+crates/llmbase-core/src/jobs.rs: OK
+crates/llmbase-core/src/lib.rs: OK
+crates/llmbase-core/src/maintenance.rs: OK
+crates/llmbase-core/src/maintenance_model.rs: OK
+crates/llmbase-core/src/maintenance_repair.rs: OK
+crates/llmbase-core/src/migration.rs: OK
+crates/llmbase-core/src/plugins.rs: OK
+crates/llmbase-core/src/profile.rs: OK
+crates/llmbase-core/src/recovery.rs: OK
+crates/llmbase-core/src/store.rs: OK
+crates/llmbase-core/src/text.rs: OK
+crates/llmbase-core/src/transcription.rs: OK
+crates/llmbase-core/src/vector.rs: OK
+crates/llmbase-core/src/visibility.rs: OK
+crates/llmbase-core/src/web_read.rs: OK
+crates/llmbase-core/src/web_write.rs: OK
+crates/llmbase-core/src/worker.rs: OK
+crates/llmbase-core/tests/answers.rs: OK
+crates/llmbase-core/tests/ask.rs: OK
+crates/llmbase-core/tests/catalog.rs: OK
+crates/llmbase-core/tests/compat_compile.rs: OK
+crates/llmbase-core/tests/compat_io.rs: OK
+crates/llmbase-core/tests/compat_kb.rs: OK
+crates/llmbase-core/tests/compat_maintenance.rs: OK
+crates/llmbase-core/tests/compat_pipeline.rs: OK
+crates/llmbase-core/tests/compat_query.rs: OK
+crates/llmbase-core/tests/compat_resolve.rs: OK
+crates/llmbase-core/tests/compat_search.rs: OK
+crates/llmbase-core/tests/compat_util.rs: OK
+crates/llmbase-core/tests/compat_workflows.rs: OK
+crates/llmbase-core/tests/compile.rs: OK
+crates/llmbase-core/tests/document_yaml_contracts.rs: OK
+crates/llmbase-core/tests/entities_model.rs: OK
+crates/llmbase-core/tests/fetch.rs: OK
+crates/llmbase-core/tests/ingest.rs: OK
+crates/llmbase-core/tests/library.rs: OK
+crates/llmbase-core/tests/maintenance.rs: OK
+crates/llmbase-core/tests/maintenance_model.rs: OK
+crates/llmbase-core/tests/maintenance_repair.rs: OK
+crates/llmbase-core/tests/plugins.rs: OK
+crates/llmbase-core/tests/transcription.rs: OK
+crates/llmbase-core/tests/vector.rs: OK
+crates/llmbase-core/tests/web_read.rs: OK
+crates/llmbase-core/tests/web_write.rs: OK
+crates/llmbase-core/tests/worker.rs: OK
+crates/llmbase-model/Cargo.toml: OK
+crates/llmbase-model/src/lib.rs: OK
+crates/llmbase-model/src/sse.rs: OK
+crates/llmbase-model/src/types.rs: OK
+crates/llmbase-model/tests/http_adapter.rs: OK
+crates/llmbase-python/Cargo.toml: OK
+crates/llmbase-python/build.rs: OK
+crates/llmbase-python/src/compile.rs: OK
+crates/llmbase-python/src/fetch.rs: OK
+crates/llmbase-python/src/lib.rs: OK
+crates/llmbase-python/src/maintenance.rs: OK
+crates/llmbase-python/src/model.rs: OK
+crates/llmbase-python/src/pipeline.rs: OK
+crates/llmbase-python/src/query.rs: OK
+crates/llmbase-python/src/resolve.rs: OK
+crates/llmbase-python/src/util.rs: OK
+docs/rust-migration/contracts/baseline.json: OK
+rust-toolchain.toml: OK
+scripts/rust-migration/check-native.sh: OK
+tests/rust_migration/fixtures/downstream/README.md: OK
+tests/rust_migration/fixtures/downstream/library/config.yaml: OK
+tests/rust_migration/fixtures/downstream/library/knowledge/entries/xue.md: OK
+tests/rust_migration/fixtures/downstream/library/originals/lunyu/index.md: OK
+tests/rust_migration/fixtures/downstream/transcription.json: OK
+tests/rust_migration/fixtures/retrieval/README.md: OK
+tests/rust_migration/fixtures/retrieval/corpus.json: OK
+tests/rust_migration/fixtures/retrieval/manifest.json: OK
+tests/rust_migration/fixtures/retrieval/queries.json: OK
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.84s
+     Running tests/compat_maintenance.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_maintenance-a2d1b0423b8427c7)
+
+running 5 tests
+test deterministic_checks_preserve_legacy_exact_messages_and_scalar_counts ... ok
+test duplicate_candidates_use_cjk_conversion_and_preserve_unrelated_single_character_topics ... ok
+test native_sequence_reads_snapshot_once_and_honors_live_custom_checks_and_emit ... ok
+test public_only_load_fails_closed_on_malformed_private_and_non_public_visibility ... ok
+test legacy_alias_cascade_and_cached_backlink_key_semantics_are_preserved ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_core-eddc52d963515cf1)
+
+running 24 tests
+test ask::tests::citation_marker_parser_does_not_invent_used_evidence ... ok
+
+running 1 test
+test compat_pipeline::extended_json::tests::strings_escapes_big_numbers_and_bad_tokens_are_not_tags ... ok
+test compat_pipeline::extended_json::tests::actual_marker_collision_is_escaped_and_restored_once ... ok
+test fetch::tests::redirects_bounded_and_dns_mixed_answers_denied ... ok
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.05s
+
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+test fetch::tests::bounded_chunked_declared_and_compressed_bodies ... ok
+test fetch::tests::redirect_to_private_or_userinfo_never_connects ... ok
+test fetch::tests::stalled_response_obeys_total_deadline_and_cancellation ... ok
+test jobs::tests::cancellation_fences_running_owner_and_credentials_are_not_persisted ... ok
+test migration::tests::overlapping_destination_is_rejected_before_creating_any_directory ... ok
+test jobs::tests::jobs_survive_reopen_and_expired_owners_cannot_complete ... ok
+test recovery::tests::journal_busy_leaves_bytes_and_intent_count_unchanged ... ok
+test recovery::tests::accepted_writes_require_compare_and_swap_and_preserve_old_citations ... ok
+test recovery::tests::journal_recovery_preserves_external_edit_and_keeps_evidence ... ok
+test migration::tests::backup_keeps_deleted_revisions_jobs_and_tampering_is_detected ... ok
+test migration::tests::dry_run_copy_verify_restore_and_rollback_preserve_unknown_fields_and_original_bytes ... ok
+test recovery::tests::journal_recovers_before_and_after_file_crash_windows_once ... ok
+test recovery::tests::journal_recovery_respects_the_per_file_lock ... ok
+test recovery::tests::recovery_does_not_overwrite_an_unrelated_external_edit ... ok
+test recovery::tests::journal_replay_fails_safely_for_foreign_escaping_and_reserved_records ... ok
+test visibility::tests::malformed_flags_and_visibility_fail_closed ... ok
+test recovery::tests::journal_table_is_additive_for_existing_version_one_databases ... ok
+test recovery::tests::journaled_atomic_write_stores_exact_images_without_indexing ... ok
+test recovery::tests::recovery_handles_before_file_and_after_file_crash_windows ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+Cargo.lock: OK
+Cargo.toml: OK
+crates/llmbase-cli/Cargo.toml: OK
+crates/llmbase-cli/README.md: OK
+crates/llmbase-cli/src/http.rs: OK
+crates/llmbase-cli/src/ingest_local.rs: OK
+crates/llmbase-cli/src/lib.rs: OK
+crates/llmbase-cli/src/main.rs: OK
+crates/llmbase-cli/src/mcp.rs: OK
+crates/llmbase-cli/src/model_env.rs: OK
+crates/llmbase-cli/src/operations.json: OK
+crates/llmbase-cli/src/search.html: OK
+crates/llmbase-cli/src/static_ui.rs: OK
+crates/llmbase-cli/tests/ask_sse.rs: OK
+crates/llmbase-cli/tests/compile_transports.rs: OK
+crates/llmbase-cli/tests/http_ingest_contracts.rs: OK
+crates/llmbase-cli/tests/http_model_contracts.rs: OK
+crates/llmbase-cli/tests/http_read_contracts.rs: OK
+crates/llmbase-cli/tests/http_write_contracts.rs: OK
+crates/llmbase-cli/tests/static_ui.rs: OK
+crates/llmbase-cli/tests/transports.rs: OK
+crates/llmbase-cli/tests/workflows.rs: OK
+crates/llmbase-core/Cargo.toml: OK
+crates/llmbase-core/src/answers.rs: OK
+crates/llmbase-core/src/application.rs: OK
+crates/llmbase-core/src/ask.rs: OK
+crates/llmbase-core/src/catalog.rs: OK
+crates/llmbase-core/src/compat_catalog_model.rs: OK
+crates/llmbase-core/src/compat_compile.rs: OK
+crates/llmbase-core/src/compat_io.rs: OK
+crates/llmbase-core/src/compat_kb.rs: OK
+crates/llmbase-core/src/compat_maintenance.rs: OK
+crates/llmbase-core/src/compat_pipeline.rs: OK
+crates/llmbase-core/src/compat_pipeline_json.rs: OK
+crates/llmbase-core/src/compat_query.rs: OK
+crates/llmbase-core/src/compat_resolve.rs: OK
+crates/llmbase-core/src/compat_search.rs: OK
+crates/llmbase-core/src/compat_util.rs: OK
+crates/llmbase-core/src/compat_workflows.rs: OK
+crates/llmbase-core/src/compat_yaml.rs: OK
+crates/llmbase-core/src/compile.rs: OK
+crates/llmbase-core/src/config.rs: OK
+crates/llmbase-core/src/document.rs: OK
+crates/llmbase-core/src/entities_model.rs: OK
+crates/llmbase-core/src/fetch.rs: OK
+crates/llmbase-core/src/ingest.rs: OK
+crates/llmbase-core/src/jobs.rs: OK
+crates/llmbase-core/src/lib.rs: OK
+crates/llmbase-core/src/maintenance.rs: OK
+crates/llmbase-core/src/maintenance_model.rs: OK
+crates/llmbase-core/src/maintenance_repair.rs: OK
+crates/llmbase-core/src/migration.rs: OK
+crates/llmbase-core/src/plugins.rs: OK
+crates/llmbase-core/src/profile.rs: OK
+crates/llmbase-core/src/recovery.rs: OK
+crates/llmbase-core/src/store.rs: OK
+crates/llmbase-core/src/text.rs: OK
+crates/llmbase-core/src/transcription.rs: OK
+crates/llmbase-core/src/vector.rs: OK
+crates/llmbase-core/src/visibility.rs: OK
+crates/llmbase-core/src/web_read.rs: OK
+crates/llmbase-core/src/web_write.rs: OK
+crates/llmbase-core/src/worker.rs: OK
+crates/llmbase-core/tests/answers.rs: OK
+crates/llmbase-core/tests/ask.rs: OK
+crates/llmbase-core/tests/catalog.rs: OK
+crates/llmbase-core/tests/compat_compile.rs: OK
+crates/llmbase-core/tests/compat_io.rs: OK
+crates/llmbase-core/tests/compat_kb.rs: OK
+crates/llmbase-core/tests/compat_maintenance.rs: OK
+crates/llmbase-core/tests/compat_pipeline.rs: OK
+crates/llmbase-core/tests/compat_query.rs: OK
+crates/llmbase-core/tests/compat_resolve.rs: OK
+crates/llmbase-core/tests/compat_search.rs: OK
+crates/llmbase-core/tests/compat_util.rs: OK
+crates/llmbase-core/tests/compat_workflows.rs: OK
+crates/llmbase-core/tests/compile.rs: OK
+crates/llmbase-core/tests/document_yaml_contracts.rs: OK
+crates/llmbase-core/tests/entities_model.rs: OK
+crates/llmbase-core/tests/fetch.rs: OK
+crates/llmbase-core/tests/ingest.rs: OK
+crates/llmbase-core/tests/library.rs: OK
+crates/llmbase-core/tests/maintenance.rs: OK
+crates/llmbase-core/tests/maintenance_model.rs: OK
+crates/llmbase-core/tests/maintenance_repair.rs: OK
+crates/llmbase-core/tests/plugins.rs: OK
+crates/llmbase-core/tests/transcription.rs: OK
+crates/llmbase-core/tests/vector.rs: OK
+crates/llmbase-core/tests/web_read.rs: OK
+crates/llmbase-core/tests/web_write.rs: OK
+crates/llmbase-core/tests/worker.rs: OK
+crates/llmbase-model/Cargo.toml: OK
+crates/llmbase-model/src/lib.rs: OK
+crates/llmbase-model/src/sse.rs: OK
+crates/llmbase-model/src/types.rs: OK
+crates/llmbase-model/tests/http_adapter.rs: OK
+crates/llmbase-python/Cargo.toml: OK
+crates/llmbase-python/build.rs: OK
+crates/llmbase-python/src/compile.rs: OK
+crates/llmbase-python/src/fetch.rs: OK
+crates/llmbase-python/src/lib.rs: OK
+crates/llmbase-python/src/maintenance.rs: OK
+crates/llmbase-python/src/model.rs: OK
+crates/llmbase-python/src/pipeline.rs: OK
+crates/llmbase-python/src/query.rs: OK
+crates/llmbase-python/src/resolve.rs: OK
+crates/llmbase-python/src/util.rs: OK
+docs/rust-migration/contracts/baseline.json: OK
+rust-toolchain.toml: OK
+scripts/rust-migration/check-native.sh: OK
+tests/rust_migration/fixtures/downstream/README.md: OK
+tests/rust_migration/fixtures/downstream/library/config.yaml: OK
+tests/rust_migration/fixtures/downstream/library/knowledge/entries/xue.md: OK
+tests/rust_migration/fixtures/downstream/library/originals/lunyu/index.md: OK
+tests/rust_migration/fixtures/downstream/transcription.json: OK
+tests/rust_migration/fixtures/retrieval/README.md: OK
+tests/rust_migration/fixtures/retrieval/corpus.json: OK
+tests/rust_migration/fixtures/retrieval/manifest.json: OK
+tests/rust_migration/fixtures/retrieval/queries.json: OK

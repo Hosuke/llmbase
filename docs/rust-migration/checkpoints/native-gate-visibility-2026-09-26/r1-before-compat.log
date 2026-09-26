@@ -1,0 +1,28 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b6-core-review/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.94s
+     Running tests/compat_maintenance.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_maintenance-a2d1b0423b8427c7)
+
+running 5 tests
+test deterministic_checks_preserve_legacy_exact_messages_and_scalar_counts ... ok
+test native_sequence_reads_snapshot_once_and_honors_live_custom_checks_and_emit ... ok
+test public_only_load_fails_closed_on_malformed_private_and_non_public_visibility ... FAILED
+test duplicate_candidates_use_cjk_conversion_and_preserve_unrelated_single_character_topics ... ok
+test legacy_alias_cascade_and_cached_backlink_key_semantics_are_preserved ... ok
+
+failures:
+
+---- public_only_load_fails_closed_on_malformed_private_and_non_public_visibility stdout ----
+
+thread 'public_only_load_fails_closed_on_malformed_private_and_non_public_visibility' (3894974) panicked at crates/llmbase-core/tests/compat_maintenance.rs:163:5:
+assertion `left == right` failed
+  left: ["01-default", "02-public-explicit", "04-quoted-private", "05-numeric-private"]
+ right: ["01-default", "02-public-explicit"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    public_only_load_fails_closed_on_malformed_private_and_non_public_visibility
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_maintenance`

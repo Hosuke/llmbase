@@ -1,0 +1,275 @@
+diff --git a/crates/llmbase-core/src/lib.rs b/crates/llmbase-core/src/lib.rs
+--- a/crates/llmbase-core/src/lib.rs
++++ b/crates/llmbase-core/src/lib.rs
+@@ -6,6 +6,7 @@
+ pub mod compat_compile;
+ pub mod compat_io;
+ pub mod compat_kb;
++pub mod compat_maintenance;
+ pub mod compat_pipeline;
+ pub mod compat_query;
+ pub mod compat_resolve;
+diff --git a/crates/llmbase-core/src/catalog.rs b/crates/llmbase-core/src/catalog.rs
+--- a/crates/llmbase-core/src/catalog.rs
++++ b/crates/llmbase-core/src/catalog.rs
+@@ -595,8 +595,7 @@
+         if !document.is_object() {
+             return Err(Error::Invalid("entities cache must be an object".into()));
+         }
+-        if !include_private && !crate::visibility::is_public(&document)
+-        {
++        if !include_private && !crate::visibility::is_public(&document) {
+             return Err(Error::Scope);
+         }
+         if !include_private {
+@@ -1054,8 +1053,7 @@
+ fn taxonomy_contains_private(nodes: &Value) -> bool {
+     nodes.as_array().is_some_and(|nodes| {
+         nodes.iter().any(|node| {
+-            !crate::visibility::is_public(node)
+-                || taxonomy_contains_private(&node["children"])
++            !crate::visibility::is_public(node) || taxonomy_contains_private(&node["children"])
+         })
+     })
+ }
+diff --git a/crates/llmbase-core/src/maintenance.rs b/crates/llmbase-core/src/maintenance.rs
+--- a/crates/llmbase-core/src/maintenance.rs
++++ b/crates/llmbase-core/src/maintenance.rs
+@@ -840,8 +840,7 @@
+             return Err(Error::Invalid("invalid introduction cache".into()));
+         }
+         if !include_private {
+-            if !crate::visibility::is_public(&cached)
+-            {
++            if !crate::visibility::is_public(&cached) {
+                 return Err(Error::NotFound("public introduction".into()));
+             }
+             if let Some(ids) = cached.get("source_ids").and_then(Value::as_array) {
+diff --git a/crates/llmbase-core/src/recovery.rs b/crates/llmbase-core/src/recovery.rs
+--- a/crates/llmbase-core/src/recovery.rs
++++ b/crates/llmbase-core/src/recovery.rs
+@@ -674,13 +674,27 @@
+         .map(|receipt| receipt["intent_id"].as_str().unwrap().to_owned())
+         .collect();
+         assert_eq!(ids.len(), 5);
+-        let rows: Vec<(Option<String>, Option<Vec<u8>>, String, Vec<u8>, String)> = {
++        #[derive(Debug, PartialEq)]
++        struct JournalRow {
++            before_hash: Option<String>,
++            before_bytes: Option<Vec<u8>>,
++            after_hash: String,
++            after_bytes: Vec<u8>,
++            status: String,
++        }
++        let rows: Vec<JournalRow> = {
+             let mut stmt = library
+                 .db
+                 .prepare("SELECT before_hash,before_bytes,after_hash,after_bytes,status FROM write_journal ORDER BY rowid")
+                 .unwrap();
+             stmt.query_map([], |r| {
+-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
++                Ok(JournalRow {
++                    before_hash: r.get(0)?,
++                    before_bytes: r.get(1)?,
++                    after_hash: r.get(2)?,
++                    after_bytes: r.get(3)?,
++                    status: r.get(4)?,
++                })
+             })
+             .unwrap()
+             .collect::<std::result::Result<Vec<_>, _>>()
+@@ -689,47 +703,53 @@
+         assert_eq!(rows.len(), 5);
+         assert_eq!(
+             rows[0],
+-            (
+-                None,
+-                None,
+-                hash(nonstandard),
+-                nonstandard.to_vec(),
+-                "applied".into()
+-            )
++            JournalRow {
++                before_hash: None,
++                before_bytes: None,
++                after_hash: hash(nonstandard),
++                after_bytes: nonstandard.to_vec(),
++                status: "applied".into()
++            }
+         );
+         assert_eq!(
+             rows[1],
+-            (
+-                None,
+-                None,
+-                hash(binary_v1),
+-                binary_v1.to_vec(),
+-                "applied".into()
+-            )
++            JournalRow {
++                before_hash: None,
++                before_bytes: None,
++                after_hash: hash(binary_v1),
++                after_bytes: binary_v1.to_vec(),
++                status: "applied".into()
++            }
+         );
+         assert_eq!(
+             rows[2],
+-            (
+-                Some(hash(binary_v1)),
+-                Some(binary_v1.to_vec()),
+-                hash(binary_v2),
+-                binary_v2.to_vec(),
+-                "applied".into()
+-            )
++            JournalRow {
++                before_hash: Some(hash(binary_v1)),
++                before_bytes: Some(binary_v1.to_vec()),
++                after_hash: hash(binary_v2),
++                after_bytes: binary_v2.to_vec(),
++                status: "applied".into()
++            }
+         );
+         assert_eq!(
+             rows[3],
+-            (None, None, hash(b""), Vec::new(), "applied".into())
++            JournalRow {
++                before_hash: None,
++                before_bytes: None,
++                after_hash: hash(b""),
++                after_bytes: Vec::new(),
++                status: "applied".into()
++            }
+         );
+         assert_eq!(
+             rows[4],
+-            (
+-                Some(hash(b"")),
+-                Some(Vec::new()),
+-                hash(b"filled"),
+-                b"filled".to_vec(),
+-                "applied".into()
+-            )
++            JournalRow {
++                before_hash: Some(hash(b"")),
++                before_bytes: Some(Vec::new()),
++                after_hash: hash(b"filled"),
++                after_bytes: b"filled".to_vec(),
++                status: "applied".into()
++            }
+         );
+         // Final on-disk bytes are exactly the last accepted images.
+         assert_eq!(
+diff --git a/crates/llmbase-core/src/compat_maintenance.rs b/crates/llmbase-core/src/compat_maintenance.rs
+--- a/crates/llmbase-core/src/compat_maintenance.rs
++++ b/crates/llmbase-core/src/compat_maintenance.rs
+@@ -1,6 +1,6 @@
+ //! Legacy deterministic lint DTOs. Python may host explicitly replaced checks;
+ //! default scanning, checks and the check sequence are implemented here.
+-use crate::{Error, Result, compat_kb, compat_resolve};
++use crate::{Error, Result, compat_kb, compat_resolve, visibility};
+ use regex::Regex;
+ use serde_json::{Value, json};
+ use std::{
+@@ -104,13 +104,7 @@
+         if total > 64 * 1024 * 1024 {
+             return Err(Error::Invalid("lint snapshot exceeds 64 MiB".into()));
+         }
+-        if public_only
+-            && (doc.metadata["private"] == true
+-                || doc
+-                    .metadata
+-                    .get("visibility")
+-                    .is_some_and(|v| v != "public"))
+-        {
++        if public_only && !visibility::is_public(&doc.metadata) {
+             continue;
+         }
+         let slug = path
+diff --git a/crates/llmbase-core/tests/compat_maintenance.rs b/crates/llmbase-core/tests/compat_maintenance.rs
+--- a/crates/llmbase-core/tests/compat_maintenance.rs
++++ b/crates/llmbase-core/tests/compat_maintenance.rs
+@@ -1,4 +1,4 @@
+-use llmbase_core::compat_maintenance::{check, run_lint, transform};
++use llmbase_core::compat_maintenance::{check, load_articles, run_lint, transform};
+ use serde_json::{Value, json};
+ use std::fs;
+ use tempfile::TempDir;
+@@ -107,3 +107,76 @@
+     let args = json!({"articles":[{"slug":"a","title":"四諦","tags":[]},{"slug":"b","title":"四谛","tags":[]},{"slug":"c","title":"仁","tags":[]},{"slug":"d","title":"仁愛","tags":[]}]});
+     assert_eq!(transform("duplicates", &args).unwrap(), json!([["a", "b"]]));
+ }
++
++#[test]
++fn public_only_load_fails_closed_on_malformed_private_and_non_public_visibility() {
++    let root = TempDir::new().unwrap();
++    let concepts = root.path().join("concepts");
++    fs::create_dir(&concepts).unwrap();
++    let fixtures = [
++        (
++            "01-default",
++            "",
++            "Default record without any visibility keys.",
++        ),
++        (
++            "02-public-explicit",
++            "visibility: public\n",
++            "Public body keeps non-BMP bytes 𠮷 unchanged.",
++        ),
++        ("03-bool-private", "private: true\n", "boolean private"),
++        (
++            "04-quoted-private",
++            "private: \"true\"\n",
++            "quoted private flag",
++        ),
++        (
++            "05-numeric-private",
++            "private: 1\n",
++            "malformed private flag",
++        ),
++        ("06-visibility-private", "visibility: private\n", "private"),
++        (
++            "07-visibility-internal",
++            "visibility: internal\n",
++            "internal",
++        ),
++        (
++            "08-visibility-unknown",
++            "visibility: classified\n",
++            "unknown",
++        ),
++    ];
++    let mut before_bytes = Vec::new();
++    for (slug, front, body) in fixtures {
++        let bytes = format!("---\ntitle: {slug}\n{front}---\n{body}\n");
++        fs::write(concepts.join(format!("{slug}.md")), &bytes).unwrap();
++        before_bytes.push((slug, bytes));
++    }
++    let articles = load_articles(&concepts, true).unwrap();
++    let slugs: Vec<&str> = articles
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|a| a["slug"].as_str().unwrap())
++        .collect();
++    assert_eq!(slugs, ["01-default", "02-public-explicit"]);
++    assert_eq!(
++        articles[1]["content"].as_str().unwrap(),
++        "Public body keeps non-BMP bytes 𠮷 unchanged."
++    );
++    // Explicit privileged (non public-only) loads retain every record.
++    let all = transform(
++        "load",
++        &json!({"concepts_dir":concepts,"public_only":false}),
++    )
++    .unwrap();
++    assert_eq!(all.as_array().unwrap().len(), fixtures.len());
++    // Loading is read-only: each source file keeps its exact original bytes.
++    for (slug, bytes) in before_bytes {
++        assert_eq!(
++            fs::read_to_string(concepts.join(format!("{slug}.md"))).unwrap(),
++            bytes
++        );
++    }
++}

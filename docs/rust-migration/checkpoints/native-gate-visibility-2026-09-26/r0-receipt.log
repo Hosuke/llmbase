@@ -1,0 +1,11 @@
+Linux 6.8.0-101-generic x86_64
+cargo 1.98.0 (797e8a9bc 2026-08-05)
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+rustfmt 1.9.0-stable (88d9e12ae1 2026-08-18)
+clippy 0.1.98 (88d9e12ae1 2026-08-18)
+Python 3.12.3
+CARGO_TARGET_DIR=/root/llmbase-rust-migration-20260920/source/target
+d9cac4aec1b687881e2992007cd93a2ec621deac99c5c9ac588734b8b39f6927  crates/llmbase-core/src/compat_maintenance.rs
+7f26293a5335518260f57ece4e69b62807808e71ba431785e4919056959e3a22  crates/llmbase-core/tests/compat_maintenance.rs
+d89c8b45267a6d63243032ae7ad732b231b4442c25094188e554b5aecc5f9781  crates/llmbase-core/src/visibility.rs
+pre-run manifest OK files: 119
