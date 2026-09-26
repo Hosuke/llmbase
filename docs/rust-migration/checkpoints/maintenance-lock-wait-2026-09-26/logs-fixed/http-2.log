@@ -1,0 +1,14 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
+     Running tests/http_model_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_model_contracts-089684c86a404fa9)
+
+running 7 tests
+test credentials_capabilities_and_invalid_overrides_fail_before_provider_or_writes ... ok
+test deep_http_returns_real_consulted_sources_and_keeps_read_only_opt_out ... ok
+test both_http_defaults_are_basic_and_file_back_with_distinct_legacy_envelopes ... ok
+test xici_entities_and_tones_routes_use_real_core_results_and_profile_defaults ... ok
+test compile_both_surfaces_report_only_actual_accepted_articles ... ok
+test background_web_fix_retries_post_claim_recovery_lock_contention_with_same_job ... ok
+test deep_lint_both_envelopes_and_background_web_fix_are_real_and_job_specific ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+

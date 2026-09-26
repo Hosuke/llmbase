@@ -1,0 +1,6 @@
+before-final exit=101
+fixed-manifest exit=0
+core-lib exit=0
+fmt exit=0
+clippy exit=0
+post-manifest exit=0

@@ -1,0 +1,51 @@
+   Compiling llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-model)
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.21s
+     Running tests/maintenance_repair.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_repair-68e934d63ea4097e)
+
+running 17 tests
+test cancellation_and_scope_rejection_happen_before_any_provider_or_source_change ... ok
+test concurrent_private_edit_is_not_overwritten_and_invalid_model_json_is_not_success ... ok
+test failed_model_repair_never_publishes_completed_last_fix ... ok
+test aggregate_tag_normalization_completes_multiple_articles_without_cross_visibility_leak ... ok
+test broken_link_generation_has_real_support_guards_and_no_placeholder_fallback ... ok
+test cleanup_and_url_slug_repair_use_real_journals_preserve_cjk_and_pipe_links ... ok
+test heal_persists_actual_check_fix_recheck_report_and_deep_lint_is_read_only ... ok
+test last_fix_receipts_have_real_counts_and_separate_private_storage ... ok
+test missing_metadata_uses_real_models_preserves_body_unknown_fields_and_old_revision ... ok
+test related_topics_and_cross_visibility_candidates_are_not_merged ... ok
+test repair_internal_writer_exhaustion_accepts_no_job ... ok
+test repair_internal_writer_wait_cancels_without_accepting_work ... FAILED
+test provider_failure_after_an_accepted_write_reports_partial_with_job_owned_receipts ... ok
+test merging_refreshes_legacy_and_accepted_taxonomy_without_changing_manual_structure ... ok
+test repair_waits_after_model_without_replaying_model_or_accepted_write ... FAILED
+test repair_waits_for_internal_writer_before_accepting_one_job ... FAILED
+test model_confirmed_duplicate_merge_preserves_both_sources_and_rewrites_links ... ok
+
+failures:
+
+---- repair_internal_writer_wait_cancels_without_accepting_work stdout ----
+
+thread 'repair_internal_writer_wait_cancels_without_accepting_work' (3961297) panicked at crates/llmbase-core/tests/maintenance_repair.rs:196:31:
+repair did not wait for its writer: Err(Busy)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- repair_waits_after_model_without_replaying_model_or_accepted_write stdout ----
+
+thread 'repair_waits_after_model_without_replaying_model_or_accepted_write' (3961298) panicked at crates/llmbase-core/tests/maintenance_repair.rs:255:10:
+called `Result::unwrap()` on an `Err` value: Conflict("maintenance did not complete any requested repair")
+
+---- repair_waits_for_internal_writer_before_accepting_one_job stdout ----
+
+thread 'repair_waits_for_internal_writer_before_accepting_one_job' (3961299) panicked at crates/llmbase-core/tests/maintenance_repair.rs:173:31:
+repair completed while its writer was held: Err(Busy)
+
+
+failures:
+    repair_internal_writer_wait_cancels_without_accepting_work
+    repair_waits_after_model_without_replaying_model_or_accepted_write
+    repair_waits_for_internal_writer_before_accepting_one_job
+
+test result: FAILED. 14 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+error: test failed, to rerun pass `-p llmbase-core --test maintenance_repair`

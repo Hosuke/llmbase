@@ -1,0 +1,5 @@
+    Checking llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-model)
+   Compiling llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-python)
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-core)
+    Checking llmbase-cli v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.43s

@@ -1,0 +1,32 @@
+Count 1
+0: <llmbase_core::store::WriterLock>::acquire::{closure#1}
+1: <core::result::Result<(), core::io::error::Error>>::map_err::<llmbase_core::Error, <llmbase_core::store::WriterLock>::acquire::{closure#1}>
+2: <llmbase_core::store::WriterLock>::acquire
+3: <llmbase_core::store::Library>::open
+4: <llmbase_core::application::Application>::run_job::{closure#0}::{closure#1}
+5: <tokio::runtime::blocking::task::BlockingTask<<llmbase_core::application::Application>::run_job::{closure#0}::{closure#1}> as core::future::future::Future>::poll
+6: <tokio::runtime::task::core::Core<tokio::runtime::blocking::task::BlockingTask<<llmbase_core::application::Application>::run_job::{closure#0}::{closure#1}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll::{closure#0}
+
+Count 3
+0: <llmbase_core::store::WriterLock>::acquire::{closure#1}
+1: <core::result::Result<(), core::io::error::Error>>::map_err::<llmbase_core::Error, <llmbase_core::store::WriterLock>::acquire::{closure#1}>
+2: <llmbase_core::store::WriterLock>::acquire
+3: <llmbase_core::store::Library>::open
+
+Count 1
+0: <llmbase_core::store::WriterLock>::acquire::{closure#1}
+1: <core::result::Result<(), core::io::error::Error>>::map_err::<llmbase_core::Error, <llmbase_core::store::WriterLock>::acquire::{closure#1}>
+2: <llmbase_core::store::WriterLock>::acquire
+3: llmbase_core::maintenance_repair::snapshot
+4: <llmbase_core::store::Library>::repair_slugs
+5: <llmbase_core::store::Library>::repair::{closure#0}
+6: <core::pin::Pin<alloc::boxed::Box<<llmbase_core::store::Library>::repair::{closure#0}>> as core::future::future::Future>::poll
+
+Count 1
+0: <llmbase_core::store::WriterLock>::acquire::{closure#1}
+1: <core::result::Result<(), core::io::error::Error>>::map_err::<llmbase_core::Error, <llmbase_core::store::WriterLock>::acquire::{closure#1}>
+2: <llmbase_core::store::WriterLock>::acquire
+3: <llmbase_core::store::Library>::repair::{closure#0}::{closure#5}
+4: <llmbase_core::store::Library>::repair::{closure#0}
+5: <core::pin::Pin<alloc::boxed::Box<<llmbase_core::store::Library>::repair::{closure#0}>> as core::future::future::Future>::poll
+6: <tokio::runtime::park::CachedParkThread>::block_on::<core::pin::Pin<alloc::boxed::Box<<llmbase_core::store::Library>::repair::{closure#0}>>>::{closure#0}

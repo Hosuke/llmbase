@@ -1,0 +1,31 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b7-finalization/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.92s
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_core-eddc52d963515cf1)
+
+running 2 tests
+test maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write ... FAILED
+test maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job ... FAILED
+
+failures:
+
+---- maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write stdout ----
+
+thread 'maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write' (3975832) panicked at crates/llmbase-core/src/maintenance_repair.rs:1371:9:
+assertion `left == right` failed
+  left: String("partial")
+ right: String("succeeded")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job stdout ----
+
+thread 'maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job' (3975831) panicked at crates/llmbase-core/src/maintenance_repair.rs:1378:13:
+writer wait returned too early: 36.313278ms
+
+
+failures:
+    maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job
+    maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 24 filtered out; finished in 2.57s
+
+error: test failed, to rerun pass `-p llmbase-core --lib`

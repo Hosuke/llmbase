@@ -1,0 +1,12 @@
+before-manifest exit=0
+before-tests exit=101
+fixed-manifest exit=0
+repair exit=0
+worker exit=0
+http-1 exit=0
+http-2 exit=0
+http-3 exit=0
+fmt exit=0
+clippy exit=0
+workspace exit=101
+post-manifest exit=0

@@ -1,0 +1,25 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b7-primary-fix/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.98s
+     Running tests/maintenance_repair.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_repair-68e934d63ea4097e)
+
+running 17 tests
+test cancellation_and_scope_rejection_happen_before_any_provider_or_source_change ... ok
+test concurrent_private_edit_is_not_overwritten_and_invalid_model_json_is_not_success ... ok
+test failed_model_repair_never_publishes_completed_last_fix ... ok
+test aggregate_tag_normalization_completes_multiple_articles_without_cross_visibility_leak ... ok
+test broken_link_generation_has_real_support_guards_and_no_placeholder_fallback ... ok
+test cleanup_and_url_slug_repair_use_real_journals_preserve_cjk_and_pipe_links ... ok
+test last_fix_receipts_have_real_counts_and_separate_private_storage ... ok
+test heal_persists_actual_check_fix_recheck_report_and_deep_lint_is_read_only ... ok
+test missing_metadata_uses_real_models_preserves_body_unknown_fields_and_old_revision ... ok
+test related_topics_and_cross_visibility_candidates_are_not_merged ... ok
+test provider_failure_after_an_accepted_write_reports_partial_with_job_owned_receipts ... ok
+test model_confirmed_duplicate_merge_preserves_both_sources_and_rewrites_links ... ok
+test merging_refreshes_legacy_and_accepted_taxonomy_without_changing_manual_structure ... ok
+test repair_internal_writer_wait_cancels_without_accepting_work ... ok
+test repair_waits_for_internal_writer_before_accepting_one_job ... ok
+test repair_waits_after_model_without_replaying_model_or_accepted_write ... ok
+test repair_internal_writer_exhaustion_accepts_no_job ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.95s
+

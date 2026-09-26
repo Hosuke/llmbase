@@ -1,0 +1,506 @@
+diff --git a/crates/llmbase-core/src/maintenance_repair.rs b/crates/llmbase-core/src/maintenance_repair.rs
+--- a/crates/llmbase-core/src/maintenance_repair.rs
++++ b/crates/llmbase-core/src/maintenance_repair.rs
+@@ -1,7 +1,7 @@
+ //! Bounded native maintenance stages. Every accepted edit uses the source journal;
+ //! generated metadata is evidence-scoped, and failed stages never imply success.
+ use crate::{
+-    Error, Library, Result, Source,
++    Error, Library, LibraryConfig, Result, Source,
+     config::scoped_path,
+     document::hash,
+     jobs::{JobLease, JobStatus},
+@@ -9,7 +9,7 @@
+     maintenance_model::TaxonomyRequest,
+     profile::LanguageProfile,
+     recovery::SourceGuard,
+-    store::WriterLock,
++    store::{WriterLock, WriterSession},
+ };
+ use llmbase_model::{CancellationToken, ChatRequest, ChatResponse, Client, ModelError};
+ use regex::Regex;
+@@ -18,7 +18,15 @@
+ use std::{
+     collections::{BTreeMap, BTreeSet},
+     fs,
++    time::Duration,
+ };
++
++#[cfg(test)]
++type FinalizeHook = Box<dyn FnOnce()>;
++#[cfg(test)]
++thread_local! {
++    static BEFORE_REPAIR_FINALIZE: std::cell::RefCell<Option<FinalizeHook>> = const { std::cell::RefCell::new(None) };
++}
+ 
+ #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "snake_case")]
+@@ -113,17 +121,21 @@
+             ));
+         }
+         cancelled(&cancel)?;
+-        self.sync()?;
+-        let initial = snapshot(self, request)?;
+-        let before = if request.mode == RepairMode::Heal {
+-            Some(self.lint(
+-                LintOptions {
+-                    allow_cjk_slugs: request.allow_cjk_slugs,
+-                },
+-                request.private_inputs,
+-            )?)
+-        } else {
+-            None
++        let (initial, before) = {
++            let _writer = repair_writer(&self.config, &cancel).await?;
++            self.sync()?;
++            let initial = snapshot(self, request)?;
++            let before = if request.mode == RepairMode::Heal {
++                Some(self.lint(
++                    LintOptions {
++                        allow_cjk_slugs: request.allow_cjk_slugs,
++                    },
++                    request.private_inputs,
++                )?)
++            } else {
++                None
++            };
++            (initial, before)
+         };
+         self.db.execute_batch("CREATE TABLE IF NOT EXISTS maintenance_repair_intents(library_id TEXT NOT NULL,job_id TEXT NOT NULL,intent_id TEXT NOT NULL,PRIMARY KEY(library_id,job_id,intent_id))")?;
+         let lease=self.enqueue_running_job("maintenance_repair",json!({"mode":request.mode,"private_inputs":request.private_inputs,"profile_hash":hash(&serde_json::to_vec(request)?),"source_ids":initial.iter().map(|s|&s.source_id).collect::<Vec<_>>()}),3,"native-repair",60)?;
+@@ -150,8 +162,15 @@
+                 break;
+             }
+             let result = match mode {
+-                RepairMode::Clean => self.repair_clean(request, &lease),
+-                RepairMode::HealSlugs => self.repair_slugs(request, &lease),
++                RepairMode::Clean | RepairMode::HealSlugs => {
++                    match repair_writer(&self.config, &cancel).await {
++                        Ok(_writer) if mode == RepairMode::Clean => {
++                            self.repair_clean(request, &lease)
++                        }
++                        Ok(_writer) => self.repair_slugs(request, &lease),
++                        Err(error) => Err(error),
++                    }
++                }
+                 RepairMode::Metadata | RepairMode::DirtyTags => {
+                     self.repair_metadata(client.unwrap(), request, mode, &lease, &cancel)
+                         .await
+@@ -227,6 +246,22 @@
+                 }
+             }
+         }
++        #[cfg(test)]
++        BEFORE_REPAIR_FINALIZE.with(|hook| {
++            if let Some(hook) = hook.borrow_mut().take() {
++                hook();
++            }
++        });
++        // Finish an accepted job even after cancellation. Waiting only for this
++        // synchronous publication section never repeats a stage or model call.
++        // On exhaustion, retain the error and still record its terminal state.
++        let _final_writer = match repair_writer(&self.config, &CancellationToken::new()).await {
++            Ok(writer) => Some(writer),
++            Err(error) => {
++                terminal.get_or_insert(error);
++                None
++            }
++        };
+         let fixes: Vec<String> = stages.iter().flat_map(|s| s.fixes.clone()).collect();
+         let mut failures: Vec<Value> = stages.iter().flat_map(|s| s.failures.clone()).collect();
+         let journal_changes = journal_changes(self, &lease)?;
+@@ -405,7 +440,8 @@
+         cancel: &CancellationToken,
+     ) -> Result<Stage> {
+         let mut stage = Stage::new(mode);
+-        for source in snapshot(self, request)? {
++        let sources = repair_snapshot(self, request, cancel).await?;
++        for source in sources {
+             cancelled(cancel)?;
+             let body = &source.content[source.body_start..];
+             if body.trim().is_empty() {
+@@ -458,6 +494,7 @@
+                 metadata["tags"] = json!(clean);
+             }
+             if metadata != source.metadata {
++                let _writer = repair_writer(&self.config, cancel).await?;
+                 match write_metadata(self, lease, &source, metadata) {
+                     Ok(()) => stage
+                         .fixes
+@@ -479,7 +516,7 @@
+         cancel: &CancellationToken,
+     ) -> Result<Stage> {
+         let mut stage = Stage::new(RepairMode::NormalizeTags);
+-        let sources = snapshot(self, request)?;
++        let sources = repair_snapshot(self, request, cancel).await?;
+         // Keep private-derived aggregate decisions out of public article tags.
+         for is_private in [false, true] {
+             let mut group: Vec<_> = sources
+@@ -536,6 +573,7 @@
+                     }
+                 }
+                 if tags != *old {
++                    let _writer = repair_writer(&self.config, cancel).await?;
+                     let mut metadata = source.metadata.clone();
+                     metadata["tags"] = json!(tags);
+                     let guards: Vec<_> = group.iter().map(|s| guard(s)).collect();
+@@ -584,7 +622,7 @@
+         cancel: &CancellationToken,
+     ) -> Result<Stage> {
+         let mut stage = Stage::new(RepairMode::BrokenLinks);
+-        let sources = snapshot(self, request)?;
++        let sources = repair_snapshot(self, request, cancel).await?;
+         let pattern = links()?;
+         let mut missing = BTreeMap::<String, Vec<(Source, String)>>::new();
+         for source in &sources {
+@@ -666,6 +704,7 @@
+             )
+             .into_bytes();
+             let guards: Vec<_> = supports.iter().map(|(s, _)| guard(s)).collect();
++            let _writer = repair_writer(&self.config, cancel).await?;
+             match accepted_write(self, lease, |l| {
+                 l.write_source_guarded_many("compiled", &format!("{slug}.md"), bytes, None, &guards)
+             }) {
+@@ -693,7 +732,7 @@
+         cancel: &CancellationToken,
+     ) -> Result<Stage> {
+         let mut stage = Stage::new(RepairMode::Deduplicate);
+-        let sources = snapshot(self, request)?;
++        let sources = repair_snapshot(self, request, cancel).await?;
+         let mut pairs = Vec::new();
+         for (i, a) in sources.iter().enumerate() {
+             for b in &sources[i + 1..] {
+@@ -728,6 +767,7 @@
+                     continue;
+                 }
+             }
++            let _writer = repair_writer(&self.config, cancel).await?;
+             let ascii = |s: &Source| !s.slug.chars().any(|c| matches!(c as u32, 0x3400..=0x9fff));
+             let choose_b = if ascii(&a) != ascii(&b) {
+                 ascii(&b)
+@@ -846,6 +886,7 @@
+         if candidates > request.max_candidate_pairs {
+             stage.fail("deduplicate", "candidate pair budget left unchecked pairs")
+         }
++        let _writer = repair_writer(&self.config, cancel).await?;
+         refresh_taxonomy(self, request, &renames, &mut stage)?;
+         Ok(stage)
+     }
+@@ -857,11 +898,11 @@
+         lease: &JobLease,
+         cancel: &CancellationToken,
+     ) -> Result<Stage> {
+-        let sources = snapshot(self, request)?;
++        let sources = repair_snapshot(self, request, cancel).await?;
+         let mut stage = Stage::new(RepairMode::DeepLint);
+         let response=ask(self,client,request,lease,cancel,format!("Audit the following knowledge base metadata. Identify inconsistencies, missing connections, unclear distinctions, unsupported claims and coverage gaps. Cite article slugs for findings and distinguish evidence from suggestions. Do not rewrite articles. Write in {}.\n{}",request.profile.api_default_lang,serde_json::to_string(&sources.iter().map(|s|json!({"slug":s.slug,"title":s.title,"summary":s.metadata.get("summary"),"tags":s.metadata.get("tags")})).collect::<Vec<_>>())?),4096,None).await?;
+         {
+-            let _lock = WriterLock::acquire(&self.config)?;
++            let _writer = repair_writer(&self.config, cancel).await?;
+             let current = snapshot_locked(self, request)?;
+             if crate::maintenance_model::fingerprint(&current)
+                 != crate::maintenance_model::fingerprint(&sources)
+@@ -899,6 +940,36 @@
+     }
+     Ok(())
+ }
++/// Wait before a synchronous section, never around its execution. The session
++/// lets nested journal/read helpers borrow the same kernel lock. Callers must
++/// release it before awaiting a model or another asynchronous operation.
++async fn repair_writer(
++    config: &LibraryConfig,
++    cancel: &CancellationToken,
++) -> Result<WriterSession> {
++    for attempt in 0..100 {
++        cancelled(cancel)?;
++        match WriterSession::acquire(config) {
++            Err(Error::Busy) if attempt < 99 => {}
++            result => return result,
++        }
++        tokio::select! {
++            _ = cancel.cancelled() => return Err(ModelError::Cancelled.into()),
++            _ = tokio::time::sleep(Duration::from_millis(20)) => {}
++        }
++    }
++    unreachable!("the final lock attempt returns")
++}
++
++async fn repair_snapshot(
++    library: &Library,
++    request: &RepairRequest,
++    cancel: &CancellationToken,
++) -> Result<Vec<Source>> {
++    let _writer = repair_writer(&library.config, cancel).await?;
++    snapshot_locked(library, request)
++}
++
+ fn snapshot(library: &Library, r: &RepairRequest) -> Result<Vec<Source>> {
+     let _lock = WriterLock::acquire(&library.config)?;
+     snapshot_locked(library, r)
+@@ -1292,3 +1363,102 @@
+     }
+     Ok(())
+ }
++
++#[cfg(test)]
++mod contention_tests {
++    use super::*;
++    use crate::LibraryConfig;
++    use std::{
++        cell::RefCell,
++        rc::Rc,
++        time::{Duration, Instant},
++    };
++
++    async fn final_publication(hold: Duration, exhausted: bool) {
++        let root = tempfile::tempdir().unwrap();
++        let config = LibraryConfig::load(root.path(), "final-contention").unwrap();
++        fs::create_dir_all(&config.concepts).unwrap();
++        let article = config.concepts.join("stub.md");
++        fs::write(&article, "---\ntitle: Stub\n---\nShort").unwrap();
++        let mut library = Library::open(config.clone()).unwrap();
++        library.sync().unwrap();
++        let holder = Rc::new(RefCell::new(None));
++        let output = holder.clone();
++        BEFORE_REPAIR_FINALIZE.with(|hook| {
++            *hook.borrow_mut() = Some(Box::new(move || {
++                // The real stage has already accepted the source deletion.
++                assert!(!article.exists());
++                let file = fs::OpenOptions::new()
++                    .read(true)
++                    .write(true)
++                    .open(config.meta.join("llmbase.writer.lock"))
++                    .unwrap();
++                fs2::FileExt::try_lock_exclusive(&file).unwrap();
++                *output.borrow_mut() = Some(std::thread::spawn(move || {
++                    std::thread::sleep(hold);
++                    fs2::FileExt::unlock(&file).unwrap();
++                }));
++            }));
++        });
++        let start = Instant::now();
++        let result = library
++            .repair(
++                None,
++                &RepairRequest {
++                    mode: RepairMode::Clean,
++                    persist_last_fix: true,
++                    ..Default::default()
++                },
++                true,
++                CancellationToken::new(),
++            )
++            .await;
++        let elapsed = start.elapsed();
++        holder
++            .borrow_mut()
++            .take()
++            .expect("finalization hook was reached")
++            .join()
++            .unwrap();
++        let result = result.unwrap();
++        let expected = if exhausted {
++            JobStatus::Partial
++        } else {
++            JobStatus::Succeeded
++        };
++        assert_eq!(result["status"], serde_json::to_value(&expected).unwrap());
++        assert_eq!(result["journal_changes"].as_array().unwrap().len(), 1);
++        let jobs = library.jobs().unwrap();
++        assert_eq!(jobs.len(), 1);
++        assert_eq!(jobs[0].status, expected);
++        assert_eq!(result["fix_count"], 1);
++        if exhausted {
++            assert!(
++                elapsed >= Duration::from_secs(1),
++                "writer wait returned too early: {elapsed:?}"
++            );
++            assert!(
++                elapsed < Duration::from_secs(5),
++                "writer wait did not remain bounded: {elapsed:?}"
++            );
++            assert!(!library.config.meta.join("last_fix.json").exists());
++        } else {
++            let receipt: Value = serde_json::from_slice(
++                &fs::read(library.config.meta.join("last_fix.json")).unwrap(),
++            )
++            .unwrap();
++            assert_eq!(receipt["status"], "completed");
++            assert_eq!(receipt["fix_count"], 1);
++        }
++    }
++
++    #[tokio::test]
++    async fn final_publication_wait_preserves_one_accepted_write() {
++        final_publication(Duration::from_millis(150), false).await;
++    }
++
++    #[tokio::test]
++    async fn final_publication_wait_exhaustion_preserves_partial_job() {
++        final_publication(Duration::from_millis(2500), true).await;
++    }
++}
+diff --git a/crates/llmbase-core/tests/maintenance_repair.rs b/crates/llmbase-core/tests/maintenance_repair.rs
+--- a/crates/llmbase-core/tests/maintenance_repair.rs
++++ b/crates/llmbase-core/tests/maintenance_repair.rs
+@@ -43,6 +43,10 @@
+ }
+ impl Provider {
+     async fn start(replies: Vec<Reply>) -> Self {
++        Self::start_with_reply_lock(replies, None).await
++    }
++
++    async fn start_with_reply_lock(replies: Vec<Reply>, mut reply_lock: Option<PathBuf>) -> Self {
+         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+         let mut cfg = ModelConfig::new(
+             format!("http://{}/v1", listener.local_addr().unwrap()),
+@@ -88,6 +92,20 @@
+                 }
+                 tx.send(serde_json::from_slice(&bytes[end..end + len]).unwrap())
+                     .unwrap();
++                if let Some(path) = reply_lock.take() {
++                    // A model request must never retain the library writer lock.
++                    // Hold it across the reply to force post-model contention.
++                    let file = fs::OpenOptions::new()
++                        .read(true)
++                        .write(true)
++                        .open(path)
++                        .unwrap();
++                    fs2::FileExt::try_lock_exclusive(&file).unwrap();
++                    std::thread::spawn(move || {
++                        std::thread::sleep(Duration::from_millis(150));
++                        fs2::FileExt::unlock(&file).unwrap();
++                    });
++                }
+                 if let Some((path, text)) = reply.edit {
+                     fs::write(path, text).unwrap()
+                 }
+@@ -125,6 +143,128 @@
+     }
+ }
+ const BODY: &str = "This is accepted article prose with enough detail to distinguish real content from a near-empty stub. It must remain exactly preserved.";
++
++fn hold_repair_writer(library: &Library) -> fs::File {
++    let file = fs::OpenOptions::new()
++        .read(true)
++        .write(true)
++        .open(library.config.meta.join("llmbase.writer.lock"))
++        .unwrap();
++    fs2::FileExt::try_lock_exclusive(&file).unwrap();
++    file
++}
++
++#[tokio::test]
++async fn repair_waits_for_internal_writer_before_accepting_one_job() {
++    let root = TempDir::new().unwrap();
++    source(
++        root.path(),
++        "article",
++        json!({"title":"Article","summary":"Known","tags":["known"]}),
++        BODY,
++    );
++    let mut library = open(root.path());
++    let original = fs::read(root.path().join("wiki/concepts/article.md")).unwrap();
++    let observer = open(root.path());
++    let lock = hold_repair_writer(&library);
++    let req = request(RepairMode::Clean);
++    let mut work = Box::pin(library.repair(None, &req, true, CancellationToken::new()));
++    tokio::select! {
++        result = &mut work => panic!("repair completed while its writer was held: {result:?}"),
++        _ = tokio::time::sleep(Duration::from_millis(60)) => {}
++    }
++    assert!(observer.jobs().unwrap().is_empty());
++    fs2::FileExt::unlock(&lock).unwrap();
++    let result = work.await.unwrap();
++    assert_eq!(result["status"], "succeeded");
++    assert_eq!(library.jobs().unwrap().len(), 1);
++    assert_eq!(
++        fs::read(root.path().join("wiki/concepts/article.md")).unwrap(),
++        original
++    );
++}
++
++#[tokio::test]
++async fn repair_internal_writer_wait_cancels_without_accepting_work() {
++    let root = TempDir::new().unwrap();
++    let mut library = open(root.path());
++    let lock = hold_repair_writer(&library);
++    let cancel = CancellationToken::new();
++    let req = request(RepairMode::Clean);
++    let mut work = Box::pin(library.repair(None, &req, true, cancel.clone()));
++    tokio::select! {
++        result = &mut work => panic!("repair did not wait for its writer: {result:?}"),
++        _ = tokio::time::sleep(Duration::from_millis(60)) => {}
++    }
++    cancel.cancel();
++    let result = tokio::time::timeout(Duration::from_millis(250), work)
++        .await
++        .unwrap();
++    assert!(matches!(
++        result,
++        Err(Error::Model(llmbase_model::ModelError::Cancelled))
++    ));
++    assert!(library.jobs().unwrap().is_empty());
++    fs2::FileExt::unlock(&lock).unwrap();
++}
++
++#[tokio::test]
++async fn repair_internal_writer_exhaustion_accepts_no_job() {
++    let root = TempDir::new().unwrap();
++    let mut library = open(root.path());
++    let lock = hold_repair_writer(&library);
++    let result = tokio::time::timeout(
++        Duration::from_secs(5),
++        library.repair(
++            None,
++            &request(RepairMode::Clean),
++            true,
++            CancellationToken::new(),
++        ),
++    )
++    .await
++    .unwrap();
++    assert!(matches!(result, Err(Error::Busy)));
++    assert!(library.jobs().unwrap().is_empty());
++    fs2::FileExt::unlock(&lock).unwrap();
++}
++
++#[tokio::test]
++async fn repair_waits_after_model_without_replaying_model_or_accepted_write() {
++    let root = TempDir::new().unwrap();
++    source(
++        root.path(),
++        "article",
++        json!({"title":"Article","tags":["known"],"unknown":42}),
++        BODY,
++    );
++    let mut library = open(root.path());
++    let mut provider = Provider::start_with_reply_lock(
++        vec![Reply::text("One accepted summary.")],
++        Some(library.config.meta.join("llmbase.writer.lock")),
++    )
++    .await;
++    let result = library
++        .repair(
++            Some(&provider.client),
++            &request(RepairMode::Metadata),
++            true,
++            CancellationToken::new(),
++        )
++        .await
++        .unwrap();
++    assert_eq!(result["status"], "succeeded");
++    assert_eq!(result["journal_changes"].as_array().unwrap().len(), 1);
++    let jobs = library.jobs().unwrap();
++    assert_eq!(jobs.len(), 1);
++    assert_eq!(jobs[0].status, JobStatus::Succeeded);
++    let accepted = library.get("article", None, true).unwrap();
++    assert_eq!(accepted.metadata["summary"], "One accepted summary.");
++    assert_eq!(accepted.metadata["unknown"], 42);
++    assert_eq!(&accepted.content[accepted.body_start..], BODY);
++    assert!(provider.requests.try_recv().is_ok());
++    assert!(provider.requests.try_recv().is_err());
++}
+ 
+ #[tokio::test]
+ async fn last_fix_receipts_have_real_counts_and_separate_private_storage() {
