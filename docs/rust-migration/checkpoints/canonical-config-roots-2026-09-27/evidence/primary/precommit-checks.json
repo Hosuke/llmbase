@@ -1,0 +1,25 @@
+{
+  "typescript": {
+    "command": "/Users/lanchair/.local/lib/node-v22.23.1-darwin-arm64/bin/node node_modules/typescript/bin/tsc --noEmit",
+    "cwd": "frontend",
+    "exit": 0
+  },
+  "python_import": {
+    "command": "/Users/lanchair/Developer/LLM-infra/Github/llmbase/.venv/bin/python -c \"from llmwiki.lint import lint; print('OK')\"",
+    "exit": 0,
+    "stdout": "OK"
+  },
+  "remote_terminal": {
+    "runner_exit": 0,
+    "tmux_has_session_exit": 1,
+    "first_runner_pane_pid": 573683,
+    "first_runner_ps_exit": 1,
+    "final_runner_exit": 0,
+    "final_tmux_list_panes_exit": 1
+  },
+  "unbuilt_test_collection": {
+    "command": "/Users/lanchair/Developer/LLM-infra/Github/llmbase/.venv/bin/python -m pytest --import-mode=importlib tests/rust_migration/test_native_config_roots.py -q",
+    "exit": 0,
+    "stdout": "10 skipped in 0.02s"
+  }
+}

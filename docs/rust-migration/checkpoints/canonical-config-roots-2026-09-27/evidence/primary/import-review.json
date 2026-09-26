@@ -1,0 +1,8 @@
+{
+  "finding": "new test imported optional _core before skip evaluation",
+  "repair": "move import into the skipped native test body",
+  "runtime_sources_changed": false,
+  "unbuilt_pytest": "10 skipped; exit0",
+  "first_full_python": "628 passed",
+  "final_acceptance": "40 focused/628 full Python pass; final runner0/session absent"
+}

@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "unchanged_previous_inputs": 222,
+  "changed_previous_inputs": [
+    "llmwiki/config.py"
+  ],
+  "reused_native_checks": [
+    "fmt",
+    "clippy",
+    "core-heads"
+  ],
+  "previous_extension_sha256": "7e557279d61616b589589630690acb0dcc28d7d12de5c310a475af6d6bbee373"
+}

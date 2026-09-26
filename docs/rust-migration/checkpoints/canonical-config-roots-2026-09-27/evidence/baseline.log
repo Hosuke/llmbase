@@ -1,0 +1,184 @@
+F.F.FF..F.                                                               [100%]
+=================================== FAILURES ===================================
+_____ test_missing_config_roots_remain_absolute_after_cwd_change[relative] _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e4a32c8d070>
+mode = 'relative'
+
+    @pytest.mark.parametrize('mode', ['relative', 'absolute', 'dot', 'none', 'symlink', 'missing-dotdot'])
+    def test_missing_config_roots_remain_absolute_after_cwd_change(tmp_path, monkeypatch, mode):
+        monkeypatch.chdir(tmp_path)
+        base = Path('library')
+        expected = tmp_path / 'library'
+        if mode == 'absolute':
+            base = expected
+        elif mode in {'dot', 'none'}:
+            base = Path('.') if mode == 'dot' else None
+            expected = tmp_path
+        elif mode == 'symlink':
+            expected.mkdir()
+            Path('alias').symlink_to(expected, target_is_directory=True)
+            base = Path('alias')
+        elif mode == 'missing-dotdot':
+            base = Path('not-created/../library')
+    
+        before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*'))
+        read = config._read_config(base)
+        assert _native._configured_roots == {}
+        assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*')) == before
+        cfg = config.load_config(base)
+        assert cfg == read
+        assert set(_native._configured_roots) == {(str(expected.resolve()), 'config-root-regression')}
+        for key, suffix in {'raw': 'raw', 'wiki': 'wiki', 'concepts': 'wiki/concepts',
+                            'outputs': 'wiki/outputs', 'meta': 'wiki/_meta'}.items():
+>           assert Path(cfg['paths'][key]) == expected.resolve() / suffix, (mode, key)
+E           AssertionError: ('relative', 'raw')
+E           assert PosixPath('library/raw') == (PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema0/library') / 'raw')
+E            +  where PosixPath('library/raw') = Path('library/raw')
+E            +  and   PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema0/library') = resolve()
+E            +    where resolve = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema0/library').resolve
+
+/root/llmbase-rust-migration-20260920/b15-config-roots/baseline/test_native_config_roots.py:46: AssertionError
+_______ test_missing_config_roots_remain_absolute_after_cwd_change[dot] ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e4a32c8fe00>
+mode = 'dot'
+
+    @pytest.mark.parametrize('mode', ['relative', 'absolute', 'dot', 'none', 'symlink', 'missing-dotdot'])
+    def test_missing_config_roots_remain_absolute_after_cwd_change(tmp_path, monkeypatch, mode):
+        monkeypatch.chdir(tmp_path)
+        base = Path('library')
+        expected = tmp_path / 'library'
+        if mode == 'absolute':
+            base = expected
+        elif mode in {'dot', 'none'}:
+            base = Path('.') if mode == 'dot' else None
+            expected = tmp_path
+        elif mode == 'symlink':
+            expected.mkdir()
+            Path('alias').symlink_to(expected, target_is_directory=True)
+            base = Path('alias')
+        elif mode == 'missing-dotdot':
+            base = Path('not-created/../library')
+    
+        before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*'))
+        read = config._read_config(base)
+        assert _native._configured_roots == {}
+        assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*')) == before
+        cfg = config.load_config(base)
+        assert cfg == read
+        assert set(_native._configured_roots) == {(str(expected.resolve()), 'config-root-regression')}
+        for key, suffix in {'raw': 'raw', 'wiki': 'wiki', 'concepts': 'wiki/concepts',
+                            'outputs': 'wiki/outputs', 'meta': 'wiki/_meta'}.items():
+>           assert Path(cfg['paths'][key]) == expected.resolve() / suffix, (mode, key)
+E           AssertionError: ('dot', 'raw')
+E           assert PosixPath('raw') == (PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema2') / 'raw')
+E            +  where PosixPath('raw') = Path('raw')
+E            +  and   PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema2') = resolve()
+E            +    where resolve = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema2').resolve
+
+/root/llmbase-rust-migration-20260920/b15-config-roots/baseline/test_native_config_roots.py:46: AssertionError
+_____ test_missing_config_roots_remain_absolute_after_cwd_change[symlink] ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema4')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e4a32ad70b0>
+mode = 'symlink'
+
+    @pytest.mark.parametrize('mode', ['relative', 'absolute', 'dot', 'none', 'symlink', 'missing-dotdot'])
+    def test_missing_config_roots_remain_absolute_after_cwd_change(tmp_path, monkeypatch, mode):
+        monkeypatch.chdir(tmp_path)
+        base = Path('library')
+        expected = tmp_path / 'library'
+        if mode == 'absolute':
+            base = expected
+        elif mode in {'dot', 'none'}:
+            base = Path('.') if mode == 'dot' else None
+            expected = tmp_path
+        elif mode == 'symlink':
+            expected.mkdir()
+            Path('alias').symlink_to(expected, target_is_directory=True)
+            base = Path('alias')
+        elif mode == 'missing-dotdot':
+            base = Path('not-created/../library')
+    
+        before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*'))
+        read = config._read_config(base)
+        assert _native._configured_roots == {}
+        assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*')) == before
+        cfg = config.load_config(base)
+        assert cfg == read
+        assert set(_native._configured_roots) == {(str(expected.resolve()), 'config-root-regression')}
+        for key, suffix in {'raw': 'raw', 'wiki': 'wiki', 'concepts': 'wiki/concepts',
+                            'outputs': 'wiki/outputs', 'meta': 'wiki/_meta'}.items():
+>           assert Path(cfg['paths'][key]) == expected.resolve() / suffix, (mode, key)
+E           AssertionError: ('symlink', 'raw')
+E           assert PosixPath('alias/raw') == (PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema4/library') / 'raw')
+E            +  where PosixPath('alias/raw') = Path('alias/raw')
+E            +  and   PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema4/library') = resolve()
+E            +    where resolve = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema4/library').resolve
+
+/root/llmbase-rust-migration-20260920/b15-config-roots/baseline/test_native_config_roots.py:46: AssertionError
+__ test_missing_config_roots_remain_absolute_after_cwd_change[missing-dotdot] __
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e4a32ad5910>
+mode = 'missing-dotdot'
+
+    @pytest.mark.parametrize('mode', ['relative', 'absolute', 'dot', 'none', 'symlink', 'missing-dotdot'])
+    def test_missing_config_roots_remain_absolute_after_cwd_change(tmp_path, monkeypatch, mode):
+        monkeypatch.chdir(tmp_path)
+        base = Path('library')
+        expected = tmp_path / 'library'
+        if mode == 'absolute':
+            base = expected
+        elif mode in {'dot', 'none'}:
+            base = Path('.') if mode == 'dot' else None
+            expected = tmp_path
+        elif mode == 'symlink':
+            expected.mkdir()
+            Path('alias').symlink_to(expected, target_is_directory=True)
+            base = Path('alias')
+        elif mode == 'missing-dotdot':
+            base = Path('not-created/../library')
+    
+        before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*'))
+        read = config._read_config(base)
+        assert _native._configured_roots == {}
+        assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*')) == before
+        cfg = config.load_config(base)
+        assert cfg == read
+        assert set(_native._configured_roots) == {(str(expected.resolve()), 'config-root-regression')}
+        for key, suffix in {'raw': 'raw', 'wiki': 'wiki', 'concepts': 'wiki/concepts',
+                            'outputs': 'wiki/outputs', 'meta': 'wiki/_meta'}.items():
+>           assert Path(cfg['paths'][key]) == expected.resolve() / suffix, (mode, key)
+E           AssertionError: ('missing-dotdot', 'raw')
+E           assert PosixPath('not-created/../library/raw') == (PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema5/library') / 'raw')
+E            +  where PosixPath('not-created/../library/raw') = Path('not-created/../library/raw')
+E            +  and   PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema5/library') = resolve()
+E            +    where resolve = PosixPath('/tmp/pytest-of-root/pytest-18/test_missing_config_roots_rema5/library').resolve
+
+/root/llmbase-rust-migration-20260920/b15-config-roots/baseline/test_native_config_roots.py:46: AssertionError
+____ test_defaults_are_live_deep_copied_and_partial_config_is_not_expanded _____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-18/test_defaults_are_live_deep_co0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e4a32ad7080>
+
+    def test_defaults_are_live_deep_copied_and_partial_config_is_not_expanded(tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        languages = {'default': 'custom', 'profiles': {'custom': {'sections': [{'code': 'wenyan'}]}}}
+        monkeypatch.setattr(config, 'BUILTIN_LANGUAGES', languages)
+        cfg = config._defaults(Path('relative'))
+>       assert all(Path(value).is_absolute() for value in cfg['paths'].values())
+E       assert False
+E        +  where False = all(<generator object test_defaults_are_live_deep_copied_and_partial_config_is_not_expanded.<locals>.<genexpr> at 0x7e4a32abb5e0>)
+
+/root/llmbase-rust-migration-20260920/b15-config-roots/baseline/test_native_config_roots.py:117: AssertionError
+=========================== short test summary info ============================
+FAILED test_native_config_roots.py::test_missing_config_roots_remain_absolute_after_cwd_change[relative]
+FAILED test_native_config_roots.py::test_missing_config_roots_remain_absolute_after_cwd_change[dot]
+FAILED test_native_config_roots.py::test_missing_config_roots_remain_absolute_after_cwd_change[symlink]
+FAILED test_native_config_roots.py::test_missing_config_roots_remain_absolute_after_cwd_change[missing-dotdot]
+FAILED test_native_config_roots.py::test_defaults_are_live_deep_copied_and_partial_config_is_not_expanded
+5 failed, 5 passed in 0.33s

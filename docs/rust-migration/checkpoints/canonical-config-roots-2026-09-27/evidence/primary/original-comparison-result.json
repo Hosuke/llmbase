@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "implementation": "legacy",
+      "base_mode": "relative",
+      "concepts_absolute": false,
+      "ok": true,
+      "exact_bytes": true
+    },
+    {
+      "implementation": "legacy",
+      "base_mode": "absolute",
+      "concepts_absolute": true,
+      "ok": true,
+      "exact_bytes": true
+    },
+    {
+      "implementation": "candidate",
+      "base_mode": "relative",
+      "concepts_absolute": true,
+      "ok": true,
+      "exact_bytes": true
+    },
+    {
+      "implementation": "candidate",
+      "base_mode": "absolute",
+      "concepts_absolute": true,
+      "ok": true,
+      "exact_bytes": true
+    }
+  ],
+  "extension_sha256": "7e557279d61616b589589630690acb0dcc28d7d12de5c310a475af6d6bbee373",
+  "candidate_config_sha256": "2a8fc0f92dcf27a7fed4f14f98ea1d91e4a61b17a4ef3920fb70928cd04fc482",
+  "legacy_config_sha256": "5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce",
+  "legacy_atomic_sha256": "3aef32211d48841d867d6afca1472ca21bcf046203f13ef64399697ecb116067",
+  "passed": true
+}

@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "files": 3,
+  "outside_git_worktree": true,
+  "git_apply_check_exit": 0,
+  "git_apply_exit": 0,
+  "final_test_import_repair_included": true
+}
