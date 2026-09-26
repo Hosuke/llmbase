@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "steps": 34,
+  "native_sources": 119,
+  "legacy_files": 46,
+  "legacy_modules_after_calls": 7,
+  "preserved_original_files": 10,
+  "expected_negative_exits": [
+    [
+      "resume copy must fail on conflict",
+      1
+    ],
+    [
+      "negative verify must fail",
+      1
+    ]
+  ]
+}

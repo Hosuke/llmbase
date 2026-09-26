@@ -1,0 +1,232 @@
+{
+ "passed": false,
+ "library_id": "b10migration",
+ "labels": {
+  "stage2": "separate baseline-Python reader proof; NOT interpreter-free runtime evidence",
+  "stage7": "simulated incomplete receipt and conflict recovery; NOT a measured SIGKILL/crash experiment (native recovery tests cover process crashes)"
+ },
+ "original_inventory_before": {
+  ".chunk_cache": {
+   "dir": true
+  },
+  ".chunk_cache/lunyu-index.json": {
+   "sha256": "f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e",
+   "bytes": 206
+  },
+  ".pipeline": {
+   "dir": true
+  },
+  ".pipeline/history.jsonl": {
+   "sha256": "4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a",
+   "bytes": 162
+  },
+  "config.yaml": {
+   "sha256": "132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f",
+   "bytes": 439
+  },
+  "knowledge": {
+   "dir": true
+  },
+  "knowledge/answers": {
+   "dir": true
+  },
+  "knowledge/answers/xue-yi.md": {
+   "sha256": "d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0",
+   "bytes": 362
+  },
+  "knowledge/assets": {
+   "dir": true
+  },
+  "knowledge/assets/rubbing.png": {
+   "sha256": "9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7",
+   "bytes": 88
+  },
+  "knowledge/entries": {
+   "dir": true
+  },
+  "knowledge/entries/xue.md": {
+   "sha256": "8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298",
+   "bytes": 513
+  },
+  "knowledge/metadata": {
+   "dir": true
+  },
+  "knowledge/metadata/aliases.json": {
+   "sha256": "247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb",
+   "bytes": 53
+  },
+  "knowledge/metadata/backlinks.json": {
+   "sha256": "1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a",
+   "bytes": 81
+  },
+  "knowledge/metadata/taxonomy.json": {
+   "sha256": "fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704",
+   "bytes": 228
+  },
+  "originals": {
+   "dir": true
+  },
+  "originals/lunyu": {
+   "dir": true
+  },
+  "originals/lunyu/index.md": {
+   "sha256": "6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e",
+   "bytes": 386
+  }
+ },
+ "binary_sha256": "f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8",
+ "script_sha256": "4bf50d28fd5bfcf3225cabd9179e5ed0188a21abe8f6eac75444d68f92dd5200",
+ "legacy_archive_sha256": "fda78e50bcb93aa0992aeabe9cd45ae1e39b9600fa24b8814ea240e792e1e222",
+ "legacy_commit": "a7c4d9da764462e09c0769ecd8ba548a46d27e83",
+ "fixture_hashes": {
+  "config.yaml": "132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f",
+  "knowledge/entries/xue.md": "8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298",
+  "originals/lunyu/index.md": "6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e"
+ },
+ "legacy_reader_baseline": {
+  "article": {
+   "backlinks": [],
+   "content": {
+    "文言": "學者，習而行之也。[[時習]]之義，見於《論語》。\n\n## 所出\n\n子曰：「學而時習之，不亦說乎？」"
+   },
+   "created": "2026-09-20T00:00:00+00:00",
+   "outgoing_links": [
+    {
+     "slug": "xue",
+     "title": "學"
+    }
+   ],
+   "related_by_tags": [],
+   "slug": "xue",
+   "sources": [
+    {
+     "chapter": "學而第一",
+     "plugin": "fixture",
+     "title": "論語·學而",
+     "url": "https://example.invalid/classics/lunyu/1",
+     "work_id": "fixture-lunyu"
+    }
+   ],
+   "summary": "學而時習之義",
+   "tags": [
+    "經"
+   ],
+   "title": "學",
+   "updated": "2026-09-20T00:00:00+00:00"
+  },
+  "branding": {
+   "name": "契約試庫"
+  },
+  "config_paths": {
+   "concepts": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/entries",
+   "meta": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/metadata",
+   "outputs": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/answers",
+   "raw": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/originals",
+   "wiki": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge"
+  },
+  "languages": {
+   "default": "classical",
+   "profiles": {
+    "classical": {
+     "api_default_lang": "zh",
+     "default_lang": "zh",
+     "sections": [
+      {
+       "code": "zh",
+       "header": "",
+       "key": "文言"
+      }
+     ]
+    }
+   }
+  },
+  "modules": {
+   "llmwiki": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "under_legacy": true
+   },
+   "llmwiki.compile": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/compile.py",
+    "sha256": "05659f101f013937d635df7c23e141f229814e2a524394eee879ff5c38af1692",
+    "under_legacy": true
+   },
+   "llmwiki.config": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/config.py",
+    "sha256": "5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce",
+    "under_legacy": true
+   },
+   "llmwiki.export": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/export.py",
+    "sha256": "f376f38ee3b8510bc2d3eb05c3cd046022bd66a44e355ba8b0ec84e5647c70fc",
+    "under_legacy": true
+   },
+   "llmwiki.llm": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/llm.py",
+    "sha256": "966ecddb0ddf688ad515f4b62fb4ce38e1a735494729751fb65b458c9f56cc9e",
+    "under_legacy": true
+   },
+   "llmwiki.search": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/search.py",
+    "sha256": "b51e41ed30e92e3a9dadc23f26be80b535da603b5beb822a4f22d9390ad814db",
+    "under_legacy": true
+   }
+  },
+  "raw_hits": [
+   {
+    "matched_terms": [
+     "學",
+     "而",
+     "時",
+     "習",
+     "之",
+     "學而",
+     "而時",
+     "時習",
+     "習之"
+    ],
+    "rel_path": "lunyu/index.md",
+    "score": 13.159,
+    "snippet": "論語·學而 論語·學而 https://example.invalid/classics/lunyu/1 序𠮷é。  ## 學而第一  子曰：「學而時習之，不亦說乎？」  ### 字例  𠮷與吉異字，é",
+    "source": "lunyu",
+    "source_url": "https://example.invalid/classics/lunyu/1",
+    "title": "論語·學而"
+   }
+  ],
+  "via_alias_slug": "xue"
+ },
+ "error": "AssertionError: scan maps unknown file raw/lunyu/index.md",
+ "steps": [
+  {
+   "note": "legacy reader baseline",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/bin/python",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/old_reader.py",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original"
+   ],
+   "exit": 0,
+   "stdout": "READER-RESULT {\"article\": {\"backlinks\": [], \"content\": {\"文言\": \"學者，習而行之也。[[時習]]之義，見於《論語》。\\n\\n## 所出\\n\\n子曰：「學而時習之，不亦說乎？」\"}, \"created\": \"2026-09-20T00:00:00+00:00\", \"outgoing_links\": [{\"slug\": \"xue\", \"title\": \"學\"}], \"related_by_tags\": [], \"slug\": \"xue\", \"sources\": [{\"chapter\": \"學而第一\", \"plugin\": \"fixture\", \"title\": \"論語·學而\", \"url\": \"https://example.invalid/classics/lunyu/1\", \"work_id\": \"fixture-lunyu\"}], \"summary\": \"學而時習之義\", \"tags\": [\"經\"], \"title\": \"學\", \"updated\": \"2026-09-20T00:00:00+00:00\"}, \"branding\": {\"name\": \"契約試庫\"}, \"config_paths\": {\"concepts\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/entries\", \"meta\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/metadata\", \"outputs\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge/answers\", \"raw\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/originals\", \"wiki\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original/knowledge\"}, \"languages\": {\"default\": \"classical\", \"profiles\": {\"classical\": {\"api_default_lang\": \"zh\", \"default_lang\": \"zh\", \"sections\": [{\"code\": \"zh\", \"header\": \"\", \"key\": \"文言\"}]}}}, \"modules\": {\"llmwiki\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/__init__.py\", \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"under_legacy\": true}, \"llmwiki.compile\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/compile.py\", \"sha256\": \"05659f101f013937d635df7c23e141f229814e2a524394eee879ff5c38af1692\", \"under_legacy\": true}, \"llmwiki.config\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/config.py\", \"sha256\": \"5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce\", \"under_legacy\": true}, \"llmwiki.export\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/export.py\", \"sha256\": \"f376f38ee3b8510bc2d3eb05c3cd046022bd66a44e355ba8b0ec84e5647c70fc\", \"under_legacy\": true}, \"llmwiki.llm\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/llm.py\", \"sha256\": \"966ecddb0ddf688ad515f4b62fb4ce38e1a735494729751fb65b458c9f56cc9e\", \"under_legacy\": true}, \"llmwiki.search\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/search.py\", \"sha256\": \"b51e41ed30e92e3a9dadc23f26be80b535da603b5beb822a4f22d9390ad814db\", \"under_legacy\": true}}, \"raw_hits\": [{\"matched_terms\": [\"學\", \"而\", \"時\", \"習\", \"之\", \"學而\", \"而時\", \"時習\", \"習之\"], \"rel_path\": \"lunyu/index.md\", \"score\": 13.159, \"snippet\": \"論語·學而 論語·學而 https://example.invalid/classics/lunyu/1 序𠮷é。  ## 學而第一  子曰：「學而時習之，不亦說乎？」  ### 字例  𠮷與吉異字，é\", \"source\": \"lunyu\", \"source_url\": \"https://example.invalid/classics/lunyu/1\", \"title\": \"論語·學而\"}], \"via_alias_slug\": \"xue\"}\n",
+   "stderr": "",
+   "wall_ms": 1527.881
+  },
+  {
+   "note": "migration dry-run",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162553/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "dry-run"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":2518,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":false,\"database_files\":[]}\n",
+   "stderr": "",
+   "wall_ms": 3.608
+  }
+ ],
+ "provider_fixture_requests": []
+}

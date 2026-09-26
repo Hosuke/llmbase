@@ -1,0 +1,10 @@
+{
+  "scripts/rust-migration/verify-migration.py": {
+    "before": null,
+    "after": "aee828d37a8de61f455947a8a9d5c814c97b6494acf5601dd0f1d00fb7df27c8"
+  },
+  "docs/rust-migration/runbook.md": {
+    "before": "efe43de3e2bc3a5e9620ea45d1c7ea354d0ef745af87089f2a40deb857445d70",
+    "after": "b7fb782c9703dcb7453b60fdc0535cc89e0574328a23aad3e5e5fb37bb9a680a"
+  }
+}

@@ -1,0 +1,743 @@
+{
+ "passed": false,
+ "library_id": "b10migration",
+ "labels": {
+  "stage2": "separate baseline-Python reader proof; NOT interpreter-free runtime evidence",
+  "stage7": "simulated incomplete receipt and conflict recovery; NOT a measured SIGKILL/crash experiment (native recovery tests cover process crashes)"
+ },
+ "original_inventory_before": {
+  ".chunk_cache": {
+   "dir": true
+  },
+  ".chunk_cache/lunyu-index.json": {
+   "sha256": "f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e",
+   "bytes": 206
+  },
+  ".pipeline": {
+   "dir": true
+  },
+  ".pipeline/history.jsonl": {
+   "sha256": "4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a",
+   "bytes": 162
+  },
+  "config.yaml": {
+   "sha256": "132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f",
+   "bytes": 439
+  },
+  "knowledge": {
+   "dir": true
+  },
+  "knowledge/answers": {
+   "dir": true
+  },
+  "knowledge/answers/xue-yi.md": {
+   "sha256": "d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0",
+   "bytes": 362
+  },
+  "knowledge/assets": {
+   "dir": true
+  },
+  "knowledge/assets/rubbing.png": {
+   "sha256": "9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7",
+   "bytes": 88
+  },
+  "knowledge/entries": {
+   "dir": true
+  },
+  "knowledge/entries/xue.md": {
+   "sha256": "8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298",
+   "bytes": 513
+  },
+  "knowledge/metadata": {
+   "dir": true
+  },
+  "knowledge/metadata/aliases.json": {
+   "sha256": "247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb",
+   "bytes": 53
+  },
+  "knowledge/metadata/backlinks.json": {
+   "sha256": "1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a",
+   "bytes": 81
+  },
+  "knowledge/metadata/taxonomy.json": {
+   "sha256": "fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704",
+   "bytes": 228
+  },
+  "originals": {
+   "dir": true
+  },
+  "originals/lunyu": {
+   "dir": true
+  },
+  "originals/lunyu/index.md": {
+   "sha256": "6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e",
+   "bytes": 386
+  }
+ },
+ "binary_sha256": "f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8",
+ "script_sha256": "b95e7f16a93a650608d5eb9e1014bc5e38ed4b50562ae702fcc75166fdd8e9e6",
+ "legacy_archive_sha256": "fda78e50bcb93aa0992aeabe9cd45ae1e39b9600fa24b8814ea240e792e1e222",
+ "legacy_commit": "a7c4d9da764462e09c0769ecd8ba548a46d27e83",
+ "fixture_hashes": {
+  "config.yaml": "132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f",
+  "knowledge/entries/xue.md": "8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298",
+  "originals/lunyu/index.md": "6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e"
+ },
+ "legacy_reader_baseline": {
+  "article": {
+   "backlinks": [],
+   "content": {
+    "文言": "學者，習而行之也。[[時習]]之義，見於《論語》。\n\n## 所出\n\n子曰：「學而時習之，不亦說乎？」"
+   },
+   "created": "2026-09-20T00:00:00+00:00",
+   "outgoing_links": [
+    {
+     "slug": "xue",
+     "title": "學"
+    }
+   ],
+   "related_by_tags": [],
+   "slug": "xue",
+   "sources": [
+    {
+     "chapter": "學而第一",
+     "plugin": "fixture",
+     "title": "論語·學而",
+     "url": "https://example.invalid/classics/lunyu/1",
+     "work_id": "fixture-lunyu"
+    }
+   ],
+   "summary": "學而時習之義",
+   "tags": [
+    "經"
+   ],
+   "title": "學",
+   "updated": "2026-09-20T00:00:00+00:00"
+  },
+  "branding": {
+   "name": "契約試庫"
+  },
+  "config_paths": {
+   "concepts": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/entries",
+   "meta": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/metadata",
+   "outputs": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/answers",
+   "raw": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/originals",
+   "wiki": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge"
+  },
+  "languages": {
+   "default": "classical",
+   "profiles": {
+    "classical": {
+     "api_default_lang": "zh",
+     "default_lang": "zh",
+     "sections": [
+      {
+       "code": "zh",
+       "header": "",
+       "key": "文言"
+      }
+     ]
+    }
+   }
+  },
+  "modules": {
+   "llmwiki": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "under_legacy": true
+   },
+   "llmwiki.compile": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/compile.py",
+    "sha256": "05659f101f013937d635df7c23e141f229814e2a524394eee879ff5c38af1692",
+    "under_legacy": true
+   },
+   "llmwiki.config": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/config.py",
+    "sha256": "5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce",
+    "under_legacy": true
+   },
+   "llmwiki.export": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/export.py",
+    "sha256": "f376f38ee3b8510bc2d3eb05c3cd046022bd66a44e355ba8b0ec84e5647c70fc",
+    "under_legacy": true
+   },
+   "llmwiki.llm": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/llm.py",
+    "sha256": "966ecddb0ddf688ad515f4b62fb4ce38e1a735494729751fb65b458c9f56cc9e",
+    "under_legacy": true
+   },
+   "llmwiki.search": {
+    "file": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/search.py",
+    "sha256": "b51e41ed30e92e3a9dadc23f26be80b535da603b5beb822a4f22d9390ad814db",
+    "under_legacy": true
+   }
+  },
+  "raw_hits": [
+   {
+    "matched_terms": [
+     "學",
+     "而",
+     "時",
+     "習",
+     "之",
+     "學而",
+     "而時",
+     "時習",
+     "習之"
+    ],
+    "rel_path": "lunyu/index.md",
+    "score": 13.159,
+    "snippet": "論語·學而 論語·學而 https://example.invalid/classics/lunyu/1 序𠮷é。  ## 學而第一  子曰：「學而時習之，不亦說乎？」  ### 字例  𠮷與吉異字，é",
+    "source": "lunyu",
+    "source_url": "https://example.invalid/classics/lunyu/1",
+    "title": "論語·學而"
+   }
+  ],
+  "via_alias_slug": "xue"
+ },
+ "retained": {
+  "write1": {
+   "added": 1,
+   "updated": 0,
+   "moved": 0,
+   "deleted": 0,
+   "unchanged": 3,
+   "passages_written": 1
+  },
+  "source_id": "74d19b2f-2201-4d92-93ea-89a0403d1d36",
+  "evidence": {
+   "library_id": "b10migration",
+   "source_id": "74d19b2f-2201-4d92-93ea-89a0403d1d36",
+   "revision": 1,
+   "content_hash": "54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94",
+   "passage_id": "9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925",
+   "start": 34,
+   "end": 103,
+   "offset_unit": "utf8_byte",
+   "exact_quote": "Synthetic scratch document b10zxqwvscratchtoken for migration proof.\n",
+   "source_url": null,
+   "locator": null
+  },
+  "revision_after_update": {
+   "library_id": "b10migration",
+   "source_id": "74d19b2f-2201-4d92-93ea-89a0403d1d36",
+   "revision": 2,
+   "content_hash": "751ec382dd539083675e1cbac606303339ef9630fa232849b5dc3619c3477e70",
+   "kind": "raw",
+   "rel_path": "b10-scratch.md",
+   "slug": "b10-scratch",
+   "title": "B10 scratch source",
+   "metadata": {
+    "title": "B10 scratch source"
+   },
+   "content": "---\ntitle: B10 scratch source\n---\nSynthetic scratch document b10zxqwvscratchtoken for migration proof.\nUpdated scratch revision, still synthetic.\n",
+   "body_start": 34,
+   "deleted": false
+  },
+  "job_id": "a7085b31-3501-4711-b37a-bac3f31b4cf6",
+  "job": {
+   "library_id": "b10migration",
+   "id": "a7085b31-3501-4711-b37a-bac3f31b4cf6",
+   "operation": "index",
+   "args": {},
+   "status": "succeeded",
+   "attempts": 1,
+   "max_attempts": 3,
+   "available_at": 1790411330,
+   "lease_until": null,
+   "result": {
+    "added": 0,
+    "updated": 0,
+    "moved": 0,
+    "deleted": 0,
+    "unchanged": 4,
+    "passages_written": 0
+   },
+   "error": null
+  }
+ },
+ "error": "AttributeError: 'CompletedProcess' object has no attribute 'exit'",
+ "steps": [
+  {
+   "note": "legacy reader baseline",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b5-registration-fix/candidate/bin/python",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/old_reader.py",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original"
+   ],
+   "exit": 0,
+   "stdout": "READER-RESULT {\"article\": {\"backlinks\": [], \"content\": {\"文言\": \"學者，習而行之也。[[時習]]之義，見於《論語》。\\n\\n## 所出\\n\\n子曰：「學而時習之，不亦說乎？」\"}, \"created\": \"2026-09-20T00:00:00+00:00\", \"outgoing_links\": [{\"slug\": \"xue\", \"title\": \"學\"}], \"related_by_tags\": [], \"slug\": \"xue\", \"sources\": [{\"chapter\": \"學而第一\", \"plugin\": \"fixture\", \"title\": \"論語·學而\", \"url\": \"https://example.invalid/classics/lunyu/1\", \"work_id\": \"fixture-lunyu\"}], \"summary\": \"學而時習之義\", \"tags\": [\"經\"], \"title\": \"學\", \"updated\": \"2026-09-20T00:00:00+00:00\"}, \"branding\": {\"name\": \"契約試庫\"}, \"config_paths\": {\"concepts\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/entries\", \"meta\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/metadata\", \"outputs\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge/answers\", \"raw\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/originals\", \"wiki\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original/knowledge\"}, \"languages\": {\"default\": \"classical\", \"profiles\": {\"classical\": {\"api_default_lang\": \"zh\", \"default_lang\": \"zh\", \"sections\": [{\"code\": \"zh\", \"header\": \"\", \"key\": \"文言\"}]}}}, \"modules\": {\"llmwiki\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/__init__.py\", \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"under_legacy\": true}, \"llmwiki.compile\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/compile.py\", \"sha256\": \"05659f101f013937d635df7c23e141f229814e2a524394eee879ff5c38af1692\", \"under_legacy\": true}, \"llmwiki.config\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/config.py\", \"sha256\": \"5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce\", \"under_legacy\": true}, \"llmwiki.export\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/export.py\", \"sha256\": \"f376f38ee3b8510bc2d3eb05c3cd046022bd66a44e355ba8b0ec84e5647c70fc\", \"under_legacy\": true}, \"llmwiki.llm\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/llm.py\", \"sha256\": \"966ecddb0ddf688ad515f4b62fb4ce38e1a735494729751fb65b458c9f56cc9e\", \"under_legacy\": true}, \"llmwiki.search\": {\"file\": \"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/legacy-source/llmwiki/search.py\", \"sha256\": \"b51e41ed30e92e3a9dadc23f26be80b535da603b5beb822a4f22d9390ad814db\", \"under_legacy\": true}}, \"raw_hits\": [{\"matched_terms\": [\"學\", \"而\", \"時\", \"習\", \"之\", \"學而\", \"而時\", \"時習\", \"習之\"], \"rel_path\": \"lunyu/index.md\", \"score\": 13.159, \"snippet\": \"論語·學而 論語·學而 https://example.invalid/classics/lunyu/1 序𠮷é。  ## 學而第一  子曰：「學而時習之，不亦說乎？」  ### 字例  𠮷與吉異字，é\", \"source\": \"lunyu\", \"source_url\": \"https://example.invalid/classics/lunyu/1\", \"title\": \"論語·學而\"}], \"via_alias_slug\": \"xue\"}\n",
+   "stderr": "",
+   "wall_ms": 686.629
+  },
+  {
+   "note": "migration dry-run",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "dry-run"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":2518,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":false,\"database_files\":[]}\n",
+   "stderr": "",
+   "wall_ms": 3.319
+  },
+  {
+   "note": "migration copy",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "copy",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/copy-immutable"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":2518,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":false,\"database_files\":[]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"c8ee3f7e57cff5c06bdeca04e5260bb4163e60203c7d42dc7cc9e8e7748d1fcd\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 71.57
+  },
+  {
+   "note": "migration verify copy",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "verify",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/copy-immutable"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":2518,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":false,\"database_files\":[]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"c8ee3f7e57cff5c06bdeca04e5260bb4163e60203c7d42dc7cc9e8e7748d1fcd\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 3.409
+  },
+  {
+   "note": "migration restore working",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "restore",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/copy-immutable",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/copy-immutable\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":105572,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"c8ee3f7e57cff5c06bdeca04e5260bb4163e60203c7d42dc7cc9e8e7748d1fcd\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"3673f16ec0928dc0cde4ef645d2500d7f0336bf26f08fa24c7430a67144a1604\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 64.727
+  },
+  {
+   "note": "verify working before writes",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/legacy-original",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "verify",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/copy-immutable\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":105572,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"c8ee3f7e57cff5c06bdeca04e5260bb4163e60203c7d42dc7cc9e8e7748d1fcd\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":98304,\"sha256\":\"3673f16ec0928dc0cde4ef645d2500d7f0336bf26f08fa24c7430a67144a1604\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 3.609
+  },
+  {
+   "note": "op source_write",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "source_write",
+    "--args",
+    "{\"kind\": \"raw\", \"path\": \"b10-scratch.md\", \"content\": \"---\\ntitle: B10 scratch source\\n---\\nSynthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"added\":1,\"updated\":0,\"moved\":0,\"deleted\":0,\"unchanged\":3,\"passages_written\":1}\n",
+   "stderr": "",
+   "wall_ms": 18.207
+  },
+  {
+   "note": "op job_enqueue",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "job_enqueue",
+    "--args",
+    "{\"operation\": \"index\", \"args\": {}}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"id\":\"a7085b31-3501-4711-b37a-bac3f31b4cf6\",\"operation\":\"index\",\"args\":{},\"status\":\"queued\",\"attempts\":0,\"max_attempts\":3,\"available_at\":1790411330,\"lease_until\":null,\"result\":null,\"error\":null}\n",
+   "stderr": "",
+   "wall_ms": 17.782
+  },
+  {
+   "note": "op job_run_one",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "job_run_one",
+    "--args",
+    "{\"worker_id\": \"b10-worker\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"id\":\"a7085b31-3501-4711-b37a-bac3f31b4cf6\",\"operation\":\"index\",\"args\":{},\"status\":\"succeeded\",\"attempts\":1,\"max_attempts\":3,\"available_at\":1790411330,\"lease_until\":null,\"result\":{\"added\":0,\"updated\":0,\"moved\":0,\"deleted\":0,\"unchanged\":4,\"passages_written\":0},\"error\":null}\n",
+   "stderr": "",
+   "wall_ms": 19.399
+  },
+  {
+   "note": "op job_get",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "job_get",
+    "--args",
+    "{\"job_id\": \"a7085b31-3501-4711-b37a-bac3f31b4cf6\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"id\":\"a7085b31-3501-4711-b37a-bac3f31b4cf6\",\"operation\":\"index\",\"args\":{},\"status\":\"succeeded\",\"attempts\":1,\"max_attempts\":3,\"available_at\":1790411330,\"lease_until\":null,\"result\":{\"added\":0,\"updated\":0,\"moved\":0,\"deleted\":0,\"unchanged\":4,\"passages_written\":0},\"error\":null}\n",
+   "stderr": "",
+   "wall_ms": 4.28
+  },
+  {
+   "note": "op search",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "search",
+    "--args",
+    "{\"query\": \"b10zxqwvscratchtoken\", \"kind\": \"raw\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"mode\":\"lexical\",\"degradation\":\"embedding index is not configured\",\"results\":[{\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"slug\":\"b10-scratch\",\"title\":\"B10 scratch source\",\"source_kind\":\"raw\",\"score\":1.165034558032405,\"snippet\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"evidence\":{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":1,\"content_hash\":\"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\",\"passage_id\":\"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\",\"start\":34,\"end\":103,\"offset_unit\":\"utf8_byte\",\"exact_quote\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"source_url\":null,\"locator\":null}}]}\n",
+   "stderr": "",
+   "wall_ms": 4.713
+  },
+  {
+   "note": "op evidence",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "evidence",
+    "--args",
+    "{\"evidence\": {\"library_id\": \"b10migration\", \"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\", \"revision\": 1, \"content_hash\": \"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\", \"passage_id\": \"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\", \"start\": 34, \"end\": 103, \"offset_unit\": \"utf8_byte\", \"exact_quote\": \"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\", \"source_url\": null, \"locator\": null}}"
+   ],
+   "exit": 0,
+   "stdout": "{\"evidence\":{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":1,\"content_hash\":\"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\",\"passage_id\":\"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\",\"start\":34,\"end\":103,\"offset_unit\":\"utf8_byte\",\"exact_quote\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"source_url\":null,\"locator\":null},\"stale\":false,\"deleted\":false,\"current_revision\":1}\n",
+   "stderr": "",
+   "wall_ms": 4.379
+  },
+  {
+   "note": "op source_write",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "source_write",
+    "--args",
+    "{\"kind\": \"raw\", \"path\": \"b10-scratch.md\", \"content\": \"---\\ntitle: B10 scratch source\\n---\\nSynthetic scratch document b10zxqwvscratchtoken for migration proof.\\nUpdated scratch revision, still synthetic.\\n\", \"expected_hash\": \"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"added\":0,\"updated\":1,\"moved\":0,\"deleted\":0,\"unchanged\":3,\"passages_written\":1}\n",
+   "stderr": "",
+   "wall_ms": 18.156
+  },
+  {
+   "note": "op evidence",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "evidence",
+    "--args",
+    "{\"evidence\": {\"library_id\": \"b10migration\", \"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\", \"revision\": 1, \"content_hash\": \"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\", \"passage_id\": \"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\", \"start\": 34, \"end\": 103, \"offset_unit\": \"utf8_byte\", \"exact_quote\": \"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\", \"source_url\": null, \"locator\": null}}"
+   ],
+   "exit": 0,
+   "stdout": "{\"evidence\":{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":1,\"content_hash\":\"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\",\"passage_id\":\"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\",\"start\":34,\"end\":103,\"offset_unit\":\"utf8_byte\",\"exact_quote\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"source_url\":null,\"locator\":null},\"stale\":true,\"deleted\":false,\"current_revision\":2}\n",
+   "stderr": "",
+   "wall_ms": 4.594
+  },
+  {
+   "note": "op get",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "get",
+    "--args",
+    "{\"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":2,\"content_hash\":\"751ec382dd539083675e1cbac606303339ef9630fa232849b5dc3619c3477e70\",\"kind\":\"raw\",\"rel_path\":\"b10-scratch.md\",\"slug\":\"b10-scratch\",\"title\":\"B10 scratch source\",\"metadata\":{\"title\":\"B10 scratch source\"},\"content\":\"---\\ntitle: B10 scratch source\\n---\\nSynthetic scratch document b10zxqwvscratchtoken for migration proof.\\nUpdated scratch revision, still synthetic.\\n\",\"body_start\":34,\"deleted\":false}\n",
+   "stderr": "",
+   "wall_ms": 4.157
+  },
+  {
+   "note": "op source_delete",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "source_delete",
+    "--args",
+    "{\"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\", \"expected_hash\": \"751ec382dd539083675e1cbac606303339ef9630fa232849b5dc3619c3477e70\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"added\":0,\"updated\":0,\"moved\":0,\"deleted\":1,\"unchanged\":3,\"passages_written\":0}\n",
+   "stderr": "",
+   "wall_ms": 17.324
+  },
+  {
+   "note": "op search",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "search",
+    "--args",
+    "{\"query\": \"b10zxqwvscratchtoken\", \"kind\": \"raw\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"mode\":\"lexical\",\"degradation\":\"embedding index is not configured\",\"results\":[]}\n",
+   "stderr": "",
+   "wall_ms": 4.441
+  },
+  {
+   "note": "op evidence",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "evidence",
+    "--args",
+    "{\"evidence\": {\"library_id\": \"b10migration\", \"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\", \"revision\": 1, \"content_hash\": \"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\", \"passage_id\": \"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\", \"start\": 34, \"end\": 103, \"offset_unit\": \"utf8_byte\", \"exact_quote\": \"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\", \"source_url\": null, \"locator\": null}}"
+   ],
+   "exit": 0,
+   "stdout": "{\"evidence\":{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":1,\"content_hash\":\"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\",\"passage_id\":\"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\",\"start\":34,\"end\":103,\"offset_unit\":\"utf8_byte\",\"exact_quote\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"source_url\":null,\"locator\":null},\"stale\":true,\"deleted\":true,\"current_revision\":2}\n",
+   "stderr": "",
+   "wall_ms": 4.227
+  },
+  {
+   "note": "migration backup working",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "backup",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/snapshot-immutable"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":140111,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"196fce5359067a87024ba1973d1c2e70dbb1310924dffdf98941f76810dacac8\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 67.802
+  },
+  {
+   "note": "verify backup snapshot",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "verify",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/snapshot-immutable"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":140111,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"196fce5359067a87024ba1973d1c2e70dbb1310924dffdf98941f76810dacac8\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 3.804
+  },
+  {
+   "note": "restore fresh target",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "restore",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/snapshot-immutable",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/snapshot-immutable\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1.json\",\"bytes\":6172,\"sha256\":\"a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":146283,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1.json\",\"bytes\":6172,\"sha256\":\"a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 78.23
+  },
+  {
+   "note": "verify fresh target",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/working",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "migration",
+    "verify",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh"
+   ],
+   "exit": 0,
+   "stdout": "{\"version\":1,\"library_id\":\"b10migration\",\"source\":\"/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/snapshot-immutable\",\"source_manifest\":{\"library_id\":\"b10migration\",\"files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1.json\",\"bytes\":6172,\"sha256\":\"a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}],\"total_bytes\":146283,\"unknown_metadata_keys\":[\"canon\",\"chapter\",\"editorial_extension\",\"review_state\"],\"parse_errors\":[],\"identity_conflicts\":[],\"native_database\":true,\"database_files\":[{\"path\":\"llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"}]},\"state\":\"complete\",\"destination_files\":[{\"path\":\".chunk_cache/lunyu-index.json\",\"bytes\":206,\"sha256\":\"f905b92629df6acfbf425255cc2ffac7f6c5992c427c03703523289920078b8e\"},{\"path\":\".pipeline/history.jsonl\",\"bytes\":162,\"sha256\":\"4b3bfd79eb2a11c17cc896d01c065f93e380e54acb8d0ce3b6176f0d1112ef2a\"},{\"path\":\"config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"migration-original-config.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"raw/lunyu/index.md\",\"bytes\":386,\"sha256\":\"6097d96cadfbc63d9b5ef784fc059db2602ed273c7367e52d126c2e5403fce8e\"},{\"path\":\"wiki/_meta/aliases.json\",\"bytes\":53,\"sha256\":\"247686a05c92be94d1acbc2f092bc4098ede82758cfe1179563ca4e9138f35bb\"},{\"path\":\"wiki/_meta/backlinks.json\",\"bytes\":81,\"sha256\":\"1f50fdb696192b480b672e912ced9ebac61eafcb67066ca87bb8cdebc8db116a\"},{\"path\":\"wiki/_meta/llmbase.sqlite3\",\"bytes\":126976,\"sha256\":\"4304af8c4b17c33496cb859bb326d6ee19eadcc1730125c0e6a2ba3e1e999672\"},{\"path\":\"wiki/_meta/migration_configs/132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f.yaml\",\"bytes\":439,\"sha256\":\"132d38a352555e6d550f6aab3ff34abe01556c2793a979eae193dc6b6273397f\"},{\"path\":\"wiki/_meta/migration_configs/30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c.yaml\",\"bytes\":642,\"sha256\":\"30b6b90b679b8289d7165aad3b88dd0ef675718a2be687903018ac31f948094c\"},{\"path\":\"wiki/_meta/migration_receipts/475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d.json\",\"bytes\":4108,\"sha256\":\"475840b11b51aa43070541a372846cfd008855f88f822d61c7554405ac09b38d\"},{\"path\":\"wiki/_meta/migration_receipts/a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1.json\",\"bytes\":6172,\"sha256\":\"a0ac9a0969b9f2972c003c7dfc4be9e94732ed524bbc1d83ceba84a3af294ac1\"},{\"path\":\"wiki/_meta/migration_receipts/eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b.json\",\"bytes\":5225,\"sha256\":\"eb477d38b0b8c32f6051f3ec6c877230882b2aad94ad0adf7fec1bfb0e53a43b\"},{\"path\":\"wiki/_meta/taxonomy.json\",\"bytes\":228,\"sha256\":\"fa8133061836e0e59108230332fd39caabae95cc4e86effbecb20430963d3704\"},{\"path\":\"wiki/assets/rubbing.png\",\"bytes\":88,\"sha256\":\"9f7bb612f154c7a051243144f7aabe7d0f8b30587434a572d782eeb395e148d7\"},{\"path\":\"wiki/concepts/xue.md\",\"bytes\":513,\"sha256\":\"8defbac430bd6a4aa701052499939516e24233baecb6f00ceb503053f86ea298\"},{\"path\":\"wiki/outputs/xue-yi.md\",\"bytes\":362,\"sha256\":\"d1f8e3e2927ae836922a80ee4bf6cbada9f9faa0bea1ec3f75c11876aa5943b0\"}]}\n",
+   "stderr": "",
+   "wall_ms": 3.761
+  },
+  {
+   "note": "op job_get",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "job_get",
+    "--args",
+    "{\"job_id\": \"a7085b31-3501-4711-b37a-bac3f31b4cf6\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"id\":\"a7085b31-3501-4711-b37a-bac3f31b4cf6\",\"operation\":\"index\",\"args\":{},\"status\":\"succeeded\",\"attempts\":1,\"max_attempts\":3,\"available_at\":1790411330,\"lease_until\":null,\"result\":{\"added\":0,\"updated\":0,\"moved\":0,\"deleted\":0,\"unchanged\":4,\"passages_written\":0},\"error\":null}\n",
+   "stderr": "",
+   "wall_ms": 4.15
+  },
+  {
+   "note": "op search",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "search",
+    "--args",
+    "{\"query\": \"b10zxqwvscratchtoken\", \"kind\": \"raw\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"mode\":\"lexical\",\"degradation\":\"embedding index is not configured\",\"results\":[]}\n",
+   "stderr": "",
+   "wall_ms": 4.264
+  },
+  {
+   "note": "op evidence",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "evidence",
+    "--args",
+    "{\"evidence\": {\"library_id\": \"b10migration\", \"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\", \"revision\": 1, \"content_hash\": \"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\", \"passage_id\": \"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\", \"start\": 34, \"end\": 103, \"offset_unit\": \"utf8_byte\", \"exact_quote\": \"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\", \"source_url\": null, \"locator\": null}}"
+   ],
+   "exit": 0,
+   "stdout": "{\"evidence\":{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":1,\"content_hash\":\"54ee8023ccee786277abe5e1539a8e2de555099ceda7c317812669921756ce94\",\"passage_id\":\"9a25fe4e51d7dfc08e133c012717fd4cf9816fbbaee5b0497bf5d6402b660925\",\"start\":34,\"end\":103,\"offset_unit\":\"utf8_byte\",\"exact_quote\":\"Synthetic scratch document b10zxqwvscratchtoken for migration proof.\\n\",\"source_url\":null,\"locator\":null},\"stale\":true,\"deleted\":true,\"current_revision\":2}\n",
+   "stderr": "",
+   "wall_ms": 4.103
+  },
+  {
+   "note": "op get deleted source (informational)",
+   "argv": [
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/llmbase-cli-bin",
+    "--base-dir",
+    "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/restored-fresh",
+    "--library-id",
+    "b10migration",
+    "--json",
+    "op",
+    "get",
+    "--args",
+    "{\"source_id\": \"74d19b2f-2201-4d92-93ea-89a0403d1d36\"}"
+   ],
+   "exit": 0,
+   "stdout": "{\"library_id\":\"b10migration\",\"source_id\":\"74d19b2f-2201-4d92-93ea-89a0403d1d36\",\"revision\":2,\"content_hash\":\"751ec382dd539083675e1cbac606303339ef9630fa232849b5dc3619c3477e70\",\"kind\":\"raw\",\"rel_path\":\"b10-scratch.md\",\"slug\":\"b10-scratch\",\"title\":\"B10 scratch source\",\"metadata\":{\"title\":\"B10 scratch source\"},\"content\":\"---\\ntitle: B10 scratch source\\n---\\nSynthetic scratch document b10zxqwvscratchtoken for migration proof.\\nUpdated scratch revision, still synthetic.\\n\",\"body_start\":34,\"deleted\":true}\n",
+   "stderr": "",
+   "wall_ms": 4.002
+  }
+ ],
+ "provider_fixture_requests": []
+}

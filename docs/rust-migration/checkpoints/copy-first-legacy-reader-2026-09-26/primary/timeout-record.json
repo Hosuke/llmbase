@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "steps": [
+    {
+      "note": "deliberate timeout",
+      "argv": [
+        "/Users/lanchair/Developer/LLM-infra/Github/llmbase/.venv/bin/python",
+        "-c",
+        "import time; time.sleep(1)"
+      ],
+      "exit": null,
+      "timed_out": true,
+      "stdout": "",
+      "stderr": "",
+      "wall_ms": 23.871
+    }
+  ]
+}

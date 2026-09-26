@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "files": [
+    "scripts/rust-migration/verify-migration.py",
+    "docs/rust-migration/runbook.md"
+  ],
+  "outside_worktree": true
+}

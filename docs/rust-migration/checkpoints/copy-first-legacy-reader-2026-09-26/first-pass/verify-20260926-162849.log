@@ -1,0 +1,11 @@
+binary sha256: f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8 (pinned B8 release CLI)
+legacy archive sha256: fda78e50bcb93aa0992aeabe9cd45ae1e39b9600fa24b8814ea240e792e1e222 (baseline a7c4d9da764462e09c0769ecd8ba548a46d27e83)
+tests/rust_migration/fixtures/downstream/library/config.yaml: OK
+tests/rust_migration/fixtures/downstream/library/originals/lunyu/index.md: OK
+tests/rust_migration/fixtures/downstream/library/knowledge/entries/xue.md: OK
+b95e7f16a93a650608d5eb9e1014bc5e38ed4b50562ae702fcc75166fdd8e9e6  /root/llmbase-rust-migration-20260920/b10-migration-old-reader/verify-migration.py
+legacy source verified: 46 files, no extras
+=== verify-migration run-20260926-162849 ===
+PROOF FAILED: 'CompletedProcess' object has no attribute 'exit'
+{"passed": false, "steps": 26, "summary": "/root/llmbase-rust-migration-20260920/b10-migration-old-reader/run-20260926-162849/summary.json"}
+verify exit: 1
