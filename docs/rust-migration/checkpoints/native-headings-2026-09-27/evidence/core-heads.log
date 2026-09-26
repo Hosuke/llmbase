@@ -1,0 +1,21 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b14-heads/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.02s
+     Running tests/compat_heads.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_heads-1338b9f7d5f51394)
+
+running 5 tests
+test invalid_rules_fail_eagerly_without_python_fallback ... ok
+test no_rules_preserves_bytes_and_never_invokes_classifier ... ok
+test scanner_calls_only_eligible_titles_in_order_and_keeps_groups ... ok
+test resource_bounds_are_enforced ... ok
+test frozen_native_dialect_oracle ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/compat_paragraphs.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_paragraphs-68fc29ffcc05190d)
+
+running 2 tests
+test paragraph_arguments_are_strings_and_unknown_actions_fail ... ok
+test frozen_legacy_paragraph_oracle ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

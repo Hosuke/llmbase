@@ -1,0 +1,13 @@
+{
+  "time": "2026-09-27T02:53:47.751116",
+  "owner": "primary",
+  "predecessor": "24f34f5",
+  "changed_existing": [
+    "crates/llmbase-core/src/compat_util.rs",
+    "crates/llmbase-python/src/util.rs",
+    "llmwiki/_native.py",
+    "llmwiki/normalize.py"
+  ],
+  "source_count": 223,
+  "k3_exit": 143
+}

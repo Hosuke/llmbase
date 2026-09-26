@@ -1,0 +1,34 @@
+{
+  "crates/llmbase-core/src/compat_util.rs": {
+    "before": "211a37ea45dd0ad95bc0cb645940be828c69f9d07ebc2f741075647da5387a15",
+    "after": "98cdc05091c660f00cb40623fe3da3049e5f7f314c34acf207b91bc1e9d03c15"
+  },
+  "crates/llmbase-python/src/util.rs": {
+    "before": "f19aefedd11ac4cc1819237b3ca24793f11ce407ded5fadb32fe35b82d303806",
+    "after": "de60935d72fbccbf0937e47bbfefc7f8e282d9a916a8da7876bfa617701a8ff5"
+  },
+  "llmwiki/_native.py": {
+    "before": "6eeca45056c528d4002aee41835f91f7c777e8fafd92a24a118c2094ac09e8d4",
+    "after": "4ad02f0f9e747346bbc9b43e12ec1a27208fb73c141a0b1ddfe0482e21af79eb"
+  },
+  "llmwiki/normalize.py": {
+    "before": "77818f8c973e5c1981c2335541fc860ec3c62664977ae9d1a7aef50640f8c5b6",
+    "after": "1d94c868fe254deca28d5eddcff4295cb6e45f83c3ea4f8a63b086c68b4b4e0c"
+  },
+  "crates/llmbase-core/tests/compat_heads.rs": {
+    "before": null,
+    "after": "40f61079386940dcbd79d55543b9969453eec6d8d7d204fd2565729d7109c7c0"
+  },
+  "tests/rust_migration/test_native_heads.py": {
+    "before": null,
+    "after": "767fe39ca9929b1d703db9ea9211da529f64b965362b456cee6bd72ede02867a"
+  },
+  "tests/rust_migration/fixtures/heads.json": {
+    "before": null,
+    "after": "f82a1cf1ce130dbab392cc52ece30bd587d208fbde387009e97cf9ec409d8fe6"
+  },
+  "docs/rust-migration/normalization.md": {
+    "before": null,
+    "after": "46715b445ced9a002d8fdd53b8700cbbbadf178ee3da5b47f5917b0c6fffdf80"
+  }
+}

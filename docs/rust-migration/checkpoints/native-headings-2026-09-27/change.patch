@@ -1,0 +1,2857 @@
+diff --git a/crates/llmbase-core/src/compat_util.rs b/crates/llmbase-core/src/compat_util.rs
+--- a/crates/llmbase-core/src/compat_util.rs
++++ b/crates/llmbase-core/src/compat_util.rs
+@@ -212,6 +212,132 @@
+     let mut result = Vec::new();
+     flatten(&compat_kb::parse_sections(body), &mut result);
+     result
++}
++
++static HEAD_PATTERNS: LazyLock<(regex::Regex, regex::Regex)> = LazyLock::new(|| {
++    (
++        regex::Regex::new(
++            r"^ {0,3}(#{1,6})[\s\x1c-\x1f]+(.+?)(?:[\s\x1c-\x1f]+#+)?[\s\x1c-\x1f]*$",
++        )
++        .expect("constant heading pattern"),
++        regex::Regex::new(
++            r"^( {0,3})(#{1,6})([\s\x1c-\x1f]+)(.+?)((?:[\s\x1c-\x1f]+#+)?)[\s\x1c-\x1f]*$",
++        )
++        .expect("constant heading rewrite pattern"),
++    )
++});
++
++/// Normalize headings with a caller-supplied title classifier. The scanner and
++/// rewrite are native; a compatibility host may supply Python regex matching.
++pub fn normalize_heads_with(
++    body: &str,
++    enabled: bool,
++    mut level_for: impl FnMut(&str) -> Result<Option<u8>>,
++) -> Result<String> {
++    if body.len() > 16 * 1024 * 1024 {
++        return Err(Error::Invalid("heading body exceeds 16 MiB".into()));
++    }
++    if !enabled {
++        return Ok(body.to_owned());
++    }
++    let patterns = &*PARAGRAPH_PATTERNS;
++    let mut out = Vec::new();
++    let mut fence: Option<&str> = None;
++    let mut html = false;
++    for line in paragraph_lines(body) {
++        let mut rewritten = None;
++        if let Some(opener) = fence {
++            if let Some(m) = patterns.fence_close.captures(line) {
++                let closer = m.get(1).unwrap().as_str();
++                if closer.as_bytes()[0] == opener.as_bytes()[0] && closer.len() >= opener.len() {
++                    fence = None;
++                }
++            }
++        } else if let Some(m) = patterns.fence_open.captures(line) {
++            fence = Some(m.get(1).unwrap().as_str());
++            html = false;
++        } else if line.trim_matches(whitespace).is_empty() {
++            html = false;
++        } else if !html {
++            if patterns.html(line) {
++                html = true;
++            } else if let Some(m) = HEAD_PATTERNS.0.captures(line) {
++                let title = m.get(2).unwrap().as_str().trim_matches(whitespace);
++                if let Some(level) = level_for(title)? {
++                    if !(1..=6).contains(&level) {
++                        return Err(Error::Invalid("heading level must be 1..6".into()));
++                    }
++                    if let Some(parts) = HEAD_PATTERNS.1.captures(line) {
++                        rewritten = Some(format!(
++                            "{}{}{}{}{}",
++                            &parts[1],
++                            "#".repeat(usize::from(level)),
++                            &parts[3],
++                            &parts[4],
++                            &parts[5],
++                        ));
++                    }
++                }
++            }
++        }
++        out.push(rewritten.unwrap_or_else(|| line.to_owned()));
++    }
++    let nl = if body.contains("\r\n") { "\r\n" } else { "\n" };
++    let mut trail = 0;
++    let mut original = body;
++    while let Some(prefix) = original
++        .strip_suffix("\r\n")
++        .or_else(|| original.strip_suffix('\n'))
++    {
++        original = prefix;
++        trail += 1;
++    }
++    let joined = out.join(nl);
++    Ok(format!(
++        "{}{}",
++        joined.trim_end_matches(nl),
++        nl.repeat(trail)
++    ))
++}
++
++fn normalize_heads(args: &Value) -> Result<Value> {
++    let body = field(args, "body")?;
++    let rules = args
++        .get("rules")
++        .and_then(Value::as_array)
++        .ok_or_else(|| Error::Invalid("heading rules must be an array".into()))?;
++    if rules.len() > 256 {
++        return Err(Error::Invalid("heading rules exceed 256".into()));
++    }
++    let mut compiled = Vec::with_capacity(rules.len());
++    let mut pattern_bytes = 0;
++    for rule in rules {
++        let level = rule
++            .get("level")
++            .and_then(Value::as_u64)
++            .filter(|level| (1..=6).contains(level))
++            .ok_or_else(|| Error::Invalid("heading level must be an integer 1..6".into()))?;
++        let pattern = field(rule, "pattern")?;
++        pattern_bytes += pattern.len();
++        if pattern_bytes > 64 * 1024 {
++            return Err(Error::Invalid("heading patterns exceed 64 KiB".into()));
++        }
++        let regex = regex::RegexBuilder::new(pattern)
++            .size_limit(1024 * 1024)
++            .build()
++            .map_err(|err| Error::Invalid(format!("invalid native heading regex: {err}")))?;
++        compiled.push((regex, level as u8));
++    }
++    Ok(json!(normalize_heads_with(
++        body,
++        !compiled.is_empty(),
++        |title| {
++            Ok(compiled
++                .iter()
++                .find(|(pattern, _)| pattern.is_match(title))
++                .map(|(_, level)| *level))
++        }
++    )?))
+ }
+ 
+ fn find_path(nodes: &Value, anchor: &str, path: &mut Vec<usize>) -> Result<bool> {
+@@ -327,6 +453,7 @@
+         return Err(Error::Invalid("utility arguments must be an object".into()));
+     }
+     match action {
++        "normalize_heads" => normalize_heads(args),
+         "normalize_paragraphs" => Ok(json!(normalize_paragraphs(
+             field(args, "body")?,
+             field(args, "terminators")?,
+diff --git a/crates/llmbase-python/src/util.rs b/crates/llmbase-python/src/util.rs
+--- a/crates/llmbase-python/src/util.rs
++++ b/crates/llmbase-python/src/util.rs
+@@ -15,7 +15,52 @@
+ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+     module.add_function(wrap_pyfunction!(utility_transform, module)?)?;
+     module.add_function(wrap_pyfunction!(atomic_write_at, module)?)?;
++    module.add_function(wrap_pyfunction!(normalize_heads_run, module)?)?;
+     Ok(())
++}
++
++#[pyfunction]
++#[pyo3(signature=(body,callback=None))]
++fn normalize_heads_run(
++    py: Python<'_>,
++    body: String,
++    callback: Option<Py<PyAny>>,
++) -> PyResult<String> {
++    py.detach(move || {
++        let enabled = callback.is_some();
++        let mut callback_error = None;
++        let mut callback_count = 0_u64;
++        let result = llmbase_core::compat_util::normalize_heads_with(&body, enabled, |title| {
++            callback_count += 1;
++            let called = Python::attach(|py| {
++                callback
++                    .as_ref()
++                    .expect("enabled classifier")
++                    .call1(py, (title,))
++                    .and_then(|value| value.extract::<Option<u8>>(py))
++            });
++            match called {
++                Ok(value) => Ok(value),
++                Err(error) => {
++                    callback_error = Some(error);
++                    Err(llmbase_core::Error::Capability(
++                        "Python heading matcher failed".into(),
++                    ))
++                }
++            }
++        });
++        match result {
++            Ok(value) => Ok(json!({"value":value,"trace":{
++                "core":"rust","operation":"utility_normalize_heads","storage":"none",
++                "adapter":"llmbase_core::compat_util::normalize_heads_with",
++                "matcher":if enabled {"python_regex"} else {"none"},
++                "callback_count":callback_count,
++                "sequence":CALLS.fetch_add(1,Ordering::Relaxed)+1
++            }})
++            .to_string()),
++            Err(error) => Err(callback_error.unwrap_or_else(|| super::python_error(error))),
++        }
++    })
+ }
+ 
+ #[pyfunction]
+diff --git a/llmwiki/_native.py b/llmwiki/_native.py
+--- a/llmwiki/_native.py
++++ b/llmwiki/_native.py
+@@ -103,6 +103,19 @@
+     result = json.loads(_extension(required=True).resolve_transform(
+         action, json.dumps(args, ensure_ascii=False)))
+     _last_trace.set(result.get("trace"))
++    return result["value"]
++
++
++def normalize_heads_run(body: str, callback=None):
++    """Native document scanner with an explicit, live Python title matcher."""
++    clear_trace()
++    try:
++        result = json.loads(_extension(required=True).normalize_heads_run(body, callback))
++    except BaseException:
++        # A callback can itself perform a native call before failing.
++        clear_trace()
++        raise
++    _last_trace.set(result["trace"])
+     return result["value"]
+ 
+ 
+diff --git a/llmwiki/normalize.py b/llmwiki/normalize.py
+--- a/llmwiki/normalize.py
++++ b/llmwiki/normalize.py
+@@ -395,6 +395,46 @@
+ 
+ 
+ def normalize_heads(body: str, rules: list[HeadRule]) -> str:
++    """Rewrite eligible ATX headings using ordered, trusted Python regex rules.
++
++    Rust owns document scanning and rewriting. Python supplies regex matching;
++    explicit parser helper replacements use the live Python extension boundary.
++    """
++    from . import _native
++    from operator import index
++
++    _native.clear_trace()
++    try:
++        native = _native.available()
++        overridden = any(globals()[name] is not original
++                         for name, original in _HEAD_DEFAULTS.items())
++        if not native or overridden:
++            value = _normalize_heads_python(body, rules)
++            _native.python_boundary("normalize_heads", "parser_override" if overridden
++                                    else "unbuilt_development")
++            return value
++        compiled = []
++        if rules:
++            for rule in rules:
++                level = rule["level"]
++                if not (1 <= level <= 6):
++                    raise ValueError(f"Invalid heading level {level!r}: must be 1-6")
++                compiled.append((re.compile(rule["pattern"]), level))
++
++        def match_title(title):
++            for pattern, level in compiled:
++                if pattern.search(title):
++                    # Like the legacy '#' * level, reject a float only if used.
++                    return index(level)
++            return None
++
++        return _native.normalize_heads_run(body, match_title if rules else None)
++    except BaseException:
++        _native.clear_trace()
++        raise
++
++
++def _normalize_heads_python(body: str, rules: list[HeadRule]) -> str:
+     """Rewrite ATX heading levels based on title-pattern rules.
+ 
+     For each ATX heading, rules are checked in order; the first whose
+@@ -485,3 +525,10 @@
+         return line
+     indent, _opener, sep, title, closer = m.groups()
+     return f"{indent}{'#' * level}{sep}{title}{closer}"
++
++
++_HEAD_DEFAULTS = {name: globals()[name] for name in (
++    "_FENCE_CLOSE_RE", "_FENCE_OPEN_RE", "_HEADING_RE", "_HTML_BLOCK_RE",
++    "_HEADING_REWRITE_RE", "_line_ending", "_preserve_trailing_newline",
++    "_rewrite_heading_level",
++)}
+diff --git a/crates/llmbase-core/tests/compat_heads.rs b/crates/llmbase-core/tests/compat_heads.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/tests/compat_heads.rs
+@@ -0,0 +1,140 @@
++use llmbase_core::{
++    Error,
++    compat_util::{normalize_heads_with, transform},
++};
++use serde_json::{Value, json};
++
++#[test]
++fn frozen_native_dialect_oracle() {
++    let oracle: Value = serde_json::from_str(include_str!(
++        "../../../tests/rust_migration/fixtures/heads.json"
++    ))
++    .unwrap();
++    let mut count = 0;
++    for case in oracle["cases"].as_array().unwrap() {
++        if case["name"]
++            .as_str()
++            .unwrap()
++            .starts_with("python-pattern-")
++        {
++            continue;
++        }
++        assert_eq!(
++            transform(
++                "normalize_heads",
++                &json!({
++                    "body":case["body"], "rules":case["rules"]
++                })
++            )
++            .unwrap(),
++            case["expected"],
++            "{}",
++            case["name"]
++        );
++        count += 1;
++    }
++    assert_eq!(count, 52);
++}
++
++#[test]
++fn scanner_calls_only_eligible_titles_in_order_and_keeps_groups() {
++    let body = "  ###\t First  ##  \r\n```\n# skipped\n```\n<div>\n# skipped2\n\n## Second\n";
++    let mut titles = Vec::new();
++    let value = normalize_heads_with(body, true, |title| {
++        titles.push(title.to_owned());
++        Ok(Some(4))
++    })
++    .unwrap();
++    assert_eq!(titles, ["First", "Second"]);
++    assert_eq!(
++        value,
++        "  ####\t First  ##\r\n```\r\n# skipped\r\n```\r\n<div>\r\n# skipped2\r\n\r\n#### Second\r\n"
++    );
++    let mut calls = 0;
++    let error = normalize_heads_with("# first\n# second", true, |_| {
++        calls += 1;
++        Err(Error::Capability("expected matcher error".into()))
++    })
++    .unwrap_err();
++    assert_eq!(calls, 1);
++    assert!(error.to_string().contains("expected matcher error"));
++}
++
++#[test]
++fn no_rules_preserves_bytes_and_never_invokes_classifier() {
++    let body = "# heading\r\ntext\u{2028}\r";
++    assert_eq!(
++        normalize_heads_with(body, false, |_| panic!("disabled matcher")).unwrap(),
++        body
++    );
++    assert_eq!(
++        transform("normalize_heads", &json!({"body":body,"rules":[]})).unwrap(),
++        body
++    );
++    assert_eq!(
++        transform(
++            "normalize_heads",
++            &json!({"body":"# title","rules":[
++                {"pattern":"title","level":2}, {"pattern":".","level":6}
++            ]})
++        )
++        .unwrap(),
++        "## title"
++    );
++}
++
++#[test]
++fn invalid_rules_fail_eagerly_without_python_fallback() {
++    for rules in [
++        json!(null),
++        json!({}),
++        json!([null]),
++        json!([{"pattern":null,"level":2}]),
++        json!([{"pattern":"x"}]),
++        json!([{"pattern":"x","level":0}]),
++        json!([{"pattern":"x","level":7}]),
++        json!([{"pattern":"x","level":true}]),
++        json!([{"pattern":"x","level":2.0}]),
++        json!([{"pattern":"[","level":2}]),
++        json!([{"pattern":"(?=x)","level":2}]),
++        json!([{"pattern":r"(x)\1","level":2}]),
++    ] {
++        assert!(
++            transform("normalize_heads", &json!({"body":"","rules":rules})).is_err(),
++            "{rules}"
++        );
++    }
++    assert!(transform("normalize_heads", &json!({"body":42,"rules":[]})).is_err());
++    assert!(normalize_heads_with("# x", true, |_| Ok(Some(0))).is_err());
++    assert!(normalize_heads_with("# x", true, |_| Ok(Some(7))).is_err());
++}
++
++#[test]
++fn resource_bounds_are_enforced() {
++    let rule = json!({"pattern":"x","level":2});
++    assert!(
++        transform(
++            "normalize_heads",
++            &json!({"body":"", "rules":vec![rule;257]})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "normalize_heads",
++            &json!({"body":"", "rules":[
++                {"pattern":"x".repeat(64*1024+1),"level":2}
++            ]})
++        )
++        .is_err()
++    );
++    let error = transform(
++        "normalize_heads",
++        &json!({"body":"", "rules":[
++            {"pattern":r"\w{1000}","level":2}
++        ]}),
++    )
++    .unwrap_err();
++    assert!(error.to_string().contains("invalid native heading regex"));
++    assert!(normalize_heads_with(&"x".repeat(16 * 1024 * 1024 + 1), false, |_| Ok(None)).is_err());
++}
+diff --git a/tests/rust_migration/test_native_heads.py b/tests/rust_migration/test_native_heads.py
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/test_native_heads.py
+@@ -0,0 +1,141 @@
++"""Installed native scanner, actual legacy outputs and live matcher boundaries."""
++import json
++from pathlib import Path
++import re
++
++import pytest
++
++from llmwiki import _native, normalize
++
++pytestmark = pytest.mark.skipif(not _native.available(), reason="native candidate required")
++
++
++def test_frozen_outputs_without_python_scanner_or_rewrite(monkeypatch):
++    def forbidden(*args, **kwargs):
++        raise AssertionError("Python document algorithm executed")
++
++    class Body(str):
++        def splitlines(self, *args, **kwargs):
++            return forbidden()
++
++    monkeypatch.setattr(normalize, '_normalize_heads_python', forbidden)
++    # Keep identity anchors intact while poisoning the actual helper bodies.
++    for name in ['_line_ending', '_preserve_trailing_newline', '_rewrite_heading_level']:
++        monkeypatch.setattr(getattr(normalize, name), '__code__', forbidden.__code__)
++    before = dict(_native._configured_roots)
++    oracle = json.loads((Path(__file__).parent / 'fixtures/heads.json').read_text())
++    assert len(oracle['cases']) == 60
++    for case in oracle['cases']:
++        assert normalize.normalize_heads(Body(case['body']), case['rules']) == case['expected'], case['name']
++        trace = _native.last_trace()
++        assert trace['core'] == 'rust' and trace['operation'] == 'utility_normalize_heads'
++        assert trace['storage'] == 'none'
++        assert trace['matcher'] == ('python_regex' if case['rules'] else 'none')
++    assert before == _native._configured_roots
++
++
++def test_live_rules_compiled_flags_and_python_regex_features():
++    rules = [{'pattern': re.compile('^CHAPTER$', re.I | re.ASCII), 'level': 2}]
++    assert normalize.normalize_heads('# chapter', rules) == '## chapter'
++    rules[0] = {'pattern': r'(?<=word )word$', 'level': 5}
++    assert normalize.normalize_heads('# word word', rules) == '##### word word'
++    rules[0] = {'pattern': r'^(word) \1$', 'level': 6}
++    assert normalize.normalize_heads('# word word', rules) == '###### word word'
++    assert normalize.normalize_heads('# chapter', rules) == '# chapter'
++
++
++def test_callback_order_skip_blocks_and_exception_identity():
++    calls = []
++    body = '# first\n```\n# skip\n```\n<div>\n# skip2\n\n## second\n'
++
++    def classify(title):
++        calls.append(title)
++        return 3
++
++    assert _native.normalize_heads_run(body, classify) == body.replace('# first', '### first').replace('## second', '### second')
++    assert calls == ['first', 'second']
++    assert _native.last_trace()['callback_count'] == 2
++    error = TypeError('callback identity')
++    calls.clear()
++
++    def fail(title):
++        calls.append(title)
++        _native.utility_transform('sha1', {'text': 'nested success'})
++        raise error
++
++    with pytest.raises(TypeError) as caught:
++        _native.normalize_heads_run(body, fail)
++    assert caught.value is error and calls == ['first']
++    assert _native.last_trace() is None
++
++
++def test_eager_validation_and_legacy_float_bool_levels():
++    assert normalize.normalize_heads('# title', [{'pattern': '.', 'level': True}]) == '# title'
++    assert normalize.normalize_heads('# title', [{'pattern': 'absent', 'level': 2.0}]) == '# title'
++    for body, rule, error in [
++        ('# title', {'pattern': '.', 'level': 2.0}, TypeError),
++        ('', {'pattern': '[', 'level': 0}, ValueError),
++        ('', {'pattern': '[', 'level': 2}, re.error),
++    ]:
++        _native.utility_transform('sha1', {'text': 'seed'})
++        with pytest.raises(error):
++            normalize.normalize_heads(body, [rule])
++        assert _native.last_trace() is None
++    body = '# title\r\ntext\u2028\r'
++    assert normalize.normalize_heads(body, []) == body
++    assert _native.last_trace()['matcher'] == 'none'
++    assert _native.last_trace()['callback_count'] == 0
++
++
++@pytest.mark.parametrize('name', list(normalize._HEAD_DEFAULTS))
++def test_live_parser_override_then_native_restoration(monkeypatch, name):
++    original = getattr(normalize, name)
++    calls = []
++
++    def call(*args):
++        calls.append(args)
++        return original(*args)
++
++    class Pattern:
++        def match(self, *args):
++            calls.append(args)
++            return original.match(*args)
++
++    replacement = Pattern() if name.endswith('_RE') else call
++    body = '```\n```\n# title\n'
++    with monkeypatch.context() as patch:
++        patch.setattr(normalize, name, replacement)
++        assert normalize.normalize_heads(body, [{'pattern': '.', 'level': 2}]) == body.replace('# title', '## title')
++        assert calls and _native.last_trace()['core'] == 'python'
++    assert normalize.normalize_heads(body, [{'pattern': '.', 'level': 2}]) == body.replace('# title', '## title')
++    assert _native.last_trace()['core'] == 'rust'
++
++
++def test_override_failure_clears_nested_trace_and_unbuilt_fallback(monkeypatch):
++    error = TypeError('override failure')
++
++    def fail(*args):
++        _native.utility_transform('sha1', {'text': 'nested'})
++        raise error
++
++    with monkeypatch.context() as patch:
++        patch.setattr(normalize, '_rewrite_heading_level', fail)
++        with pytest.raises(TypeError) as caught:
++            normalize.normalize_heads('# title', [{'pattern': '.', 'level': 2}])
++        assert caught.value is error and _native.last_trace() is None
++    monkeypatch.setattr(_native, 'available', lambda: False)
++    assert normalize.normalize_heads('# title', [{'pattern': '.', 'level': 2}]) == '## title'
++    assert _native.last_trace()['core'] == 'python'
++
++
++def test_required_native_failure_is_not_swallowed(monkeypatch):
++    error = _native.NativeCapabilityError('required extension unavailable')
++
++    def fail():
++        raise error
++
++    _native.utility_transform('sha1', {'text': 'seed'})
++    monkeypatch.setattr(_native, 'available', fail)
++    with pytest.raises(_native.NativeCapabilityError) as caught:
++        normalize.normalize_heads('# title', [])
++    assert caught.value is error and _native.last_trace() is None
+diff --git a/tests/rust_migration/fixtures/heads.json b/tests/rust_migration/fixtures/heads.json
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/fixtures/heads.json
+@@ -0,0 +1,2228 @@
++{
++  "legacy_source": "/Users/lanchair/Developer/LLM-infra/Github/llmbase/llmwiki/normalize.py",
++  "legacy_sha256": "b0411b409377b6c19fc0ecca29b07dd8481fe74b859f066029f00a92cd25c4e1",
++  "downstream_pack_source": "/Users/lanchair/Developer/Buddha/Github/siwen/siwen/wenguan/taixu_pack.py",
++  "downstream_pack_sha256": "5e638e876e81cf20efcf4aec22ddad98a6c060f5921b3e46a7fa4cf80c2f46f7",
++  "cases": [
++    {
++      "name": "empty-0-'\\n'",
++      "body": "### 第一章 判教\n內文\n# 甲、釋義\n",
++      "rules": [],
++      "expected": "### 第一章 判教\n內文\n# 甲、釋義\n"
++    },
++    {
++      "name": "actual_taixu_pack-0-'\\n'",
++      "body": "### 第一章 判教\n內文\n# 甲、釋義\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章 判教\n內文\n##### 甲、釋義\n"
++    },
++    {
++      "name": "empty-0-'\\r\\n'",
++      "body": "### 第一章 判教\r\n內文\r\n# 甲、釋義\r\n",
++      "rules": [],
++      "expected": "### 第一章 判教\r\n內文\r\n# 甲、釋義\r\n"
++    },
++    {
++      "name": "actual_taixu_pack-0-'\\r\\n'",
++      "body": "### 第一章 判教\r\n內文\r\n# 甲、釋義\r\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章 判教\r\n內文\r\n##### 甲、釋義\r\n"
++    },
++    {
++      "name": "empty-0-'\\r'",
++      "body": "### 第一章 判教\r內文\r# 甲、釋義\r",
++      "rules": [],
++      "expected": "### 第一章 判教\r內文\r# 甲、釋義\r"
++    },
++    {
++      "name": "actual_taixu_pack-0-'\\r'",
++      "body": "### 第一章 判教\r內文\r# 甲、釋義\r",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章 判教\n內文\n##### 甲、釋義"
++    },
++    {
++      "name": "empty-1-'\\n'",
++      "body": "   #### 第一章 ##\n",
++      "rules": [],
++      "expected": "   #### 第一章 ##\n"
++    },
++    {
++      "name": "actual_taixu_pack-1-'\\n'",
++      "body": "   #### 第一章 ##\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "   ## 第一章 ##\n"
++    },
++    {
++      "name": "empty-1-'\\r\\n'",
++      "body": "   #### 第一章 ##\r\n",
++      "rules": [],
++      "expected": "   #### 第一章 ##\r\n"
++    },
++    {
++      "name": "actual_taixu_pack-1-'\\r\\n'",
++      "body": "   #### 第一章 ##\r\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "   ## 第一章 ##\r\n"
++    },
++    {
++      "name": "empty-1-'\\r'",
++      "body": "   #### 第一章 ##\r",
++      "rules": [],
++      "expected": "   #### 第一章 ##\r"
++    },
++    {
++      "name": "actual_taixu_pack-1-'\\r'",
++      "body": "   #### 第一章 ##\r",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "   ## 第一章 ##"
++    },
++    {
++      "name": "empty-2-'\\n'",
++      "body": "# no rule\n",
++      "rules": [],
++      "expected": "# no rule\n"
++    },
++    {
++      "name": "actual_taixu_pack-2-'\\n'",
++      "body": "# no rule\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "# no rule\n"
++    },
++    {
++      "name": "empty-2-'\\r\\n'",
++      "body": "# no rule\r\n",
++      "rules": [],
++      "expected": "# no rule\r\n"
++    },
++    {
++      "name": "actual_taixu_pack-2-'\\r\\n'",
++      "body": "# no rule\r\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "# no rule\r\n"
++    },
++    {
++      "name": "empty-2-'\\r'",
++      "body": "# no rule\r",
++      "rules": [],
++      "expected": "# no rule\r"
++    },
++    {
++      "name": "actual_taixu_pack-2-'\\r'",
++      "body": "# no rule\r",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "# no rule"
++    },
++    {
++      "name": "empty-3-'\\n'",
++      "body": "```md\n# 第一章\n````\n### 第一章\n",
++      "rules": [],
++      "expected": "```md\n# 第一章\n````\n### 第一章\n"
++    },
++    {
++      "name": "actual_taixu_pack-3-'\\n'",
++      "body": "```md\n# 第一章\n````\n### 第一章\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "```md\n# 第一章\n````\n## 第一章\n"
++    },
++    {
++      "name": "empty-3-'\\r\\n'",
++      "body": "```md\r\n# 第一章\r\n````\r\n### 第一章\r\n",
++      "rules": [],
++      "expected": "```md\r\n# 第一章\r\n````\r\n### 第一章\r\n"
++    },
++    {
++      "name": "actual_taixu_pack-3-'\\r\\n'",
++      "body": "```md\r\n# 第一章\r\n````\r\n### 第一章\r\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "```md\r\n# 第一章\r\n````\r\n## 第一章\r\n"
++    },
++    {
++      "name": "empty-3-'\\r'",
++      "body": "```md\r# 第一章\r````\r### 第一章\r",
++      "rules": [],
++      "expected": "```md\r# 第一章\r````\r### 第一章\r"
++    },
++    {
++      "name": "actual_taixu_pack-3-'\\r'",
++      "body": "```md\r# 第一章\r````\r### 第一章\r",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "```md\n# 第一章\n````\n## 第一章"
++    },
++    {
++      "name": "empty-4-'\\n'",
++      "body": "<div>\n# 第一章\n</div>\n\n### 第一章\n",
++      "rules": [],
++      "expected": "<div>\n# 第一章\n</div>\n\n### 第一章\n"
++    },
++    {
++      "name": "actual_taixu_pack-4-'\\n'",
++      "body": "<div>\n# 第一章\n</div>\n\n### 第一章\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "<div>\n# 第一章\n</div>\n\n## 第一章\n"
++    },
++    {
++      "name": "empty-4-'\\r\\n'",
++      "body": "<div>\r\n# 第一章\r\n</div>\r\n\r\n### 第一章\r\n",
++      "rules": [],
++      "expected": "<div>\r\n# 第一章\r\n</div>\r\n\r\n### 第一章\r\n"
++    },
++    {
++      "name": "actual_taixu_pack-4-'\\r\\n'",
++      "body": "<div>\r\n# 第一章\r\n</div>\r\n\r\n### 第一章\r\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "<div>\r\n# 第一章\r\n</div>\r\n\r\n## 第一章\r\n"
++    },
++    {
++      "name": "empty-4-'\\r'",
++      "body": "<div>\r# 第一章\r</div>\r\r### 第一章\r",
++      "rules": [],
++      "expected": "<div>\r# 第一章\r</div>\r\r### 第一章\r"
++    },
++    {
++      "name": "actual_taixu_pack-4-'\\r'",
++      "body": "<div>\r# 第一章\r</div>\r\r### 第一章\r",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "<div>\n# 第一章\n</div>\n\n## 第一章"
++    },
++    {
++      "name": "empty-5-'\\n'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [],
++      "expected": "# 第一章 ### 第二章\u001e文末"
++    },
++    {
++      "name": "actual_taixu_pack-5-'\\n'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章\n## 第二章\n文\n末"
++    },
++    {
++      "name": "empty-5-'\\r\\n'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [],
++      "expected": "# 第一章 ### 第二章\u001e文末"
++    },
++    {
++      "name": "actual_taixu_pack-5-'\\r\\n'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章\n## 第二章\n文\n末"
++    },
++    {
++      "name": "empty-5-'\\r'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [],
++      "expected": "# 第一章 ### 第二章\u001e文末"
++    },
++    {
++      "name": "actual_taixu_pack-5-'\\r'",
++      "body": "# 第一章 ### 第二章\u001e文末",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章\n## 第二章\n文\n末"
++    },
++    {
++      "name": "empty-6-'\\n'",
++      "body": "### 第一章",
++      "rules": [],
++      "expected": "### 第一章"
++    },
++    {
++      "name": "actual_taixu_pack-6-'\\n'",
++      "body": "### 第一章",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章"
++    },
++    {
++      "name": "empty-6-'\\r\\n'",
++      "body": "### 第一章",
++      "rules": [],
++      "expected": "### 第一章"
++    },
++    {
++      "name": "actual_taixu_pack-6-'\\r\\n'",
++      "body": "### 第一章",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章"
++    },
++    {
++      "name": "empty-6-'\\r'",
++      "body": "### 第一章",
++      "rules": [],
++      "expected": "### 第一章"
++    },
++    {
++      "name": "actual_taixu_pack-6-'\\r'",
++      "body": "### 第一章",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "## 第一章"
++    },
++    {
++      "name": "empty-7-'\\n'",
++      "body": "",
++      "rules": [],
++      "expected": ""
++    },
++    {
++      "name": "actual_taixu_pack-7-'\\n'",
++      "body": "",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": ""
++    },
++    {
++      "name": "empty-7-'\\r\\n'",
++      "body": "",
++      "rules": [],
++      "expected": ""
++    },
++    {
++      "name": "actual_taixu_pack-7-'\\r\\n'",
++      "body": "",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": ""
++    },
++    {
++      "name": "empty-7-'\\r'",
++      "body": "",
++      "rules": [],
++      "expected": ""
++    },
++    {
++      "name": "actual_taixu_pack-7-'\\r'",
++      "body": "",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": ""
++    },
++    {
++      "name": "python-pattern-0",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "(?<=第)一章",
++          "level": 2
++        }
++      ],
++      "expected": "## 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-1",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "^(?P<word>word)\\s+(?P=word)$",
++          "level": 2
++        }
++      ],
++      "expected": "###### 第一章\n## word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-2",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "(?i)^chapter$",
++          "level": 2
++        }
++      ],
++      "expected": "###### 第一章\n###### word word\n## CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-3",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "^甲(?=、)",
++          "level": 2
++        }
++      ],
++      "expected": "###### 第一章\n###### word word\n###### CHAPTER\n## 甲、\n###### word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-4",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "^word$",
++          "level": 2
++        }
++      ],
++      "expected": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n## word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-5",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "\\s",
++          "level": 2
++        }
++      ],
++      "expected": "###### 第一章\n## word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n"
++    },
++    {
++      "name": "python-pattern-6",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "\\w",
++          "level": 2
++        }
++      ],
++      "expected": "## 第一章\n## word word\n## CHAPTER\n## 甲、\n## word\n###### \u001f\n## é\n"
++    },
++    {
++      "name": "python-pattern-7",
++      "body": "###### 第一章\n###### word word\n###### CHAPTER\n###### 甲、\n###### word\n###### \u001f\n###### é\n",
++      "rules": [
++        {
++          "pattern": "\\b",
++          "level": 2
++        }
++      ],
++      "expected": "## 第一章\n## word word\n## CHAPTER\n## 甲、\n## word\n###### \u001f\n## é\n"
++    },
++    {
++      "name": "actual-fixture-README.md",
++      "body": "# Taixu corpus fixtures\n\nReal-world markdown samples from the siwen 太虛 (Taixu Dashi) knowledge base,\nused as regression fixtures for `tools.split` and `tools.normalize`.\n\n## Source\n\nThe Taixu corpus is a 62-book collection of 民國 釋太虛 (Master Taixu,\n1890-1947) from CBETA's 太虛大師全書, converted to markdown and integrated\nvia siwen's wenguan pipeline. These three samples were copied from the\nsiwen production instance (`/root/wenku-fo/raw/`) after `wenguan` and\n`normalize_heads` / `normalize_paragraphs` post-processing.\n\nRuntime metadata (`wenguan_at`, `normalized_*_at`, `ingested_at`, etc.)\nhas been stripped. Structural metadata (`book`, `bian`, `author`, etc.)\nis preserved so fixture consumers can route by编 (division) or 品 (chapter).\n\n## Files\n\n| File | Size | Shape (h1 / h2 / h3 / h4 / h5) | Use |\n|------|------|-------|-----|\n| `sanming_lun.md` | 16 KB | 1 / 3 / 0 / 3 / 0 | Small full book: `緣起分第一` / `名義分第二` / `界別分第三` at h2, each with h4 sub-items directly (no h3 layer) — structural edge where taixu-pack's intermediate level is absent |\n| `xinjing_shiyi.md` | 45 KB | 0 / 1 / 7 / 37 / 0 | Duplicate-title edge: frontmatter `book: 般若波羅密多心經釋義` + first body heading `## 般若波羅密多心經釋義` (no h1). Exercises the parse-only contract — `normalize_heads` must not \"promote\" body h2 to h1 to dedupe; that's a downstream concern. |\n| `focheng_zongyao_lun_head50kb.md` | 46 KB | 1 / 6 / 24 / 14 / 2 | Typical mid-size book, truncated first ~45 KB. Multi-編 cross-boundary: h2 chapter numbering restarts (`第一章` appears twice — sections 1 & 5), so `split_by_heading(body, level=2)` must yield 6 distinct sections without dedup-by-title. |\n\n## Intended use\n\n- `tools.split.split_by_heading(body, level=2)` → should yield 3 sections in\n  `sanming_lun` (緣起分第一 / 名義分第二 / 界別分第三).\n- `tools.normalize.normalize_heads(body, TAIXU_PACK)` where `TAIXU_PACK` is\n  the siwen-side head-pattern list — should re-level `### 一、` to h4 etc.\n  per 科分 / 總論 / 第N節 / [一二三…] / [甲乙丙…] / [子丑寅…] pattern ladder.\n- Edge: `xinjing_shiyi.md` has `## 般若波羅密多心經釋義` that matches the\n  book frontmatter's `book` field (no h1 in the body). siwen's\n  post-processor promotes this to h1; upstream `normalize_heads`\n  (parse-only) does not. Useful fixture for verifying the parse-only\n  contract holds.\n- Edge: `focheng_zongyao_lun_head50kb.md` restarts chapter numbering at\n  each 编 boundary, so `第一章` / `第二章` appear multiple times at h2.\n  `split_by_heading(body, level=2)` must yield every occurrence (6\n  sections) — no title-based dedup.\n\n## Licensing\n\nThe underlying text is public-domain CBETA material. These fixtures are\ndistributed under the same MIT license as llmwiki itself.\n",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "# Taixu corpus fixtures\n\nReal-world markdown samples from the siwen 太虛 (Taixu Dashi) knowledge base,\nused as regression fixtures for `tools.split` and `tools.normalize`.\n\n## Source\n\nThe Taixu corpus is a 62-book collection of 民國 釋太虛 (Master Taixu,\n1890-1947) from CBETA's 太虛大師全書, converted to markdown and integrated\nvia siwen's wenguan pipeline. These three samples were copied from the\nsiwen production instance (`/root/wenku-fo/raw/`) after `wenguan` and\n`normalize_heads` / `normalize_paragraphs` post-processing.\n\nRuntime metadata (`wenguan_at`, `normalized_*_at`, `ingested_at`, etc.)\nhas been stripped. Structural metadata (`book`, `bian`, `author`, etc.)\nis preserved so fixture consumers can route by编 (division) or 品 (chapter).\n\n## Files\n\n| File | Size | Shape (h1 / h2 / h3 / h4 / h5) | Use |\n|------|------|-------|-----|\n| `sanming_lun.md` | 16 KB | 1 / 3 / 0 / 3 / 0 | Small full book: `緣起分第一` / `名義分第二` / `界別分第三` at h2, each with h4 sub-items directly (no h3 layer) — structural edge where taixu-pack's intermediate level is absent |\n| `xinjing_shiyi.md` | 45 KB | 0 / 1 / 7 / 37 / 0 | Duplicate-title edge: frontmatter `book: 般若波羅密多心經釋義` + first body heading `## 般若波羅密多心經釋義` (no h1). Exercises the parse-only contract — `normalize_heads` must not \"promote\" body h2 to h1 to dedupe; that's a downstream concern. |\n| `focheng_zongyao_lun_head50kb.md` | 46 KB | 1 / 6 / 24 / 14 / 2 | Typical mid-size book, truncated first ~45 KB. Multi-編 cross-boundary: h2 chapter numbering restarts (`第一章` appears twice — sections 1 & 5), so `split_by_heading(body, level=2)` must yield 6 distinct sections without dedup-by-title. |\n\n## Intended use\n\n- `tools.split.split_by_heading(body, level=2)` → should yield 3 sections in\n  `sanming_lun` (緣起分第一 / 名義分第二 / 界別分第三).\n- `tools.normalize.normalize_heads(body, TAIXU_PACK)` where `TAIXU_PACK` is\n  the siwen-side head-pattern list — should re-level `### 一、` to h4 etc.\n  per 科分 / 總論 / 第N節 / [一二三…] / [甲乙丙…] / [子丑寅…] pattern ladder.\n- Edge: `xinjing_shiyi.md` has `## 般若波羅密多心經釋義` that matches the\n  book frontmatter's `book` field (no h1 in the body). siwen's\n  post-processor promotes this to h1; upstream `normalize_heads`\n  (parse-only) does not. Useful fixture for verifying the parse-only\n  contract holds.\n- Edge: `focheng_zongyao_lun_head50kb.md` restarts chapter numbering at\n  each 编 boundary, so `第一章` / `第二章` appear multiple times at h2.\n  `split_by_heading(body, level=2)` must yield every occurrence (6\n  sections) — no title-based dedup.\n\n## Licensing\n\nThe underlying text is public-domain CBETA material. These fixtures are\ndistributed under the same MIT license as llmwiki itself.\n"
++    },
++    {
++      "name": "actual-fixture-focheng_zongyao_lun_head50kb.md",
++      "body": "---\nauthor: 民國 釋太虛著\nbian: 第一編·佛法總學\nbook: 佛乘宗要論\nbook_idx: 4\nbook_total: 25\nchapter: 全文\nnote: head ~50KB excerpt for regression fixture\nparent_slug: cbeta-太虛大師全書-第一編·佛法總學\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 佛乘宗要論\ntype: cbeta\nwork: 佛乘宗要論\n---\n\n# 佛乘宗要論\n——民國九年六月在廣州講經會講——\n\n目次緒　論…………………………………………………………………………一一九第一章　佛法的系統觀……………………………………………………一一九第一節　厭離世間的　超出世間的……………………………………一一九\n\n　　　　　　　一　世間之名義\n\n　　　　　　　二　世間之範圍\n\n　　　　　　　三　出世與厭世\n\n　　　　　　第二節　隨順世間的　救護世間的……………………………………一二八第三節　由超出世間而救護世間的……………………………………一二八第四節　擇滅惡世以創造美善的世間…………………………………一二八第五節　吾之佛法的全系統觀…………………………………………一三一第二章　佛法的自利利他觀………………………………………………一三二第一節　唯有佛法有真正的自利………………………………………一三五第二節　純以利他成就自利的佛法……………………………………一三五第三節　為利他故先求自利的佛法……………………………………一三六第四節　不分先後自他等利的佛法……………………………………一三六第五節　唯佛法能真正的利他…………………………………………一三六第三章　佛法應化現代人心之需要………………………………………一三七第一節　佛法契理適機之原則…………………………………………一三七第二節　佛法隨眾生現行的原則………………………………………一三八第三節　佛教須應時設化的需要………………………………………一三九第四節　中國民族於佛法的需要………………………………………一三九第五節　現在人心於佛法的需要………………………………………一四二第四章　佛法可說不可說…………………………………………………一四五第一節　佛法的法………………………………………………………一四五第二節　法性離言不可說………………………………………………一四五第三節　為令解行成果故巧施言說……………………………………一四六第四節　轉法輪…………………………………………………………一四六第五節　佛乘的乘………………………………………………………一四七純正的佛法……………………………………………………………………一四八第一章　純正佛法的分類…………………………………………………一四八第二章　小乘………………………………………………………………一四八第一節　小乘的宗要……………………………………………………一四九第二節　了生死為因……………………………………………………一四九\n\n　　　　　　　一　生為苦本\n\n　　　　　　　二　遍觀世間皆無常苦空無我不淨\n\n　　　　　　　三　確知世間虛偽決志擇滅\n\n　　　　　　第三節　離貪愛為根本…………………………………………………一六二\n\n　　　　　　　一　觀苦本之所由起\n\n　　　　　　　二　十二有支\n\n　　　　　　　三　我及我所有法與五利使\n\n　　　　　　　四　俱生我愛與五鈍使\n\n　　　　　　　五　五欲\n\n　　　　　　　六　戒定慧三無漏學\n\n　　　　　　第四節　滅盡為究竟……………………………………………………一七〇\n\n　　　　　　　一　滅盡妙離\n\n　　　　　　　二　辟支佛及四沙門果\n\n　　　　　　　三　有餘依涅槃\n\n　　　　　　　四　無餘依涅槃\n\n　　　　　　第五節　宗本之四諦……………………………………………………一七二\n\n　　　　　　　一　四諦\n\n　　　　　　　二　三十七菩提分\n\n　　　　　　第六節　小乘的內容及定義……………………………………………一七四\n\n　　　　　　　一　小乘即聲聞獨覺\n\n　　　　　　　二　對大乘故名小乘\n\n　　　　　　第七節　小乘與出世出家及人天善法…………………………………一七五\n\n　　　　　　　一　小乘祇為出世法\n\n　　　　　　　二　小乘有出家的必要\n\n　　　　　　　三　出家在家各有所宜\n\n　　　　　　　四　小乘兼有人天善法\n\n　　　　　第三章　大乘………………………………………………………………一七八第一節　大乘的宗要……………………………………………………一七八第二節　菩提心為因……………………………………………………一七八第三節　大慈悲為根本…………………………………………………一七九第四節　方便為究竟……………………………………………………一八〇第五節　大乘的涅槃菩提法身…………………………………………一八〇第六節　大乘教理行果的經論及宗派…………………………………一八二第七節　大乘的教門派…………………………………………………一八三\n\n　　　　　　　一　三論宗\n\n　　　　　　　二　唯識宗\n\n　　　　　　　三　華嚴宗\n\n　　　　　　　四　天台宗\n\n　　　　　　第八節　大乘的理門派…………………………………………………一八六第九節　大乘的行門派…………………………………………………一八八\n\n　　　　　　　一　律宗\n\n　　　　　　　二　蓮宗　融通念佛宗　時宗\n\n　　　　　　第十節　大乘的果門派…………………………………………………一九二\n\n　　　　　　　一　真言宗\n\n　　　　　　　二　淨土真宗\n\n　　　　　　　三　日蓮宗\n\n　　　　　　第十一節　大乘的內容與定義…………………………………………一九四第十二節　大乘不拘在家出家…………………………………………一九四第四章　小乘與大乘的關係………………………………………………一九五第一節　人天乘與小乘皆大乘方便……………………………………一九五第二節　小乘是入大乘的正方便………………………………………一九五第三節　小乘有不能通入大乘者………………………………………一九六第四節　出家本宜以小乘為大乘方便…………………………………一九六第五節　後代不宜用小乘………………………………………………一九七第六節　宏法者當善巧說法之秘要……………………………………一九七應用的佛法……………………………………………………………………一九九第一章　世間各教各學的批判……………………………………………一九九第一節　略敘已經批判者………………………………………………一九九第二節　略出今應批判者………………………………………………二〇〇第三節　近代科學與小乘學……………………………………………二〇一第四節　現代哲學與大乘學……………………………………………二〇三第五節　現代的宗教迷謬………………………………………………二〇六\n\n　　　　　　　一　鬼靈的迷謬\n\n　　　　　　　二　數命的迷謬\n\n　　　　　　　三　空定的迷謬\n\n　　　　　　　四　神仙的迷謬\n\n　　　　　第二章　佛乘與人世的關係………………………………………………二一〇第一節　佛乘與法界一切眾生…………………………………………二一一第二節　在人間現證於佛乘之利益……………………………………二一一第三節　佛乘與人天善法………………………………………………二一二\n\n　　　　　　　一　人乘善法\n\n　　　　　　　二　天乘善法\n\n　　　　　　第四節　人間聖賢須修證天乘善法……………………………………二一四第五節　世間善法須有出世善法為本…………………………………二一五第六節　聖者應化之不可思議…………………………………………二一五第三章　佛教與中華民國的關係…………………………………………二一六第一節　佛教本超脫國族的封蔽………………………………………二一六第二節　佛教適應於國族的治化………………………………………二一七第三節　救中華民國須有藉乎佛教……………………………………二一七第四節　吾國問題即人世問題…………………………………………二一八第五節　宏揚佛教須有藉乎中國………………………………………二一八第六節　佛教問題即人文問題…………………………………………二一九第四章　佛教流傳於人世的現在將來……………………………………二一九第一節　佛教住持僧之整理……………………………………………二二〇第二節　佛教正信會之建立……………………………………………二二〇第三節　設施佛教的教育………………………………………………二二一第四節　施行佛教的大悲救世事業……………………………………二二一第五節　佛教協會………………………………………………………二二二第六節　將來的佛教徒眾………………………………………………二二二結　論…………………………………………………………………………二二四第一章　歸宿………………………………………………………………二二四第一節　信者於佛乘的歸宿……………………………………………二二四第二節　歸宿佛…………………………………………………………二二四第三節　歸宿佛法………………………………………………………二二五第四節　歸宿佛法僧……………………………………………………二二五第二章　迴趣………………………………………………………………二二六第一節　覺者於法界的迴趣……………………………………………二二七第二節　迴趣一心真如…………………………………………………二二七第三節　迴趣無上正覺…………………………………………………二二七第四節　迴趣法界有情…………………………………………………二二八緒論\n\n### 緒　論\n\n佛乘宗要論者，隨順時機以略明佛法之宗本及其綱要之論也，故一名現代佛法概論。以佛法言，本來無有三世之隔別，則現代之名亦不立，說之不如其已：然以世人思潮每依時代而變遷，近世科學發達時哲動操之以推測佛法，或更加以片面之判斷，是故今之為說，亦就世人之思潮而立其言耳。隨順真如說之，則所謂雖說無有能說可說也。緒論乃概序此論之大義，都為四章。\n\n第一章　佛法的系統觀\n\n## 第一章　佛法的系統觀\n\n系統觀者，吾人對於佛法應究其源委，明其旨趣，辨其體用，而得其全系統之觀念，不使佛法二字模糊於心也。說分五節。\n\n第一節　厭離世間的．超出世間的\n\n### 第一節　厭離世間的．超出世間的\n\n佛法係「厭世的」與「出世的」二語，均為世人普通評判之辭。如西儒赫胥黎氏之天演論，大抵指佛法為厭世的；又若時人胡適之中國哲學史大綱，大抵指佛法為出世的。使有人焉執此二語以問曰：「佛法係厭世的歟否歟」？「佛法係出世的歟否歟」？是問也殊難置答，以有未決之前提在。蓋厭世的應言「厭離世間的」，出世的應言「超出世間的」，語意始能充分。然所謂「世間」者，應先有解釋之必要。\n\n一　世間之名義\n\n#### 一　世間之名義\n\n請先言世間：世者，是遷流無常義，是虛偽無實義，可對付制伏義，可破除斷滅義。墮在此世法之中者謂之世間。何謂無常、無實、可伏、可斷？曰：一切世間物事因時因處變遷流轉，是無常義；一切物事剖析極微求其單純實體而不可得，是無實義；無常故可制，無實故可滅。然則所謂世間一切法者，唯心所現之假相耳。假相有二，一者連續相：如人以一星之火週轉成環，連續不息，見者不見此一星之火而見此環，則亦曰環耳環耳，此連續之義也。二者和合相：如人任以某一「個體物」而分析之，雖至與空為鄰而卒不能得其組合此個體者之本質。往昔物質學者以分子為物質之單位，以為得之，乃未幾而知所謂分子者實非不可分析，遂有原子之發見：則分子之分子也。又進而知此原子者亦非其小無內之實質，乃以想像而假定原子之上尚有實體，無以名之名之為電子。夫電子者、已為無臭無聲之名物，然在物質學者猶未敢斷之曰：「電子者、確為其小無內不可分析之實體，亦即宇宙萬有所因以生起之本也」。唯物之學於是窮矣。凡所有名物皆和合而有之相，此和合之說也。世間物事皆不出此二義，知此、則無常無實可伏可斷之義審矣。然而佛法中自有真常、真實、自在、自性者在。\n\n二　世間之範圍\n\n#### 二　世間之範圍\n\n世界無邊故有情無邊，有情無盡故世界無盡，無始終、無內外。由本空故平等平等，隨心現故如幻如幻，實無範圍可言。何謂本空？曰：世間一切物事，就物質方面求之終不得其究竟故。何謂隨心現？曰：星火成環實無環體，而有環形者隨心現故。問曰：星火成環應是火現，如云本空應無所現？答之曰：此雖借火為喻，不知火已非實，若人心無差別火亦妄有，何有於環！如謂本空應無所現，則更以夢境徵之：人在夢中知有夢中之世而不知有覺時之世，然覺時之所謂宇宙萬有者夢中亦應有盡有，即覺時所不能見不能有者夢中且無所不有，當其夢也，種種境界無一非實，其夢愈深其執愈甚而其實境亦愈顯；夫此實境者、隨心現於夢時者也，世間者、隨心現於覺時之實境也。要而言之連續相耳和合相耳。將有大覺而後知此其大夢也，眾生不知執以為實，不亦惑乎。夫世間之義如此，而眾生之心如彼，今之為說將持此如幻如幻之境歷歷而道之歟？是使聞者執著轉深也，故曰實無範圍可言。然既為之說矣，烏得無說？說之之道，亦惟就眾生心應所知量以示之。別為二種如下：甲　普遍的世界眾生觀\n\n##### 甲　普遍的世界眾生觀\n\n世界無邊，眾生無盡。今且就釋迦牟尼佛化土之娑婆世界，略示其一斑：┌地獄趣┌五趣雜居地┤鬼神│離生喜樂地│畜生　┌星宿、神仙、天王等天│定生喜樂地│人　　│三十三天、玉皇上帝┌有情世間……┤離喜妙樂地└天──┤時分天│　　　　　　│捨念清淨地　　　　│知足天│　　　　　　│空無邊處地　　　　│化樂天娑婆世界┤　　　　　　│識無邊處地　　　　└他化自在天│　　　　　　│無所有處地│　　　　　　└非非想處地│　　　　　　┌小千世界└器世間………┤中千世界└大千世界所謂有情世間者，無始不覺惑業之所由生也，生滅因緣之根依也。茲僅就九地五趣示其名相，其詳見經藏中。器世間者，有情之所依住以生活者也：一太陽系為一個小世界，積一千個小世界為一個小千世界，覆以定生喜樂地；積一千個小千世界為一個中千世界，覆以離喜妙樂地；積一千個中千世界為一個大千世界，覆以捨念清淨地。小世界每一大劫經一次成住壞空，壞由火災，火壞七次，繼由水災壞至於離生喜樂地；水壞七次繼由風災壞至離喜妙樂地；獨捨念清淨地乃不復壞。積此三千大千世界而為娑婆世界。返視吾人所居之地球其猶太倉之一粟乎？世界之成住壞空猶人之生長老死，世界自成以至於空謂之一劫，吾人自生以至於死謂之一生，以一生而較一劫，為時不太促乎！\n\n乙　切近的人生宇宙觀\n\n##### 乙　切近的人生宇宙觀\n\n以人生為本位以觀察一切，故稱切近的人生宇宙觀。\n\n本表人類以下四項屬有情世間，各植物以下五項屬器世間。器世間所屬各物事，有為人生資用所依者，有為身根所依者，有為觀念所依者，或一或三分別表列：茲就本表逆推而前以為解釋，以便利故耳。\n\n如星系星海，與人本無甚大之關係，僅為觀察測驗之所及，故屬於觀念依而不及資用身根二者。太陽光熱為身根觀念之所依。至大地及各礦物之水火風電以上，則為資用身根觀念所俱依。此中有情世間各項亦通於資用依，驟觀之似難索解，蓋疑本表既以人生為本位，則資用所依者必在人生之外也；不知人類互助之義即為人生資用之所依，君臣父子夫婦昆弟朋友，小而家庭，大而社會國家種族，莫不皆然：人類特其總稱耳。故人類亦為各人之器世間。\n\n各人之自身為各人資用所依，理亦易明。即如科學家言人身一如機器，四支百體各有相當之作用：所謂呼吸器、消化器、排洩器，如是等等，無非機械之義，即資用依。則知各人自身者各人之器世間也，我之自身者我之器世間也。莊子曰：指馬之百體不得謂之馬；然則指身之百體亦不得謂之我，我果安在哉！至各他人身為人資用所依者，如以人之才力智為用是。若動物身，則或資其力或竟食其肉而寢其皮也。故以上四類雖屬有情世間，而皆可為人生資用所依。至其為身根觀念所依尤吾人日常所習見，不事辭費。故此四類者亦通於器世間也。\n\n三　出世與厭世\n\n#### 三　出世與厭世\n\n綜上所言，世間之意義及其範圍當可明了。茲請進而討論「厭離世間」與「超出世間」。夫所謂厭離世間者，其厭而離之者將謂厭此有情世間歟？抑器世間歟？憤世嫉俗離群索處，深山大澤適其所適，此世人之所謂厭世主義，其所厭而離者當為上述之有情世間，佛法無是也。以佛法言：則有情世間中無量無邊眾生，依佛慈悲，誓願救之度之利之樂之，雖在惡趣不辭應身而為化導，何得厭而離之！如謂所厭離者，係此夢幻擾濁障礙束縛之器世間耶？則學佛者初步之修證，可有是義，即謂佛法係「厭世的」亦無不可。\n\n其次超出世間者，其所超而出者器世間歟？抑有情世間歟？吾聞之猿伸鶴屈煉丹升汞以求白日飛昇者，即世所謂出世也，是其意將欲超出此與人共處之地球而上居天國，或求比於列星；則所出者當為器世間，佛法中亦無是也。蓋器世間如幻不實已如上述，假使眾生惑業斷盡，則山河大地當下皆空，更何超出之可言！故佛法中所言出世者：謂斷煩惱、離妄業、去障礙、了生死，以超出此迷妄之有情世間，而為化度眾生之基礎。故以有情世間而論，則亦未嘗不可謂佛法係「出世的」者也。\n\n第二節　隨順世間的．救護世間的\n\n### 第二節　隨順世間的．救護世間的\n\n此二語亦係世人評判佛法之言，已不似第一節所云之膚淺簡陋矣。隨順救護云者：表佛法與人相近，且慈悲願護，未嘗遠離世間。蓋已窺及大乘之道用。特其所見尚屬一偏，而未見佛法之完全系統，故進而至於第三節所云。\n\n第三節　由超出世間而救護世間的\n\n### 第三節　由超出世間而救護世間的\n\n此節所云見理較深，為說亦漸圓滿。蓋超出世間乃不自墮於世法之中而後可以言救護世間，理有固然：譬如有人與人同溺於海，是人雖有救人之心，則必先求足踏實地或置身舟中而後可，由超世而救世亦猶此義。雖然，超出世間者小乘自了之目的，救護世間者大乘究竟之方便也，不可不辨。\n\n第四節　擇滅惡世以創造美善的世間\n\n### 第四節　擇滅惡世以創造美善的世間\n\n惡劣的世間即器世間與有情世間，美善的世間表解於下：凡聖同居淨土者，在此即指娑婆世界，本為九地有情之所居，而聖亦應身化導於其間，故稱同居。然凡之與聖，境界不同受用不同。九地有情，亦隨心所現隨業所受而各各不同。譬如人見水為水而有種種障礙，魚則無之。魚居水中一如人居空氣中。其餘翼而飛、足而走、身而緣、幽而潛，莫不皆由隨業受報，其理易明。方便有餘淨土，為阿羅漢及辟支佛二乘之所居，而有菩薩與佛應化於其間使之回小向大。阿羅漢即聲聞，辟支佛即緣覺，此淨土非六凡所能到。實報莊嚴淨土，此由菩薩福慧雙修莊嚴而成，而佛則應化其間使登等覺。故此淨土，更非二乘所能到矣。\n\n本表所列，凡聖同居淨土可稱世間，此外、本是出過三界之清淨法界，非可與世間相提並論。今欲隨順世人言說故稱之曰正覺世間。至證佛果則為常寂光淨土，即身即土無復情器之礙，更不可與世間並作一談。故不列。\n\n惡劣美善之義如此，擇滅創造將如何？曰：欲解此問題，須先知情器世間之結成由於眾生之業力，而眾生之業力則由於心之所起。是故擇滅創造云者，亦曰選擇滅除此眾生心現之業力結合而成之惡劣世間，而創造美善的正覺世間耳。然此惡劣世間與美善世間，非實有二個世間可以擇滅可以創造，又非棄置此惡劣世間而另創造一美善世間。當知世間美惡之分皆由心之染淨而別。且自真性觀之，本來平等、本來清淨、無有差別、具足美善毫無惡劣之可言。然以無始無明住地之力，迷惑熏習昏昧搖動而現種種色色之情與器；然本來雖迷而美善性之真如自在圓融周遍，未嘗或失。故今之擇滅，即擇滅無始無明住地而顯其真如心耳，今之創造，即將其本來具有之美善性顯發而充實之耳。唯此一心實無有二，故曰世間美惡之分，由心之染淨而別。維摩經謂若心清淨則世界清淨，楞嚴經謂當平心地則世界地一切皆平；擇滅創造之義，亦如是而已矣。\n\n第五節　吾之佛法的全系統觀\n\n### 第五節　吾之佛法的全系統觀\n\n以上四節攝古近人對於佛法之論斷略盡，雖有深淺之殊要皆所見未圓。請進觀乎佛法的全系統。\n\n一　實證一切法一心真如、達到形而上學目的\n\n#### 一　實證一切法一心真如、達到形而上學目的\n\n一切法、即宇宙萬有，一心真如、即心之本體。宇宙萬有，為吾人差別心生滅心之所現。雖唯心現情境如夢，脫能實證皆是虛妄，正唯有圓明寂照之一心真如耳。何以故？以其無有差別無有生滅故；具足光明具足智慧故；本來平等本來圓滿故；故佛法要在實證。非如世之哲學宗教，或虛懸一的無由自達，或自為束縛愈執愈甚。所謂太極，所謂上帝，所謂天，所謂道，莫不皆然。即近世之所謂形而上學，其意亦無非欲發明宇宙萬有之本體而求得一根本解決之道，然亦徒托空言無由實證。不知唯佛法之實證一心真如乃為達到形而上學目的之不二法門也。此大乘佛法之初步。\n\n二　成就圓滿的人格及圓滿的法界\n\n#### 二　成就圓滿的人格及圓滿的法界\n\n成就圓滿的人格者，質言之即是成佛。佛即梵語佛陀，此云覺者。覺不限於人類，一切眾生皆可成佛，故云覺者而不云覺人。法界、即常寂光淨土，圓滿法界則常樂真淨而無情器之隔，即是妙覺佛果。乃依一心真如為本因地而達到於究竟地者也。此則大乘佛法之第二步。\n\n三　隨順無限的世界眾生、應化無盡利樂無盡\n\n#### 三　隨順無限的世界眾生、應化無盡利樂無盡\n\n上二項言圓滿之自利，此言佛法利他之妙用：佛法界真淨妙明無障無礙，而其應身化導於世間皆所以利樂一切眾生。\n\n隨順云者，六道眾生業力不同，二乘菩薩覺分各異，依佛慈悲願力皆能隨順之，使離一切苦得究竟樂；然而世界無邊眾生無邊，故佛之應化無盡利樂亦無盡也。此大乘佛法之第三步。圓滿自利利他，乃為佛法之完全系統。\n\n第二章　佛法的自利利他觀\n\n## 第二章　佛法的自利利他觀\n\n就上章第五節所言，成就圓滿的人格而知佛法之自利，應化無邊的世界眾生而知佛法之利他。但佛法所稱之利非如世間「對待的」「比較的」之利，蓋謂利他即真正利他，自利即真正自利。利者，謂由一種方法行為能得到一種「離去苦惱成就安樂」\n\n之效果的代名詞也。世間一切法不能究竟離苦得究竟樂，唯佛法能究竟離苦得究竟樂，故唯佛法能真正自利利他。餘法離苦而非究竟，則是比較的離苦，得樂而非究竟，是對待的得樂，皆非真正之利也。試就世間餘一切法觀之：就本表觀之，知世間可稱為利者已括盡無餘，其要不出名利恭敬，而皆佛法之所應棄者，以其為依識而起之妄法也。試舉其顯明者言之，如財固可以為利，而財之大者莫如帝國主義據全球而統治之，究其實則財無論大小皆屬於前六識之我所有法，有時而盡，非究竟也。其餘均可比例而觀。茲釋佛法於世間法之擇滅修治成就：┌──────┬─────────────────┐│世法佛法之依│　佛　　　　　　　　　　　　　法　│├──────┼─────────────────┤│前　 五　 識│…………成所作事智　　　　　　　　││意　　　　識│……………妙觀察智─┐　　　　　　││末　 那　 識│……………平等性智─┼─一真如法界││藏　　　　識│……………大圓鏡智─┘　　　　　　│└──────┴─────────────────┘觀前表知世法依識而起，觀本表知佛法轉識成智而契證一真如法界。八識既轉，則依識而起之妄法自歸擇滅，妄法既滅乃為究竟離苦，證一真如法界而成就四智乃為究竟得樂：┌解脫安甯樂佛法┤覺智正遍樂└法身圓滿樂觀此，可知佛法離苦得樂皆在究竟。故所謂利，乃為真正之利。依於斯義，而有本章五節所說。\n\n第一節　唯佛法有真正的自利\n\n### 第一節　唯佛法有真正的自利\n\n世俗所謂自利，不過曰利我之身、利我之家、利我之國等，要皆不出我及我所有法。迷此不悟，故曉夜孜孜經危難冒萬死而不辭，以成其所謂利，然而根本錯謬，則以不知自之何在。試就物質精神面面求之不可得自，前際後際中際剎那求之亦不可得自，由是遠觀宇宙近察身心皆不可得自，自且無有則早夜膠擾以求利，試問所利者誰歟？若是而可稱自利，則雖稱之為不利可也。故唯佛法為有真自，此自乃離一切相即一切法，不生不滅，真實自在之自性。必發明乎此，乃能離世間一切苦而得佛法究竟之樂，是為真正的自利。亦「唯佛法有真正的自利」。\n\n第二節　純以利他成就自利的佛法\n\n### 第二節　純以利他成就自利的佛法\n\n發菩薩心者，必以大慈悲心護念眾生，大方便力普救眾生，使之離苦得樂；必至成就無量無邊功德，而後乃證無上大菩提果。楞嚴經云：「自未得度先度人者，菩薩發心」。此以利他成就自利，故稱「純以利他成就自利的佛法」。如維摩詰經即此法門也。\n\n第三節　為利他故先求自利的佛法\n\n### 第三節　為利他故先求自利的佛法\n\n普救一切眾生，願力雖大但念實施不易，唯佛法乃能具此實施之大能。為求此實施之能力故，先求自得解脫之利，故稱「為利他故先求自利的佛法」。如往生淨土諸經即此法門也。\n\n第四節　不分先後自他等利的佛法\n\n### 第四節　不分先後自他等利的佛法\n\n如上所言「利他即所以自利！自利亦所以利他」；是知佛法並無後先，自他等利者也。大乘佛法大抵皆如是。\n\n第五節　唯佛法能真正的利他\n\n### 第五節　唯佛法能真正的利他\n\n他者對我之稱。我身之外，世間一切眾生皆可以「他」字概括之。然我之與他等是有情，等是世間上之分子，等是迷妄不覺，等是苦海沉淪，等是虛偽，等是無常；而世間一切名利恭敬又等是虛幻；以之自利已無效果，以之利他，等是無效果。唯佛法有真正的自利，推此自利者以利他，故亦唯佛法能真正的利他也。\n\n第三章　佛法應化現代人心之需要\n\n## 第三章　佛法應化現代人心之需要\n\n如第一章第五節所言「佛法隨順無限的世界眾生，應化無盡，利樂無盡」！吾人心中當有一種感想，即佛法之於當今之世及今人之需要者又為何如是也。本章所言即明斯義，分五節說之。\n\n第一節　佛法契理適機之原則\n\n### 第一節　佛法契理適機之原則\n\n常理即真實之理：平等無二，本來常住，無有變異真實不虛。此非空言，特吾人迷其本性乃茫無所知。唯佛成大覺明，具大智慧，靈明洞澈，覺照圓滿，故能契合無間。且能應此常理發明而顯示之，使迷妄眾生共知共悟同登正覺。至世間法則遷流無常；因乎時分而生種種差別，眾生之心亦因之而有種種之殊異：若不隨順世間巧施言說，以應其時而投其機，則宜於此者或失於彼，合於過去而不合於現在，故佛法有適化時機之必要！夫契應常理者佛法之正體，適化時機者佛法之妙用，綜斯二義以為原則，佛法之體用斯備。若應常理而不適化時機，則失佛法之妙用；適化時機而不契應常理，則失佛法之正體。皆非所以明佛法也。\n\n第二節　佛法隨眾生現行的原則\n\n### 第二節　佛法隨眾生現行的原則\n\n佛者、遍法界為身，無有身相，不可思議。其發現於世間者，乃佛應身。應身隨眾生之身相而顯現。眾生之身相無量無邊，而佛之應身乃亦無量無邊，皆隨其類而應現。至佛法則平等無二，本無可說，亦無名相。換言之，即佛法之名稱亦不可得。世之有佛法流行者，亦隨乎眾生差別之心而立也。由前之說無佛可見，由後之說無法可說，佛之與法皆隨世間眾生發現流行。世間眾生染有深淺，覺有先後，種種差別，各各不同，而佛法因之亦有種種差別各各不同以應之。約言佛法為八萬四千法門。雖云繁多，而利樂眾生則一。是為佛法隨世界眾生現行的原則。\n\n第三節　佛教須應時設化的需要\n\n### 第三節　佛教須應時設化的需要\n\n依上所言，知佛教有應時設化之必要。應時設化者，佛法普度眾生之功用也，不能應時設化則失佛法之功用。不甯唯是，若不能應時設化，以發起世人之信心而昌明教義，則世人對於佛法將不得其了解。際此末法之世，眾生之心，大多昏亂，縱其毀謗，恣其戲弄，嗜欲橫流，失於正念，永沉苦海流轉生死，或墮惡趣；非特佛法因而衰落，或將有絕滅於世之憂也。\n\n第四節　中國民族於佛法的需要\n\n### 第四節　中國民族於佛法的需要\n\n佛法之應化於世，必有時分，必有方所。本節所論，以中國民族為方所，以現在為時分，而明其於佛法之需要。抑民族者有情世間也，中國者中國民族之器世間也。\n\n蓋民與土和合而成國，土為民有，自當以民為主；今言中國民族，亦當以民族為重。\n\n中國者以明民族之範圍耳。所謂需要，亦非考察往古推測將來，乃就現在狀況為說：\n\n一　意盛志銳者於佛法的需要\n\n#### 一　意盛志銳者於佛法的需要\n\n意盛志銳之人乃中國優秀分子，有才器、有作為，而國之興衰繫焉。其要在乎一國之中，必有高尚之道德，精深之學術，以範其行，以安其心，使不至突藩而馳，自就軌範，為國所賴。我國自來重道德，講性理，人皆謹於禮法，安乎分位；洎乎西學東漸，群言繁興，互相反對，互相抵斥，入主出奴，齗齗逞辯，充耳囂然，莫衷一是。吾國才智之士尤而效之，本其思想自由、言論自由，遂將從前藩籬一蹴而去。至於今日，道德破壞，性理淪胥，奔突放逸莫能得一新軌範以為歸依，充其思想之紛飛將不可收拾。唯有佛法廣大圓融，深奧莫窮，具清淨無上之道德，有一真不二之妙理；闢妄見真，摧邪顯正，所以浹洽人心，軌範士論，捨佛法其誰與歸！此其一。\n\n二　積迷習謬者於佛法的需要\n\n#### 二　積迷習謬者於佛法的需要\n\n吾國昔以神道設教，原所以悚駭愚頑而補刑政之不足。然而迷信漸深積習不返，奸狡之徒利而用之以為蠱惑之具，作亂之資，小則歛貲，大則欲遂其帝王思想；擾亂社會，危害國家，莫此為甚！誠欲除其迷謬，破其邪執，使奸宄之徒失所憑借，要非佛法不為功。此其二。\n\n三　五族和平於佛法的需要\n\n#### 三　五族和平於佛法的需要\n\n吾國既合漢滿蒙回藏五族，隸於同一統治權之下，而建立此統一之中華民國，就政法言之，固已立統一之形式；然而五族人民同居一國，必需求統一之精神，即統一之思想是也。思想繫乎宗教與道德。孔子之教本兼政治與道德，為吾漢族所崇奉固已數千年於茲，但在其餘各族尚未普及。謨罕默德之教僅為回族之所信仰，即今耶穌天主諸教不過少數人所奉行，均不足以容涵一切而有統一五族人民思想之能力。至若佛教，則向為滿蒙藏之所崇奉；漢族則自漢唐以來久經盛行，宋明諸儒所談性理之學尤多隱宗於佛教，近世則士夫學子知談禪理，婦人孺稚解念彌陀。以五族言，已居其四。而況佛法自來不立封域，耶教回教自可列之佛教之人天乘中。故欲謀思想統一而使五族人民有統一之精神者，尤以佛法乃能具此偉大之能力。此其三。\n\n第五節　現在人心於佛法的需要\n\n### 第五節　現在人心於佛法的需要\n\n上就中國一偶而言。本節廣其範圍，就全球人心現時狀況觀察，其於佛法之需要當有下列諸點：\n\n一　甯息世界的大亂源於佛法的需要\n\n#### 一　甯息世界的大亂源於佛法的需要\n\n現在世界之趨勢，西歐為重，東亞較輕。即就世亂觀之，亦西歐盛於東亞。然東亞之亂，殆又影響於西歐。此無他，物質之學愈昌而逐物之心愈盛，五欲日熾如倒狂瀾，竭全球生產之力不足以供耗費。貧富之階級相差愈遠，而大多數生計問題之待解決愈急，不平之氣乃充塞宇宙。而況本其野蠻角逐之習，易為文明競爭之語，物競天擇，優勝劣敗，定為天演公例，奉為玉律金科，是以戾氣橫流莫知所屆。嗟乎！世人自作之孽，今已罹此最慘最酷之眾同分業報。然習非成是，尚無自拔之方，殆所謂無明妄動而不自覺歟！今者世人厭亂同具此心，誠欲息此亂源當探其本，亂之所起，端在人心：茍能不為形役，業力自減，我佛廣垂言教為後世眾生作將來眼，首在超越情器，實證一心真如正覺人心，此為無上妙法。吾人不幸生此五濁之世，心多散亂，正宜昌明佛法以為世界人道之正義；正義有在，即人心得有所歸宿。大亂之源，庶有豸乎！\n\n二　釀造世界新文化於佛法的需要\n\n#### 二　釀造世界新文化於佛法的需要\n\n在昔世界文化為三大系：其一曰印度文化，其二曰中國文化，其三曰希臘文化。然印度文化與中國文化，於我國宋明時代已有融洽之點，遂成為東亞文化，吾國三教同化由宋明來已然也。希臘文化，則演成今日之歐西文化。故以現在世界文化而言，可稱為東亞與西歐二者。然於二者之間，其可以圓攝長宙軌範寰球者誰歟？試觀歐西文化：所重者競爭，教之與教、學之與學、畛域妄分、門戶各立，甲說初出、乙必起而反對之，丙事調停、丁又從而打銷之，是非蜂起、莫知所衷；以故人與人爭，國與國戰，而釀成今世界之大亂。以言文化，僅物質上呈一時之美觀，究其實、則歐洲一隅尚不足以自相維繫，其於世界可知矣。返觀東亞文化：教有宗本，學有傳統，人我之相不立，水火之見不生，佛言平等、儒尚禮讓、道取清靜；雖所見有通局淺深、而均欲會歸其極，故能水乳交融，翕然成化。其力足以建立世界唯一之統一大國，維持數千年於不墜，遠近鄰邦無不同化，廣博宏大莫可與倫，誠足以表率人群，模範世界而無遺憾。或疑歐化東漸，弱點已形，如上所言似近誇誕，不知此由大道未彰國運暫替，譬如士子未第每見凌於鄉曲惡少，何足介也。然所言東亞文化其中有不可不知者，雖三教有其通貫之處，而老莊道義語焉未詳，孔子注重世法不言性與天道，第一義諦含而未吐，皆未足以饜世人求「達到最高真理之目的」之心。唯佛法微妙無上，義深文博，學術兼備，實體緣起莫不究極，是則釀造世界新文化，有倡明佛學之必要也審矣。\n\n三　滿足人心安慰人心於佛法的需要\n\n#### 三　滿足人心安慰人心於佛法的需要\n\n佛法之究竟妙用，在應化世界，利樂眾生；且能隨順無量無邊之世界眾生而施其無量無邊之法門，使其究竟離苦、得究竟樂。\n\n今世之人心，泛濫滂渤無所底止，沉溺苦海度脫無期，誠欲於此生死煩惱中，使一一差別不同之人心得以滿足，得以安慰，固必需乎我佛無上法門也。\n\n第四章　佛法可說不可說\n\n## 第四章　佛法可說不可說\n\n文佛應世，說法度生四十九年。臨滅度時拈花微笑，以示數十年來未說一字，我輩凡夫更有何說？此佛法之不可說。三藏十二部煌煌言教，以為末世一切眾生作將來眼，然文多義奧，淺識難窺，不假言說無由了解，此又佛法之可說。於此問題，以本章諸節說明之。\n\n第一節　佛法的法\n\n### 第一節　佛法的法\n\n法者，一、任持自性——謂保任執持一一法自體性相而不亡失；二、軌範物解——謂軌定範圍一切眾生的心理而起解行。佛法的法具此二義，則可說不可說問題可依此以解釋之。\n\n第二節　法性離言不可說\n\n### 第二節　法性離言不可說\n\n法性、即法之第一義。法之相性，惟佛究竟明證，唯佛究竟了知，悉皆真故。又一切言說假名無實；假故不能顯真，故法性離言不可說。\n\n第三節　為令解行成果故巧施言說\n\n### 第三節　為令解行成果故巧施言說\n\n如上節言法性離言不可說，則知可說者必非法性。故雖比量以示之，因喻以明之，無非善巧施設之方便，以為言說：只可就眾生之心理，軌定範圍，而令其解理起行成果耳。此即法之第二義。巧施言說故未嘗不可說。\n\n第四節　轉法輪\n\n### 第四節　轉法輪\n\n我佛說法，謂之轉法輪。輪者，一、如碾米的輪，能摧破研除於糠秕，喻佛法能破除五住煩惱。二、如舟車的輪，能通行往達於境域，喻佛法能行達四德涅槃。三、如日輪、月輪、地輪、水輪、風輪的輪，以八方上下周圓充實為義：喻佛法之性德圓滿，法身常住。轉者，謂使眾生有所改轉：或始迷而今悟，或始染而今淨，或始苦而今樂，總之，使轉凡成聖。法輪者：或依第一解，使眾生借以破五住煩惱；或依第二解，使眾生乘之以達四德涅槃；或依第三解，以表佛法之性德圓滿。\n\n第五節　佛乘的乘\n\n### 第五節　佛乘的乘\n\n乘者，車乘之乘，就佛菩薩依以運載之法以為喻也；乘舟之乘，就佛菩薩能運載於法以為喻也。佛乘之乘，通此二喻，皆以「運載」為義。一、從「無明位」運載至「大覺位」，理教乘也；二、從「有漏雜染位」運載至「無漏清淨位」，行教乘也；\n\n三、從「生死苦位」運載至「究竟樂位」，果教乘也。\n\n佛乘者，佛法應化眾生所發、為解理起行成果之妙用也。隨順眾生根性樂念不同，應用無量，不墮諸數。約其大齊以言，或說三乘五乘，。皆佛法之妙用，故統之曰佛乘也。\n\n純正的佛法\n\n### 純正的佛法\n\n佛法本不可說，更不可分類為說，茲則因言遣言，權假方便，但使說者易達，聞者易明，非可執為定論。且分為純正的佛法、應用的佛法以說明之。純正的佛法者，從佛法一方辨其悟理修行之事，而未及其與人間之關係，都分為四章。\n\n第一章　純正佛法的分類\n\n## 第一章　純正佛法的分類\n\n聞解之教理不同，修證之行果有異，而佛法有大乘小乘之別。小乘者，功在自了，純為超出世間的，其說略見序論。大乘則功在度世，故為超出世間而又適應世間的。茲先說小乘，分七節說明。\n\n第二章　小乘\n\n## 第二章　小乘\n\n第一節　小乘的宗要\n\n### 第一節　小乘的宗要\n\n小乘為超出世間的，必先將一切世間之法打破。欲求打破，必先了知。已了知而打破，然後可得解脫，其主要之點在是。\n\n第二節　了生死為因\n\n### 第二節　了生死為因\n\n了有二義，曰了知、了脫，此則由了知而求了脫也。如平盜然，必先了知盜之所在，及其人數多寡，內容如何，如是種種明晰無餘，然後盜可得而平。了生死亦復如是。本節所言，即觀察一切世法而得真確之了知也。\n\n一　生為苦本\n\n#### 一　生為苦本\n\n　　　　　　┌貪 瞋 等 煩 惱本┐生為┤殺盜淫妄等惡業本├────故生為苦本└病 老 死 等 苦本┘生之最初相為得命，故亦稱生命。乃推其源，則由過去世無明業力妄動而來。既生而有身，則所以保衛維持之者無所不至，直接之需求則求衣食住，間接之需求則金錢等動產及不動產業。從流而下貪欲叢起，則權利威勢隨之，又再擴張，則欲據此大地為己有。一有不得轉成瞋恚，得而患失尤見愚癡。由此貪得無厭不能自己，殺盜淫妄任意造作。及至業力已成又種未來之因，而成異熟之果；以致生生相續無有已時，業繫苦相永無斷絕。無非以生為本，而病老死等尤其著者。故小乘之第一步，即當了知此「生」實為眾苦之本也。\n\n二　遍觀世間皆無常苦空無我不淨\n\n#### 二　遍觀世間皆無常苦空無我不淨\n\n　　　　　　┌一切法無我………………………統一切位法│一切心行無常……………………心法心所有法遍觀┤自他一切身不淨…………………色法└身心一切受是苦…………………心所有法此中空與無常二義已見上章。又除空義外即四念住，而次序稍移。茲先釋不淨，即觀身不淨。淨、是美好之義，吾人習有此身，固已愛而不知其惡。然以小乘正念觀之，自始至終無可美者。身之最始厥為住胎，父精母血和合而成，殆無淨美可言。及至出世糞穢時遺，涕尿交流，亦無潔淨。繼而長大，體態端好，容光煥發，似可美矣；然而詳審諦視，外則汗液垢膩沐浴不去，坐令巨萬微虫晝夜齧膚，內則五辛雜投葷濁備蓄，自內而外，無可淨美。其似可美者，僅此泡影色塵，自誑眼識，而況惱人暮景轉瞬即至，則並此似美之泡影，不能久持。血氣內衰，精神暗損，髮蒼齒落，肌瘦膚黃，百病叢生，而有四大將散之兆矣。及至壽煖識盡，顏色先變，肌膚次之，膿血雜流，筋骨灰散，茍云有餘，絕非淨美。是知吾人色身，從始有至於滅盡，皆為不淨。推自及他無不皆然。而世之寶愛色身，不惜自起煩惱造作惡業者，誠無謂矣。",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "---\nauthor: 民國 釋太虛著\nbian: 第一編·佛法總學\nbook: 佛乘宗要論\nbook_idx: 4\nbook_total: 25\nchapter: 全文\nnote: head ~50KB excerpt for regression fixture\nparent_slug: cbeta-太虛大師全書-第一編·佛法總學\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 佛乘宗要論\ntype: cbeta\nwork: 佛乘宗要論\n---\n\n# 佛乘宗要論\n——民國九年六月在廣州講經會講——\n\n目次緒　論…………………………………………………………………………一一九第一章　佛法的系統觀……………………………………………………一一九第一節　厭離世間的　超出世間的……………………………………一一九\n\n　　　　　　　一　世間之名義\n\n　　　　　　　二　世間之範圍\n\n　　　　　　　三　出世與厭世\n\n　　　　　　第二節　隨順世間的　救護世間的……………………………………一二八第三節　由超出世間而救護世間的……………………………………一二八第四節　擇滅惡世以創造美善的世間…………………………………一二八第五節　吾之佛法的全系統觀…………………………………………一三一第二章　佛法的自利利他觀………………………………………………一三二第一節　唯有佛法有真正的自利………………………………………一三五第二節　純以利他成就自利的佛法……………………………………一三五第三節　為利他故先求自利的佛法……………………………………一三六第四節　不分先後自他等利的佛法……………………………………一三六第五節　唯佛法能真正的利他…………………………………………一三六第三章　佛法應化現代人心之需要………………………………………一三七第一節　佛法契理適機之原則…………………………………………一三七第二節　佛法隨眾生現行的原則………………………………………一三八第三節　佛教須應時設化的需要………………………………………一三九第四節　中國民族於佛法的需要………………………………………一三九第五節　現在人心於佛法的需要………………………………………一四二第四章　佛法可說不可說…………………………………………………一四五第一節　佛法的法………………………………………………………一四五第二節　法性離言不可說………………………………………………一四五第三節　為令解行成果故巧施言說……………………………………一四六第四節　轉法輪…………………………………………………………一四六第五節　佛乘的乘………………………………………………………一四七純正的佛法……………………………………………………………………一四八第一章　純正佛法的分類…………………………………………………一四八第二章　小乘………………………………………………………………一四八第一節　小乘的宗要……………………………………………………一四九第二節　了生死為因……………………………………………………一四九\n\n　　　　　　　一　生為苦本\n\n　　　　　　　二　遍觀世間皆無常苦空無我不淨\n\n　　　　　　　三　確知世間虛偽決志擇滅\n\n　　　　　　第三節　離貪愛為根本…………………………………………………一六二\n\n　　　　　　　一　觀苦本之所由起\n\n　　　　　　　二　十二有支\n\n　　　　　　　三　我及我所有法與五利使\n\n　　　　　　　四　俱生我愛與五鈍使\n\n　　　　　　　五　五欲\n\n　　　　　　　六　戒定慧三無漏學\n\n　　　　　　第四節　滅盡為究竟……………………………………………………一七〇\n\n　　　　　　　一　滅盡妙離\n\n　　　　　　　二　辟支佛及四沙門果\n\n　　　　　　　三　有餘依涅槃\n\n　　　　　　　四　無餘依涅槃\n\n　　　　　　第五節　宗本之四諦……………………………………………………一七二\n\n　　　　　　　一　四諦\n\n　　　　　　　二　三十七菩提分\n\n　　　　　　第六節　小乘的內容及定義……………………………………………一七四\n\n　　　　　　　一　小乘即聲聞獨覺\n\n　　　　　　　二　對大乘故名小乘\n\n　　　　　　第七節　小乘與出世出家及人天善法…………………………………一七五\n\n　　　　　　　一　小乘祇為出世法\n\n　　　　　　　二　小乘有出家的必要\n\n　　　　　　　三　出家在家各有所宜\n\n　　　　　　　四　小乘兼有人天善法\n\n　　　　　第三章　大乘………………………………………………………………一七八第一節　大乘的宗要……………………………………………………一七八第二節　菩提心為因……………………………………………………一七八第三節　大慈悲為根本…………………………………………………一七九第四節　方便為究竟……………………………………………………一八〇第五節　大乘的涅槃菩提法身…………………………………………一八〇第六節　大乘教理行果的經論及宗派…………………………………一八二第七節　大乘的教門派…………………………………………………一八三\n\n　　　　　　　一　三論宗\n\n　　　　　　　二　唯識宗\n\n　　　　　　　三　華嚴宗\n\n　　　　　　　四　天台宗\n\n　　　　　　第八節　大乘的理門派…………………………………………………一八六第九節　大乘的行門派…………………………………………………一八八\n\n　　　　　　　一　律宗\n\n　　　　　　　二　蓮宗　融通念佛宗　時宗\n\n　　　　　　第十節　大乘的果門派…………………………………………………一九二\n\n　　　　　　　一　真言宗\n\n　　　　　　　二　淨土真宗\n\n　　　　　　　三　日蓮宗\n\n　　　　　　第十一節　大乘的內容與定義…………………………………………一九四第十二節　大乘不拘在家出家…………………………………………一九四第四章　小乘與大乘的關係………………………………………………一九五第一節　人天乘與小乘皆大乘方便……………………………………一九五第二節　小乘是入大乘的正方便………………………………………一九五第三節　小乘有不能通入大乘者………………………………………一九六第四節　出家本宜以小乘為大乘方便…………………………………一九六第五節　後代不宜用小乘………………………………………………一九七第六節　宏法者當善巧說法之秘要……………………………………一九七應用的佛法……………………………………………………………………一九九第一章　世間各教各學的批判……………………………………………一九九第一節　略敘已經批判者………………………………………………一九九第二節　略出今應批判者………………………………………………二〇〇第三節　近代科學與小乘學……………………………………………二〇一第四節　現代哲學與大乘學……………………………………………二〇三第五節　現代的宗教迷謬………………………………………………二〇六\n\n　　　　　　　一　鬼靈的迷謬\n\n　　　　　　　二　數命的迷謬\n\n　　　　　　　三　空定的迷謬\n\n　　　　　　　四　神仙的迷謬\n\n　　　　　第二章　佛乘與人世的關係………………………………………………二一〇第一節　佛乘與法界一切眾生…………………………………………二一一第二節　在人間現證於佛乘之利益……………………………………二一一第三節　佛乘與人天善法………………………………………………二一二\n\n　　　　　　　一　人乘善法\n\n　　　　　　　二　天乘善法\n\n　　　　　　第四節　人間聖賢須修證天乘善法……………………………………二一四第五節　世間善法須有出世善法為本…………………………………二一五第六節　聖者應化之不可思議…………………………………………二一五第三章　佛教與中華民國的關係…………………………………………二一六第一節　佛教本超脫國族的封蔽………………………………………二一六第二節　佛教適應於國族的治化………………………………………二一七第三節　救中華民國須有藉乎佛教……………………………………二一七第四節　吾國問題即人世問題…………………………………………二一八第五節　宏揚佛教須有藉乎中國………………………………………二一八第六節　佛教問題即人文問題…………………………………………二一九第四章　佛教流傳於人世的現在將來……………………………………二一九第一節　佛教住持僧之整理……………………………………………二二〇第二節　佛教正信會之建立……………………………………………二二〇第三節　設施佛教的教育………………………………………………二二一第四節　施行佛教的大悲救世事業……………………………………二二一第五節　佛教協會………………………………………………………二二二第六節　將來的佛教徒眾………………………………………………二二二結　論…………………………………………………………………………二二四第一章　歸宿………………………………………………………………二二四第一節　信者於佛乘的歸宿……………………………………………二二四第二節　歸宿佛…………………………………………………………二二四第三節　歸宿佛法………………………………………………………二二五第四節　歸宿佛法僧……………………………………………………二二五第二章　迴趣………………………………………………………………二二六第一節　覺者於法界的迴趣……………………………………………二二七第二節　迴趣一心真如…………………………………………………二二七第三節　迴趣無上正覺…………………………………………………二二七第四節　迴趣法界有情…………………………………………………二二八緒論\n\n### 緒　論\n\n佛乘宗要論者，隨順時機以略明佛法之宗本及其綱要之論也，故一名現代佛法概論。以佛法言，本來無有三世之隔別，則現代之名亦不立，說之不如其已：然以世人思潮每依時代而變遷，近世科學發達時哲動操之以推測佛法，或更加以片面之判斷，是故今之為說，亦就世人之思潮而立其言耳。隨順真如說之，則所謂雖說無有能說可說也。緒論乃概序此論之大義，都為四章。\n\n第一章　佛法的系統觀\n\n## 第一章　佛法的系統觀\n\n系統觀者，吾人對於佛法應究其源委，明其旨趣，辨其體用，而得其全系統之觀念，不使佛法二字模糊於心也。說分五節。\n\n第一節　厭離世間的．超出世間的\n\n### 第一節　厭離世間的．超出世間的\n\n佛法係「厭世的」與「出世的」二語，均為世人普通評判之辭。如西儒赫胥黎氏之天演論，大抵指佛法為厭世的；又若時人胡適之中國哲學史大綱，大抵指佛法為出世的。使有人焉執此二語以問曰：「佛法係厭世的歟否歟」？「佛法係出世的歟否歟」？是問也殊難置答，以有未決之前提在。蓋厭世的應言「厭離世間的」，出世的應言「超出世間的」，語意始能充分。然所謂「世間」者，應先有解釋之必要。\n\n一　世間之名義\n\n#### 一　世間之名義\n\n請先言世間：世者，是遷流無常義，是虛偽無實義，可對付制伏義，可破除斷滅義。墮在此世法之中者謂之世間。何謂無常、無實、可伏、可斷？曰：一切世間物事因時因處變遷流轉，是無常義；一切物事剖析極微求其單純實體而不可得，是無實義；無常故可制，無實故可滅。然則所謂世間一切法者，唯心所現之假相耳。假相有二，一者連續相：如人以一星之火週轉成環，連續不息，見者不見此一星之火而見此環，則亦曰環耳環耳，此連續之義也。二者和合相：如人任以某一「個體物」而分析之，雖至與空為鄰而卒不能得其組合此個體者之本質。往昔物質學者以分子為物質之單位，以為得之，乃未幾而知所謂分子者實非不可分析，遂有原子之發見：則分子之分子也。又進而知此原子者亦非其小無內之實質，乃以想像而假定原子之上尚有實體，無以名之名之為電子。夫電子者、已為無臭無聲之名物，然在物質學者猶未敢斷之曰：「電子者、確為其小無內不可分析之實體，亦即宇宙萬有所因以生起之本也」。唯物之學於是窮矣。凡所有名物皆和合而有之相，此和合之說也。世間物事皆不出此二義，知此、則無常無實可伏可斷之義審矣。然而佛法中自有真常、真實、自在、自性者在。\n\n二　世間之範圍\n\n#### 二　世間之範圍\n\n世界無邊故有情無邊，有情無盡故世界無盡，無始終、無內外。由本空故平等平等，隨心現故如幻如幻，實無範圍可言。何謂本空？曰：世間一切物事，就物質方面求之終不得其究竟故。何謂隨心現？曰：星火成環實無環體，而有環形者隨心現故。問曰：星火成環應是火現，如云本空應無所現？答之曰：此雖借火為喻，不知火已非實，若人心無差別火亦妄有，何有於環！如謂本空應無所現，則更以夢境徵之：人在夢中知有夢中之世而不知有覺時之世，然覺時之所謂宇宙萬有者夢中亦應有盡有，即覺時所不能見不能有者夢中且無所不有，當其夢也，種種境界無一非實，其夢愈深其執愈甚而其實境亦愈顯；夫此實境者、隨心現於夢時者也，世間者、隨心現於覺時之實境也。要而言之連續相耳和合相耳。將有大覺而後知此其大夢也，眾生不知執以為實，不亦惑乎。夫世間之義如此，而眾生之心如彼，今之為說將持此如幻如幻之境歷歷而道之歟？是使聞者執著轉深也，故曰實無範圍可言。然既為之說矣，烏得無說？說之之道，亦惟就眾生心應所知量以示之。別為二種如下：甲　普遍的世界眾生觀\n\n##### 甲　普遍的世界眾生觀\n\n世界無邊，眾生無盡。今且就釋迦牟尼佛化土之娑婆世界，略示其一斑：┌地獄趣┌五趣雜居地┤鬼神│離生喜樂地│畜生　┌星宿、神仙、天王等天│定生喜樂地│人　　│三十三天、玉皇上帝┌有情世間……┤離喜妙樂地└天──┤時分天│　　　　　　│捨念清淨地　　　　│知足天│　　　　　　│空無邊處地　　　　│化樂天娑婆世界┤　　　　　　│識無邊處地　　　　└他化自在天│　　　　　　│無所有處地│　　　　　　└非非想處地│　　　　　　┌小千世界└器世間………┤中千世界└大千世界所謂有情世間者，無始不覺惑業之所由生也，生滅因緣之根依也。茲僅就九地五趣示其名相，其詳見經藏中。器世間者，有情之所依住以生活者也：一太陽系為一個小世界，積一千個小世界為一個小千世界，覆以定生喜樂地；積一千個小千世界為一個中千世界，覆以離喜妙樂地；積一千個中千世界為一個大千世界，覆以捨念清淨地。小世界每一大劫經一次成住壞空，壞由火災，火壞七次，繼由水災壞至於離生喜樂地；水壞七次繼由風災壞至離喜妙樂地；獨捨念清淨地乃不復壞。積此三千大千世界而為娑婆世界。返視吾人所居之地球其猶太倉之一粟乎？世界之成住壞空猶人之生長老死，世界自成以至於空謂之一劫，吾人自生以至於死謂之一生，以一生而較一劫，為時不太促乎！\n\n乙　切近的人生宇宙觀\n\n##### 乙　切近的人生宇宙觀\n\n以人生為本位以觀察一切，故稱切近的人生宇宙觀。\n\n本表人類以下四項屬有情世間，各植物以下五項屬器世間。器世間所屬各物事，有為人生資用所依者，有為身根所依者，有為觀念所依者，或一或三分別表列：茲就本表逆推而前以為解釋，以便利故耳。\n\n如星系星海，與人本無甚大之關係，僅為觀察測驗之所及，故屬於觀念依而不及資用身根二者。太陽光熱為身根觀念之所依。至大地及各礦物之水火風電以上，則為資用身根觀念所俱依。此中有情世間各項亦通於資用依，驟觀之似難索解，蓋疑本表既以人生為本位，則資用所依者必在人生之外也；不知人類互助之義即為人生資用之所依，君臣父子夫婦昆弟朋友，小而家庭，大而社會國家種族，莫不皆然：人類特其總稱耳。故人類亦為各人之器世間。\n\n各人之自身為各人資用所依，理亦易明。即如科學家言人身一如機器，四支百體各有相當之作用：所謂呼吸器、消化器、排洩器，如是等等，無非機械之義，即資用依。則知各人自身者各人之器世間也，我之自身者我之器世間也。莊子曰：指馬之百體不得謂之馬；然則指身之百體亦不得謂之我，我果安在哉！至各他人身為人資用所依者，如以人之才力智為用是。若動物身，則或資其力或竟食其肉而寢其皮也。故以上四類雖屬有情世間，而皆可為人生資用所依。至其為身根觀念所依尤吾人日常所習見，不事辭費。故此四類者亦通於器世間也。\n\n三　出世與厭世\n\n#### 三　出世與厭世\n\n綜上所言，世間之意義及其範圍當可明了。茲請進而討論「厭離世間」與「超出世間」。夫所謂厭離世間者，其厭而離之者將謂厭此有情世間歟？抑器世間歟？憤世嫉俗離群索處，深山大澤適其所適，此世人之所謂厭世主義，其所厭而離者當為上述之有情世間，佛法無是也。以佛法言：則有情世間中無量無邊眾生，依佛慈悲，誓願救之度之利之樂之，雖在惡趣不辭應身而為化導，何得厭而離之！如謂所厭離者，係此夢幻擾濁障礙束縛之器世間耶？則學佛者初步之修證，可有是義，即謂佛法係「厭世的」亦無不可。\n\n其次超出世間者，其所超而出者器世間歟？抑有情世間歟？吾聞之猿伸鶴屈煉丹升汞以求白日飛昇者，即世所謂出世也，是其意將欲超出此與人共處之地球而上居天國，或求比於列星；則所出者當為器世間，佛法中亦無是也。蓋器世間如幻不實已如上述，假使眾生惑業斷盡，則山河大地當下皆空，更何超出之可言！故佛法中所言出世者：謂斷煩惱、離妄業、去障礙、了生死，以超出此迷妄之有情世間，而為化度眾生之基礎。故以有情世間而論，則亦未嘗不可謂佛法係「出世的」者也。\n\n第二節　隨順世間的．救護世間的\n\n### 第二節　隨順世間的．救護世間的\n\n此二語亦係世人評判佛法之言，已不似第一節所云之膚淺簡陋矣。隨順救護云者：表佛法與人相近，且慈悲願護，未嘗遠離世間。蓋已窺及大乘之道用。特其所見尚屬一偏，而未見佛法之完全系統，故進而至於第三節所云。\n\n第三節　由超出世間而救護世間的\n\n### 第三節　由超出世間而救護世間的\n\n此節所云見理較深，為說亦漸圓滿。蓋超出世間乃不自墮於世法之中而後可以言救護世間，理有固然：譬如有人與人同溺於海，是人雖有救人之心，則必先求足踏實地或置身舟中而後可，由超世而救世亦猶此義。雖然，超出世間者小乘自了之目的，救護世間者大乘究竟之方便也，不可不辨。\n\n第四節　擇滅惡世以創造美善的世間\n\n### 第四節　擇滅惡世以創造美善的世間\n\n惡劣的世間即器世間與有情世間，美善的世間表解於下：凡聖同居淨土者，在此即指娑婆世界，本為九地有情之所居，而聖亦應身化導於其間，故稱同居。然凡之與聖，境界不同受用不同。九地有情，亦隨心所現隨業所受而各各不同。譬如人見水為水而有種種障礙，魚則無之。魚居水中一如人居空氣中。其餘翼而飛、足而走、身而緣、幽而潛，莫不皆由隨業受報，其理易明。方便有餘淨土，為阿羅漢及辟支佛二乘之所居，而有菩薩與佛應化於其間使之回小向大。阿羅漢即聲聞，辟支佛即緣覺，此淨土非六凡所能到。實報莊嚴淨土，此由菩薩福慧雙修莊嚴而成，而佛則應化其間使登等覺。故此淨土，更非二乘所能到矣。\n\n本表所列，凡聖同居淨土可稱世間，此外、本是出過三界之清淨法界，非可與世間相提並論。今欲隨順世人言說故稱之曰正覺世間。至證佛果則為常寂光淨土，即身即土無復情器之礙，更不可與世間並作一談。故不列。\n\n惡劣美善之義如此，擇滅創造將如何？曰：欲解此問題，須先知情器世間之結成由於眾生之業力，而眾生之業力則由於心之所起。是故擇滅創造云者，亦曰選擇滅除此眾生心現之業力結合而成之惡劣世間，而創造美善的正覺世間耳。然此惡劣世間與美善世間，非實有二個世間可以擇滅可以創造，又非棄置此惡劣世間而另創造一美善世間。當知世間美惡之分皆由心之染淨而別。且自真性觀之，本來平等、本來清淨、無有差別、具足美善毫無惡劣之可言。然以無始無明住地之力，迷惑熏習昏昧搖動而現種種色色之情與器；然本來雖迷而美善性之真如自在圓融周遍，未嘗或失。故今之擇滅，即擇滅無始無明住地而顯其真如心耳，今之創造，即將其本來具有之美善性顯發而充實之耳。唯此一心實無有二，故曰世間美惡之分，由心之染淨而別。維摩經謂若心清淨則世界清淨，楞嚴經謂當平心地則世界地一切皆平；擇滅創造之義，亦如是而已矣。\n\n第五節　吾之佛法的全系統觀\n\n### 第五節　吾之佛法的全系統觀\n\n以上四節攝古近人對於佛法之論斷略盡，雖有深淺之殊要皆所見未圓。請進觀乎佛法的全系統。\n\n一　實證一切法一心真如、達到形而上學目的\n\n#### 一　實證一切法一心真如、達到形而上學目的\n\n一切法、即宇宙萬有，一心真如、即心之本體。宇宙萬有，為吾人差別心生滅心之所現。雖唯心現情境如夢，脫能實證皆是虛妄，正唯有圓明寂照之一心真如耳。何以故？以其無有差別無有生滅故；具足光明具足智慧故；本來平等本來圓滿故；故佛法要在實證。非如世之哲學宗教，或虛懸一的無由自達，或自為束縛愈執愈甚。所謂太極，所謂上帝，所謂天，所謂道，莫不皆然。即近世之所謂形而上學，其意亦無非欲發明宇宙萬有之本體而求得一根本解決之道，然亦徒托空言無由實證。不知唯佛法之實證一心真如乃為達到形而上學目的之不二法門也。此大乘佛法之初步。\n\n二　成就圓滿的人格及圓滿的法界\n\n#### 二　成就圓滿的人格及圓滿的法界\n\n成就圓滿的人格者，質言之即是成佛。佛即梵語佛陀，此云覺者。覺不限於人類，一切眾生皆可成佛，故云覺者而不云覺人。法界、即常寂光淨土，圓滿法界則常樂真淨而無情器之隔，即是妙覺佛果。乃依一心真如為本因地而達到於究竟地者也。此則大乘佛法之第二步。\n\n三　隨順無限的世界眾生、應化無盡利樂無盡\n\n#### 三　隨順無限的世界眾生、應化無盡利樂無盡\n\n上二項言圓滿之自利，此言佛法利他之妙用：佛法界真淨妙明無障無礙，而其應身化導於世間皆所以利樂一切眾生。\n\n隨順云者，六道眾生業力不同，二乘菩薩覺分各異，依佛慈悲願力皆能隨順之，使離一切苦得究竟樂；然而世界無邊眾生無邊，故佛之應化無盡利樂亦無盡也。此大乘佛法之第三步。圓滿自利利他，乃為佛法之完全系統。\n\n第二章　佛法的自利利他觀\n\n## 第二章　佛法的自利利他觀\n\n就上章第五節所言，成就圓滿的人格而知佛法之自利，應化無邊的世界眾生而知佛法之利他。但佛法所稱之利非如世間「對待的」「比較的」之利，蓋謂利他即真正利他，自利即真正自利。利者，謂由一種方法行為能得到一種「離去苦惱成就安樂」\n\n之效果的代名詞也。世間一切法不能究竟離苦得究竟樂，唯佛法能究竟離苦得究竟樂，故唯佛法能真正自利利他。餘法離苦而非究竟，則是比較的離苦，得樂而非究竟，是對待的得樂，皆非真正之利也。試就世間餘一切法觀之：就本表觀之，知世間可稱為利者已括盡無餘，其要不出名利恭敬，而皆佛法之所應棄者，以其為依識而起之妄法也。試舉其顯明者言之，如財固可以為利，而財之大者莫如帝國主義據全球而統治之，究其實則財無論大小皆屬於前六識之我所有法，有時而盡，非究竟也。其餘均可比例而觀。茲釋佛法於世間法之擇滅修治成就：┌──────┬─────────────────┐│世法佛法之依│　佛　　　　　　　　　　　　　法　│├──────┼─────────────────┤│前　 五　 識│…………成所作事智　　　　　　　　││意　　　　識│……………妙觀察智─┐　　　　　　││末　 那　 識│……………平等性智─┼─一真如法界││藏　　　　識│……………大圓鏡智─┘　　　　　　│└──────┴─────────────────┘觀前表知世法依識而起，觀本表知佛法轉識成智而契證一真如法界。八識既轉，則依識而起之妄法自歸擇滅，妄法既滅乃為究竟離苦，證一真如法界而成就四智乃為究竟得樂：┌解脫安甯樂佛法┤覺智正遍樂└法身圓滿樂觀此，可知佛法離苦得樂皆在究竟。故所謂利，乃為真正之利。依於斯義，而有本章五節所說。\n\n第一節　唯佛法有真正的自利\n\n### 第一節　唯佛法有真正的自利\n\n世俗所謂自利，不過曰利我之身、利我之家、利我之國等，要皆不出我及我所有法。迷此不悟，故曉夜孜孜經危難冒萬死而不辭，以成其所謂利，然而根本錯謬，則以不知自之何在。試就物質精神面面求之不可得自，前際後際中際剎那求之亦不可得自，由是遠觀宇宙近察身心皆不可得自，自且無有則早夜膠擾以求利，試問所利者誰歟？若是而可稱自利，則雖稱之為不利可也。故唯佛法為有真自，此自乃離一切相即一切法，不生不滅，真實自在之自性。必發明乎此，乃能離世間一切苦而得佛法究竟之樂，是為真正的自利。亦「唯佛法有真正的自利」。\n\n第二節　純以利他成就自利的佛法\n\n### 第二節　純以利他成就自利的佛法\n\n發菩薩心者，必以大慈悲心護念眾生，大方便力普救眾生，使之離苦得樂；必至成就無量無邊功德，而後乃證無上大菩提果。楞嚴經云：「自未得度先度人者，菩薩發心」。此以利他成就自利，故稱「純以利他成就自利的佛法」。如維摩詰經即此法門也。\n\n第三節　為利他故先求自利的佛法\n\n### 第三節　為利他故先求自利的佛法\n\n普救一切眾生，願力雖大但念實施不易，唯佛法乃能具此實施之大能。為求此實施之能力故，先求自得解脫之利，故稱「為利他故先求自利的佛法」。如往生淨土諸經即此法門也。\n\n第四節　不分先後自他等利的佛法\n\n### 第四節　不分先後自他等利的佛法\n\n如上所言「利他即所以自利！自利亦所以利他」；是知佛法並無後先，自他等利者也。大乘佛法大抵皆如是。\n\n第五節　唯佛法能真正的利他\n\n### 第五節　唯佛法能真正的利他\n\n他者對我之稱。我身之外，世間一切眾生皆可以「他」字概括之。然我之與他等是有情，等是世間上之分子，等是迷妄不覺，等是苦海沉淪，等是虛偽，等是無常；而世間一切名利恭敬又等是虛幻；以之自利已無效果，以之利他，等是無效果。唯佛法有真正的自利，推此自利者以利他，故亦唯佛法能真正的利他也。\n\n第三章　佛法應化現代人心之需要\n\n## 第三章　佛法應化現代人心之需要\n\n如第一章第五節所言「佛法隨順無限的世界眾生，應化無盡，利樂無盡」！吾人心中當有一種感想，即佛法之於當今之世及今人之需要者又為何如是也。本章所言即明斯義，分五節說之。\n\n第一節　佛法契理適機之原則\n\n### 第一節　佛法契理適機之原則\n\n常理即真實之理：平等無二，本來常住，無有變異真實不虛。此非空言，特吾人迷其本性乃茫無所知。唯佛成大覺明，具大智慧，靈明洞澈，覺照圓滿，故能契合無間。且能應此常理發明而顯示之，使迷妄眾生共知共悟同登正覺。至世間法則遷流無常；因乎時分而生種種差別，眾生之心亦因之而有種種之殊異：若不隨順世間巧施言說，以應其時而投其機，則宜於此者或失於彼，合於過去而不合於現在，故佛法有適化時機之必要！夫契應常理者佛法之正體，適化時機者佛法之妙用，綜斯二義以為原則，佛法之體用斯備。若應常理而不適化時機，則失佛法之妙用；適化時機而不契應常理，則失佛法之正體。皆非所以明佛法也。\n\n第二節　佛法隨眾生現行的原則\n\n### 第二節　佛法隨眾生現行的原則\n\n佛者、遍法界為身，無有身相，不可思議。其發現於世間者，乃佛應身。應身隨眾生之身相而顯現。眾生之身相無量無邊，而佛之應身乃亦無量無邊，皆隨其類而應現。至佛法則平等無二，本無可說，亦無名相。換言之，即佛法之名稱亦不可得。世之有佛法流行者，亦隨乎眾生差別之心而立也。由前之說無佛可見，由後之說無法可說，佛之與法皆隨世間眾生發現流行。世間眾生染有深淺，覺有先後，種種差別，各各不同，而佛法因之亦有種種差別各各不同以應之。約言佛法為八萬四千法門。雖云繁多，而利樂眾生則一。是為佛法隨世界眾生現行的原則。\n\n第三節　佛教須應時設化的需要\n\n### 第三節　佛教須應時設化的需要\n\n依上所言，知佛教有應時設化之必要。應時設化者，佛法普度眾生之功用也，不能應時設化則失佛法之功用。不甯唯是，若不能應時設化，以發起世人之信心而昌明教義，則世人對於佛法將不得其了解。際此末法之世，眾生之心，大多昏亂，縱其毀謗，恣其戲弄，嗜欲橫流，失於正念，永沉苦海流轉生死，或墮惡趣；非特佛法因而衰落，或將有絕滅於世之憂也。\n\n第四節　中國民族於佛法的需要\n\n### 第四節　中國民族於佛法的需要\n\n佛法之應化於世，必有時分，必有方所。本節所論，以中國民族為方所，以現在為時分，而明其於佛法之需要。抑民族者有情世間也，中國者中國民族之器世間也。\n\n蓋民與土和合而成國，土為民有，自當以民為主；今言中國民族，亦當以民族為重。\n\n中國者以明民族之範圍耳。所謂需要，亦非考察往古推測將來，乃就現在狀況為說：\n\n一　意盛志銳者於佛法的需要\n\n#### 一　意盛志銳者於佛法的需要\n\n意盛志銳之人乃中國優秀分子，有才器、有作為，而國之興衰繫焉。其要在乎一國之中，必有高尚之道德，精深之學術，以範其行，以安其心，使不至突藩而馳，自就軌範，為國所賴。我國自來重道德，講性理，人皆謹於禮法，安乎分位；洎乎西學東漸，群言繁興，互相反對，互相抵斥，入主出奴，齗齗逞辯，充耳囂然，莫衷一是。吾國才智之士尤而效之，本其思想自由、言論自由，遂將從前藩籬一蹴而去。至於今日，道德破壞，性理淪胥，奔突放逸莫能得一新軌範以為歸依，充其思想之紛飛將不可收拾。唯有佛法廣大圓融，深奧莫窮，具清淨無上之道德，有一真不二之妙理；闢妄見真，摧邪顯正，所以浹洽人心，軌範士論，捨佛法其誰與歸！此其一。\n\n二　積迷習謬者於佛法的需要\n\n#### 二　積迷習謬者於佛法的需要\n\n吾國昔以神道設教，原所以悚駭愚頑而補刑政之不足。然而迷信漸深積習不返，奸狡之徒利而用之以為蠱惑之具，作亂之資，小則歛貲，大則欲遂其帝王思想；擾亂社會，危害國家，莫此為甚！誠欲除其迷謬，破其邪執，使奸宄之徒失所憑借，要非佛法不為功。此其二。\n\n三　五族和平於佛法的需要\n\n#### 三　五族和平於佛法的需要\n\n吾國既合漢滿蒙回藏五族，隸於同一統治權之下，而建立此統一之中華民國，就政法言之，固已立統一之形式；然而五族人民同居一國，必需求統一之精神，即統一之思想是也。思想繫乎宗教與道德。孔子之教本兼政治與道德，為吾漢族所崇奉固已數千年於茲，但在其餘各族尚未普及。謨罕默德之教僅為回族之所信仰，即今耶穌天主諸教不過少數人所奉行，均不足以容涵一切而有統一五族人民思想之能力。至若佛教，則向為滿蒙藏之所崇奉；漢族則自漢唐以來久經盛行，宋明諸儒所談性理之學尤多隱宗於佛教，近世則士夫學子知談禪理，婦人孺稚解念彌陀。以五族言，已居其四。而況佛法自來不立封域，耶教回教自可列之佛教之人天乘中。故欲謀思想統一而使五族人民有統一之精神者，尤以佛法乃能具此偉大之能力。此其三。\n\n第五節　現在人心於佛法的需要\n\n### 第五節　現在人心於佛法的需要\n\n上就中國一偶而言。本節廣其範圍，就全球人心現時狀況觀察，其於佛法之需要當有下列諸點：\n\n一　甯息世界的大亂源於佛法的需要\n\n#### 一　甯息世界的大亂源於佛法的需要\n\n現在世界之趨勢，西歐為重，東亞較輕。即就世亂觀之，亦西歐盛於東亞。然東亞之亂，殆又影響於西歐。此無他，物質之學愈昌而逐物之心愈盛，五欲日熾如倒狂瀾，竭全球生產之力不足以供耗費。貧富之階級相差愈遠，而大多數生計問題之待解決愈急，不平之氣乃充塞宇宙。而況本其野蠻角逐之習，易為文明競爭之語，物競天擇，優勝劣敗，定為天演公例，奉為玉律金科，是以戾氣橫流莫知所屆。嗟乎！世人自作之孽，今已罹此最慘最酷之眾同分業報。然習非成是，尚無自拔之方，殆所謂無明妄動而不自覺歟！今者世人厭亂同具此心，誠欲息此亂源當探其本，亂之所起，端在人心：茍能不為形役，業力自減，我佛廣垂言教為後世眾生作將來眼，首在超越情器，實證一心真如正覺人心，此為無上妙法。吾人不幸生此五濁之世，心多散亂，正宜昌明佛法以為世界人道之正義；正義有在，即人心得有所歸宿。大亂之源，庶有豸乎！\n\n二　釀造世界新文化於佛法的需要\n\n#### 二　釀造世界新文化於佛法的需要\n\n在昔世界文化為三大系：其一曰印度文化，其二曰中國文化，其三曰希臘文化。然印度文化與中國文化，於我國宋明時代已有融洽之點，遂成為東亞文化，吾國三教同化由宋明來已然也。希臘文化，則演成今日之歐西文化。故以現在世界文化而言，可稱為東亞與西歐二者。然於二者之間，其可以圓攝長宙軌範寰球者誰歟？試觀歐西文化：所重者競爭，教之與教、學之與學、畛域妄分、門戶各立，甲說初出、乙必起而反對之，丙事調停、丁又從而打銷之，是非蜂起、莫知所衷；以故人與人爭，國與國戰，而釀成今世界之大亂。以言文化，僅物質上呈一時之美觀，究其實、則歐洲一隅尚不足以自相維繫，其於世界可知矣。返觀東亞文化：教有宗本，學有傳統，人我之相不立，水火之見不生，佛言平等、儒尚禮讓、道取清靜；雖所見有通局淺深、而均欲會歸其極，故能水乳交融，翕然成化。其力足以建立世界唯一之統一大國，維持數千年於不墜，遠近鄰邦無不同化，廣博宏大莫可與倫，誠足以表率人群，模範世界而無遺憾。或疑歐化東漸，弱點已形，如上所言似近誇誕，不知此由大道未彰國運暫替，譬如士子未第每見凌於鄉曲惡少，何足介也。然所言東亞文化其中有不可不知者，雖三教有其通貫之處，而老莊道義語焉未詳，孔子注重世法不言性與天道，第一義諦含而未吐，皆未足以饜世人求「達到最高真理之目的」之心。唯佛法微妙無上，義深文博，學術兼備，實體緣起莫不究極，是則釀造世界新文化，有倡明佛學之必要也審矣。\n\n三　滿足人心安慰人心於佛法的需要\n\n#### 三　滿足人心安慰人心於佛法的需要\n\n佛法之究竟妙用，在應化世界，利樂眾生；且能隨順無量無邊之世界眾生而施其無量無邊之法門，使其究竟離苦、得究竟樂。\n\n今世之人心，泛濫滂渤無所底止，沉溺苦海度脫無期，誠欲於此生死煩惱中，使一一差別不同之人心得以滿足，得以安慰，固必需乎我佛無上法門也。\n\n第四章　佛法可說不可說\n\n## 第四章　佛法可說不可說\n\n文佛應世，說法度生四十九年。臨滅度時拈花微笑，以示數十年來未說一字，我輩凡夫更有何說？此佛法之不可說。三藏十二部煌煌言教，以為末世一切眾生作將來眼，然文多義奧，淺識難窺，不假言說無由了解，此又佛法之可說。於此問題，以本章諸節說明之。\n\n第一節　佛法的法\n\n### 第一節　佛法的法\n\n法者，一、任持自性——謂保任執持一一法自體性相而不亡失；二、軌範物解——謂軌定範圍一切眾生的心理而起解行。佛法的法具此二義，則可說不可說問題可依此以解釋之。\n\n第二節　法性離言不可說\n\n### 第二節　法性離言不可說\n\n法性、即法之第一義。法之相性，惟佛究竟明證，唯佛究竟了知，悉皆真故。又一切言說假名無實；假故不能顯真，故法性離言不可說。\n\n第三節　為令解行成果故巧施言說\n\n### 第三節　為令解行成果故巧施言說\n\n如上節言法性離言不可說，則知可說者必非法性。故雖比量以示之，因喻以明之，無非善巧施設之方便，以為言說：只可就眾生之心理，軌定範圍，而令其解理起行成果耳。此即法之第二義。巧施言說故未嘗不可說。\n\n第四節　轉法輪\n\n### 第四節　轉法輪\n\n我佛說法，謂之轉法輪。輪者，一、如碾米的輪，能摧破研除於糠秕，喻佛法能破除五住煩惱。二、如舟車的輪，能通行往達於境域，喻佛法能行達四德涅槃。三、如日輪、月輪、地輪、水輪、風輪的輪，以八方上下周圓充實為義：喻佛法之性德圓滿，法身常住。轉者，謂使眾生有所改轉：或始迷而今悟，或始染而今淨，或始苦而今樂，總之，使轉凡成聖。法輪者：或依第一解，使眾生借以破五住煩惱；或依第二解，使眾生乘之以達四德涅槃；或依第三解，以表佛法之性德圓滿。\n\n第五節　佛乘的乘\n\n### 第五節　佛乘的乘\n\n乘者，車乘之乘，就佛菩薩依以運載之法以為喻也；乘舟之乘，就佛菩薩能運載於法以為喻也。佛乘之乘，通此二喻，皆以「運載」為義。一、從「無明位」運載至「大覺位」，理教乘也；二、從「有漏雜染位」運載至「無漏清淨位」，行教乘也；\n\n三、從「生死苦位」運載至「究竟樂位」，果教乘也。\n\n佛乘者，佛法應化眾生所發、為解理起行成果之妙用也。隨順眾生根性樂念不同，應用無量，不墮諸數。約其大齊以言，或說三乘五乘，。皆佛法之妙用，故統之曰佛乘也。\n\n純正的佛法\n\n### 純正的佛法\n\n佛法本不可說，更不可分類為說，茲則因言遣言，權假方便，但使說者易達，聞者易明，非可執為定論。且分為純正的佛法、應用的佛法以說明之。純正的佛法者，從佛法一方辨其悟理修行之事，而未及其與人間之關係，都分為四章。\n\n第一章　純正佛法的分類\n\n## 第一章　純正佛法的分類\n\n聞解之教理不同，修證之行果有異，而佛法有大乘小乘之別。小乘者，功在自了，純為超出世間的，其說略見序論。大乘則功在度世，故為超出世間而又適應世間的。茲先說小乘，分七節說明。\n\n第二章　小乘\n\n## 第二章　小乘\n\n第一節　小乘的宗要\n\n### 第一節　小乘的宗要\n\n小乘為超出世間的，必先將一切世間之法打破。欲求打破，必先了知。已了知而打破，然後可得解脫，其主要之點在是。\n\n第二節　了生死為因\n\n### 第二節　了生死為因\n\n了有二義，曰了知、了脫，此則由了知而求了脫也。如平盜然，必先了知盜之所在，及其人數多寡，內容如何，如是種種明晰無餘，然後盜可得而平。了生死亦復如是。本節所言，即觀察一切世法而得真確之了知也。\n\n一　生為苦本\n\n#### 一　生為苦本\n\n　　　　　　┌貪 瞋 等 煩 惱本┐生為┤殺盜淫妄等惡業本├────故生為苦本└病 老 死 等 苦本┘生之最初相為得命，故亦稱生命。乃推其源，則由過去世無明業力妄動而來。既生而有身，則所以保衛維持之者無所不至，直接之需求則求衣食住，間接之需求則金錢等動產及不動產業。從流而下貪欲叢起，則權利威勢隨之，又再擴張，則欲據此大地為己有。一有不得轉成瞋恚，得而患失尤見愚癡。由此貪得無厭不能自己，殺盜淫妄任意造作。及至業力已成又種未來之因，而成異熟之果；以致生生相續無有已時，業繫苦相永無斷絕。無非以生為本，而病老死等尤其著者。故小乘之第一步，即當了知此「生」實為眾苦之本也。\n\n二　遍觀世間皆無常苦空無我不淨\n\n#### 二　遍觀世間皆無常苦空無我不淨\n\n　　　　　　┌一切法無我………………………統一切位法│一切心行無常……………………心法心所有法遍觀┤自他一切身不淨…………………色法└身心一切受是苦…………………心所有法此中空與無常二義已見上章。又除空義外即四念住，而次序稍移。茲先釋不淨，即觀身不淨。淨、是美好之義，吾人習有此身，固已愛而不知其惡。然以小乘正念觀之，自始至終無可美者。身之最始厥為住胎，父精母血和合而成，殆無淨美可言。及至出世糞穢時遺，涕尿交流，亦無潔淨。繼而長大，體態端好，容光煥發，似可美矣；然而詳審諦視，外則汗液垢膩沐浴不去，坐令巨萬微虫晝夜齧膚，內則五辛雜投葷濁備蓄，自內而外，無可淨美。其似可美者，僅此泡影色塵，自誑眼識，而況惱人暮景轉瞬即至，則並此似美之泡影，不能久持。血氣內衰，精神暗損，髮蒼齒落，肌瘦膚黃，百病叢生，而有四大將散之兆矣。及至壽煖識盡，顏色先變，肌膚次之，膿血雜流，筋骨灰散，茍云有餘，絕非淨美。是知吾人色身，從始有至於滅盡，皆為不淨。推自及他無不皆然。而世之寶愛色身，不惜自起煩惱造作惡業者，誠無謂矣。"
++    },
++    {
++      "name": "actual-fixture-sanming_lun.md",
++      "body": "---\nauthor: 民國 釋太虛著\nbian: 第十三編·宗用論\nbook: 三明論\nbook_idx: 2\nbook_total: 21\nchapter: 全文\nparent_slug: cbeta-太虛大師全書-第十三編·宗用論\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 三明論\ntype: cbeta\nwork: 三明論\n---\n\n# 三明論\n——五年在普陀作——\n\n## 緣起分第一\n\n\n交蘆子若存若亡，不覺心動：昏擾淆然攖於心，光象眩然要於知，渾渾芒芒，恍恍惚惚，初不辨象從知出，知從象來；擾故心動，心動故擾，然心動而不能自止，知出而不能自弭，如有所使，如有所係，其知彌出，其光象彌闢，其心頻動，其昏擾頻煩，又忽若有所自覺者。\n\n要乎，攖乎，感乎，覺乎？其光若有晦明乎？其色象若有青黃赤乎？忽焉有所動而光象泯滅，忽焉有所動而光象炳現，光乎象乎！殆係於動乎？其昏若有堅濕煖乎？若有香味乎？其擾若有輕漾囂叫乎？忽焉有所動而有所得，忽焉有所動而有所失！\n\n昏乎，擾乎！殆亦係於動乎？光、象、昏、擾係乎動，其動殆亦有所寄乎？動其寄於感乎、覺乎、知乎？動、感、覺、知其交紐若一乎？其不能獨存乎？其不可分擘乎？此不可分擘者，殆即不覺而心動乎？\n\n光象泯滅，昏擾或無減焉；光象炳現，昏擾或有增焉；推求昏擾於光象，或得或不得焉。光象、昏擾，二者其有種界乎？昏昏默默，或得堅煖焉，或兼得堅煖、香味焉。擾擾蕩蕩，或得輕漾焉，或兼得輕漾、囂叫焉。\n\n一一昏擾，其亦有種界乎？或各得種種光象昏擾之一焉，或都得種種光象昏擾焉，或都不得種種光象昏擾而仍若有所覺知焉。其更有起滅離合光象、昏擾之元樞乎？種種種界，殆亦有所係有所寄乎？其所係所寄者，殆有分屬乎？其分屬者，殆有六族乎？六族其恆轉總持聚處間列者乎？其即光象昏擾之都宅乎？\n\n忽焉辨之群象群礙中，若有一聚之昏礙光象，凡動、感、覺、知咸與俱焉，此殆即六族所聚處間列者乎？盍從之推求六族之所居乎？恍若司覺堅礙等者，即此礙象之全聚焉；司覺囂叫者，有兩竅焉；司覺光象者，有兩朵焉；司覺香臭者，亦有兩竅焉；司覺甘苦等者，亦有一段之色礙焉；而此礙象之表裏，又恆有冷煖、虛脹、痛癢等觸覺而不能離焉。此礙象內容之光色，雖莫得而見，其昏觸固冥有所感覺焉。\n\n始焉若有六族，今歷辨乎礙象，特五族耳。殆但有五族而無六族乎？則又不然。蓋嘗倀倀乎有所遊處，若由佗聚頓失五族所司之感覺，而重現此聚五族所司之感覺者矣。其頓失者與重現者，兩者全異，則必有第六族以恆轉總持此聚他聚之五族所曾受之感覺者，且可與此聚他聚之五族離合焉，故得忽失他聚五族所司之感覺、而重現此聚五族所司之感覺歟？\n\n顧雖知必有第六族，而終不知第六族之奚存耶！則亦虛擬之為感動、覺知、憶念、思想之共主而已。於是乃有分司之五族及共主之一族所積聚連持者，得執之吾矣！\n\n曰吾者何？能感動、覺知、憶念、思想之一色礙聚也。執此一色礙聚為吾，乃格彼一一色礙聚為非吾；更推知彼一一色礙聚，其為色礙聚同，故其執有能感動、覺知、思想、憶念之吾亦同。知愈推出，境愈差別，由一一色礙聚之同然，復辨一一色礙聚之異然，異中更同，同中更異。\n\n取同異之分齊者曰想，想即名也，名所楷定之分齊相，即吾及非吾之物物。計同異之分齊者曰念，念即數也，數所貫綜之分齊相，即吾及非吾之一一。以數持名，以名持數，名數交紐，是名萬物。\n\n以歷憶念、思、動三而似有相續者曰時，時則由剎那秒忽以至阿僧祗劫可也。以想區感覺知而似有並著者曰方，方則由點線面積以至華藏剎海可也。\n\n然吾能感動覺知、思想、憶念之色礙聚，既恆有冷煖、虛脹、痛癢、香味等感受覺知貫澈表裏；又恆有光象、囂叫等感動覺知，尋伺周遍，其感覺者平等調順則快樂，其感覺者損益乖違則煩惱。\n\n所惡者煩惱而所欲者快樂，故常欲調順而常惡乖違。常欲調順快樂，則法爾須交藉於非吾之一一色礙聚而後得，然交藉於非吾之一一色礙聚，或不能藉彼而為彼所藉，反得苦障，或渴願藉彼而無力藉彼，徒殷希望。而非吾之一一色礙聚中，則有與吾形同欲同者也。\n\n形同欲同故易得親愛，抑其天官之意物也同，故比方之疑似而通，而漸能相狎識形聲所表示別別之情欲想思；因相狎識，乃相要求，求互助以袪不能藉彼而為彼所藉之苦障，求合作以達渴願藉彼而無力藉彼之希望。以互助合作之群力故，竟得苦障袪而希望達，煩惱減而快樂增，於是知群力之妙，可以無求不獲，乃汲汲以彀充其群為第一要事。\n\n然而得親愛狎識以成互助合作之群者，蓋因形欲之同，而欲之所同，則在藉物之力而濟我之私，故所同之欲乃私欲也。私欲同故親愛，所同者是私欲，故又憎忌，憎忌交加，故互助者或以互拒，互作者或以互毀，拒毀並作，故又恐佈，拒毀相續，故又怨恨。\n\n怨恨私欲，同時奮發，故不獨互拒互毀，而亦互爭互奪。毀奪紛乘，則愈恐怖，以恐怖故愈求互助，求互助故愈用親愛。親愛、憎忌、恐怖、怨恨，轉輾增上，轉輾銜結。故互助互作，互拒互毀，互爭互奪，同時並存，同時並行。其毗於我私、憎忌、怨恨、恐怖之甚者，且倒以互助互作為射，互拒互奪為鵠焉，乃反以合群而益增煩惱、益多苦障矣！\n\n於是又知合群而互助求樂之術，不獨彀充其群，尤須有職守綱維之事也，乃為之名位而職守，乃為之政法而綱維。然政法相制，名位相格，以利害故群各自群，以親疏故群又分群，毀奪間作，仍不能免。且攬綱維者，或毗重我私、恐佈而用強權，執政法者或毗重憎忌、怨恨而尚復仇，則又反以術群之職守綱維，而益增煩惱，益多苦障矣！\n\n沿習彌久，流變彌雜，終以一親愛之善情，對於憎忌、怨恨、恐怖之惡情，寡不敵眾。故雖術群之道逐事修良，卒不能達互助互作而不互拒互毀、互爭互奪之初願也。\n\n益密其牽制，有若三權憲政；益嚴其拒格，有若地方自治；益巧其掠奪，有若株社、印稅；益盛其爭毀，有若帝國軍政。夫以群功交利而增之，快樂固多，而以群力交害而增之，煩惱尤眾。此增起之煩惱，豈始志之所期哉！\n\n夫快樂以群而增進，煩惱亦以群而倍快樂為增進；然則以離群而快樂減省，煩惱亦必以離群而倍快樂為減省。煩惱既不可獨祛，則快樂亦不可獨得，其有不願以合群求快樂而增煩惱，願以離群損煩惱而失快樂者乎？\n\n損之又損，以至於無，煩惱、快樂胥何存哉！然以損斷煩惱而并失快樂，殆亦非吾之始志乎？則欲遂吾之始志，群又終不可離乎？\n\n交蘆子曰：吾初認識一能感動、覺知、思想、憶念之色礙聚，始確知有吾矣；吾繼認識一一異形、異能、異欲之色礙聚，始確知有非吾之萬物矣；吾繼又認識一一同形、同能、同欲之色礙聚，與之共求所欲，共習所事，始確知吾為人、吾為人群之一人矣。\n\n交蘆子曰：吾始確知有吾，確知有非吾之萬物，確知吾為人群之一人，即蘊積三種之疑問，憤憤然而欲明之矣。\n\n云何三種疑問？\n\n- 一也：曰、吾及非吾，宇宙萬物，誰為有本，誰為本體，云何起源，云何究竟？\n- 二也：曰吾及非吾，宇宙萬物，種種形質，種種名理，種種事用，云何能知？\n- 三也：曰吾及非吾，吾及吾人，相待之理，交藉之業，如何施設方稱吾願？\n\n蘊兮、發兮、積兮，續兮，自詰、自應、自疑、自明，明已復疑，疑已復明，轉疑轉明，轉明轉疑，不明必疑，纖疑必明，蓋嘗疑窮量絕，明極光通，疑無可疑，明無可明矣！\n\n云何明？明於明。云何不明？不明於不明。明者自明，無明明者；不明者自不明，無不明不明者。交蘆子亦自明其明，明其自明而已；無明明者，無不明不明者，故卒亦不明其果明果不明耶？蛇知蛇足，不咬蛇足，然一經非蛇者咬嚼，明非不明，不明非明，非三不明，必是三明，則姑名之曰三明云爾。\n\n## 名義分第二\n\n\n曷謂三明？一曰、學術，二曰、宗教，三曰、人倫；明此三事，是名三明。\n\n曷謂宗教？\n\n曰：心明自心，見心自性，證一切法性唯自心，悟入自心更無一法，境智如如言思永絕，宗也。自心起心，緣心自相，自心無相，相即萬法，開示自心，具一切法，德業重重，名理無盡，教也。\n\n宗唯自證，無表無示，離名絕義；教待緣起，有師有資，建言立行。宗則非教，教則非宗，宗教相違，宗教各立，一也。以自證故，能稱法性開示名相，以緣起故，覺悟有情趣入法性，以宗成教，以教成宗，宗教相持，宗教同立，二也。心符法性，稱性緣起，即宗之教，教依宗立，三也。法隨法行，還證自心，即教之宗，宗依教立，四也。具此四義，是名宗教。\n\n交蘆子曰：此宗教之勝義也。\n\n隨俗稱謂，復有多義：\n\n- 一曰、宗者、崇尚尊信，教者、律儀言行，是應可崇尚尊信之律儀言行，或是俗所崇尚尊信之律儀言行，故名宗教。\n- 二曰、宗者、趣向，是必要之由致，教者、法義，乃楷定之名理，言行契應，故名宗教。\n- 三曰、宗者、家派，教者、學行，是一家之學，或是一派之行，故名宗教。\n- 四曰、宗者、道理，教者、名詮，是名詮所傳持之道理，是道理所依止之名詮，故名宗教。\n\n此之四義，但隨俗稱，具前勝義，方名宗教，不具前義，非真宗教。人天小教，假名宗教耳！\n\n曷謂學術？\n\n曰：隨順名數，尋伺事物，形質德業，同異總別，因果前後，生化次第，簡擇明了，勝解印持，學也；隨順尋伺，習令慣熟，任運明了，巧便效用；或藉別緣，加行尋伺，勤勇無間，增進勢力，術也。\n\n泛義言之，則計聞思念模擬練習皆學也，積習累行巧知慣能皆術也。一物不學，一物不知，一事不學，一事不能，故曰不學無術。\n\n若以嚴義格之，此未得稱學術。凡學術、即學即術，即術即學，不獨必學乃有術，亦必有術乃為學。故學術者，是學術之士條貫所知義理所具功用，依比量規律著為言詮，能令未成學術之人，研思效習而可成就學術者也。\n\n曷謂人倫？\n\n曰：\n\n- 倫者、類也，對待立名者也。\n- 倫者、群也，同類相聚者也。\n- 倫者、能也，交藉為用者也。\n- 倫者、習俗也，相沿成性者也。\n- 倫者、侖思也，有道術以調劑和平利樂其群俗者也——侖思猶云理性，亦猶云有意識之行為——。\n\n群俗之相待、相聚、相藉、相沿，有名義楷定其分齊而持守者曰倫理，有倫理之群俗所起之事行曰倫業。\n\n人倫所明，在正倫理以利倫業，非以明人，明人則學術宗教之事也。物皆有群，不必有倫；非徒有群，故名曰倫。倫不必人，是人之倫，遮非非人，故曰人倫。\n\n## 界別分第三\n\n\n明無明相，一切相離，離相如如，亦離離相，譬彼虛空，寧堪割據！然彼虛空方圓任器，車得車空，即有坐乘運載之功，舍得舍空，即有居處安藏之業，不可責舍業於車空，不能取車功於舍空。\n\n空者、理事也，器者、名言也。能詮名言，分齊既立，所詮理事，限量隨殊。學術之名不具宗教之理，宗教所言非盡人倫之事，又烏得無界別哉？\n\n交蘆子曰：三明之界別，既定於名義分矣，今特就名所詮義，對辨之耳。\n\n對辨之數，且分四門：\n\n- 一、廣狹門，以量外幟\n- 二、深淺門，以測內容\n- 三、先後門，以察生起\n- 四、永暫門，以序存在\n\n即此四重，又有三觀：\n\n#### 第一觀：依法界觀\n\n現證心性，周遍含容，離一切相，即一切法，即此心法，寄言宗教，無中無邊，亦中亦邊，無上無下，亦上亦下，無起無滅，亦起亦滅，無始無終，亦始亦終，言思所及，兼所不及，一切有法皆宗教攝。\n\n是故宗教最廣、最深、最先、最永，學術次廣、次深、次先、次永，人倫為狹、為淺、為後、為暫。\n\n列表如下：\n\n| 界別 | 教（宗教） | 宗（學術） |\n|:----:|:----------:|:----------:|\n| 聖　界 | 真覺界：教（以利他故許有學術） | 宗 |\n|  | 偏真界：教（已入滅者及獨覺者無教無學；未入滅者及聲聞者定有學術） | 宗 |\n|  | 大士界：教（定有學術） | 宗 |\n| 凡　界 | 人　界：教（或有學術或無學術或有人倫或無人倫） | 宗 |\n|  | 天　界：教（或有學術或無學術是天倫故定無人倫） | 宗 |\n|  | 鬼　界：教（許有學術若神等故定無人倫是鬼倫故） | 宗 |\n|  | 畜　界：教（許有學術若龍等故定無人倫是畜倫故） | 宗 |\n|  | 獄　界：教（亦許有學術定無人倫） | 宗 |\n\n#### 第二觀：依理界觀\n\n現見宗教、人倫之理，皆以名數文字等學表詮楷定，雖曰華藏剎海，僧祇劫波，圖騰社會，大同世界，我神彼君，吾族他社，乃至無方無體，無時無生，仍此名數文字等學表詮楷定。\n\n若離學術，必無從建立宗教、人倫之理詮。然宗教閎大，非限人倫，人倫跼蹐，難擬宗教。\n\n是故學術為廣、為深、為先、為永，宗教次廣、次深、次先、次永，人倫最狹、最淺、最後、最暫。\n\n#### 第三觀：依業界觀\n\n現見學術宗教之事，皆是人倫之所造作，不得離人倫而外有，不得前人倫而已成。然宗教之事，必藉學術，學術之事，可非宗教，以宗教事，亦由效習名言起也。\n\n是故人倫最廣、最深、最先、最永，學術次廣、次深、次先、次永，宗教為狹、為淺、為後、為暫。\n\n而此四重三觀之辨，吾明學術，取理界觀；吾明宗教，取法界觀；吾明人倫，取業界觀。\n\n- 學術之明，即名想而觀察法相，是因俗以立詮。\n- 宗教之明，順事相而證入法性，是忘詮以體真。\n- 人倫之明，隨法性而起事行，是由真而適俗。\n\n真俗二諦，不可偏廢，則並存之可也。\n\n而三明施設之次第，本當先宗教、而後學術、人倫，何則？\n\n- 非先明宗教，則無以起信定志，趣道造極，一也。\n- 未明宗教，則必於名相多所惑亂取著，而反為學術障礙自心，二也。\n- 未明宗教，則必溺情習俗，不能自勝，無以正德利用，膏沐群倫，三也。\n\n然建立名言，固以利俗，魚相忘於江湖，人相忘於習俗，不因習俗之所知所守，寢導有情而轉思轉化，縱能自得，必難悟人，則言與不言等，豈所謂善巧名言者歟？\n\n且學術雖不即真，而人心固好求實，彼孜孜為學術者，奚嘗一旦忘庶幾得悟真理耶？遺其所偏，擴其明見，揭其所封，存其成法，亦未始非闢裂迷網之前矛也。\n\n是故學術明居先，宗教明次之，而以人倫明殿焉。蓋兩利為利，人所共知，況有情同體，本無自他者哉！\n\n（見海刊一卷十期）",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "---\nauthor: 民國 釋太虛著\nbian: 第十三編·宗用論\nbook: 三明論\nbook_idx: 2\nbook_total: 21\nchapter: 全文\nparent_slug: cbeta-太虛大師全書-第十三編·宗用論\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 三明論\ntype: cbeta\nwork: 三明論\n---\n\n# 三明論\n——五年在普陀作——\n\n## 緣起分第一\n\n\n交蘆子若存若亡，不覺心動：昏擾淆然攖於心，光象眩然要於知，渾渾芒芒，恍恍惚惚，初不辨象從知出，知從象來；擾故心動，心動故擾，然心動而不能自止，知出而不能自弭，如有所使，如有所係，其知彌出，其光象彌闢，其心頻動，其昏擾頻煩，又忽若有所自覺者。\n\n要乎，攖乎，感乎，覺乎？其光若有晦明乎？其色象若有青黃赤乎？忽焉有所動而光象泯滅，忽焉有所動而光象炳現，光乎象乎！殆係於動乎？其昏若有堅濕煖乎？若有香味乎？其擾若有輕漾囂叫乎？忽焉有所動而有所得，忽焉有所動而有所失！\n\n昏乎，擾乎！殆亦係於動乎？光、象、昏、擾係乎動，其動殆亦有所寄乎？動其寄於感乎、覺乎、知乎？動、感、覺、知其交紐若一乎？其不能獨存乎？其不可分擘乎？此不可分擘者，殆即不覺而心動乎？\n\n光象泯滅，昏擾或無減焉；光象炳現，昏擾或有增焉；推求昏擾於光象，或得或不得焉。光象、昏擾，二者其有種界乎？昏昏默默，或得堅煖焉，或兼得堅煖、香味焉。擾擾蕩蕩，或得輕漾焉，或兼得輕漾、囂叫焉。\n\n一一昏擾，其亦有種界乎？或各得種種光象昏擾之一焉，或都得種種光象昏擾焉，或都不得種種光象昏擾而仍若有所覺知焉。其更有起滅離合光象、昏擾之元樞乎？種種種界，殆亦有所係有所寄乎？其所係所寄者，殆有分屬乎？其分屬者，殆有六族乎？六族其恆轉總持聚處間列者乎？其即光象昏擾之都宅乎？\n\n忽焉辨之群象群礙中，若有一聚之昏礙光象，凡動、感、覺、知咸與俱焉，此殆即六族所聚處間列者乎？盍從之推求六族之所居乎？恍若司覺堅礙等者，即此礙象之全聚焉；司覺囂叫者，有兩竅焉；司覺光象者，有兩朵焉；司覺香臭者，亦有兩竅焉；司覺甘苦等者，亦有一段之色礙焉；而此礙象之表裏，又恆有冷煖、虛脹、痛癢等觸覺而不能離焉。此礙象內容之光色，雖莫得而見，其昏觸固冥有所感覺焉。\n\n始焉若有六族，今歷辨乎礙象，特五族耳。殆但有五族而無六族乎？則又不然。蓋嘗倀倀乎有所遊處，若由佗聚頓失五族所司之感覺，而重現此聚五族所司之感覺者矣。其頓失者與重現者，兩者全異，則必有第六族以恆轉總持此聚他聚之五族所曾受之感覺者，且可與此聚他聚之五族離合焉，故得忽失他聚五族所司之感覺、而重現此聚五族所司之感覺歟？\n\n顧雖知必有第六族，而終不知第六族之奚存耶！則亦虛擬之為感動、覺知、憶念、思想之共主而已。於是乃有分司之五族及共主之一族所積聚連持者，得執之吾矣！\n\n曰吾者何？能感動、覺知、憶念、思想之一色礙聚也。執此一色礙聚為吾，乃格彼一一色礙聚為非吾；更推知彼一一色礙聚，其為色礙聚同，故其執有能感動、覺知、思想、憶念之吾亦同。知愈推出，境愈差別，由一一色礙聚之同然，復辨一一色礙聚之異然，異中更同，同中更異。\n\n取同異之分齊者曰想，想即名也，名所楷定之分齊相，即吾及非吾之物物。計同異之分齊者曰念，念即數也，數所貫綜之分齊相，即吾及非吾之一一。以數持名，以名持數，名數交紐，是名萬物。\n\n以歷憶念、思、動三而似有相續者曰時，時則由剎那秒忽以至阿僧祗劫可也。以想區感覺知而似有並著者曰方，方則由點線面積以至華藏剎海可也。\n\n然吾能感動覺知、思想、憶念之色礙聚，既恆有冷煖、虛脹、痛癢、香味等感受覺知貫澈表裏；又恆有光象、囂叫等感動覺知，尋伺周遍，其感覺者平等調順則快樂，其感覺者損益乖違則煩惱。\n\n所惡者煩惱而所欲者快樂，故常欲調順而常惡乖違。常欲調順快樂，則法爾須交藉於非吾之一一色礙聚而後得，然交藉於非吾之一一色礙聚，或不能藉彼而為彼所藉，反得苦障，或渴願藉彼而無力藉彼，徒殷希望。而非吾之一一色礙聚中，則有與吾形同欲同者也。\n\n形同欲同故易得親愛，抑其天官之意物也同，故比方之疑似而通，而漸能相狎識形聲所表示別別之情欲想思；因相狎識，乃相要求，求互助以袪不能藉彼而為彼所藉之苦障，求合作以達渴願藉彼而無力藉彼之希望。以互助合作之群力故，竟得苦障袪而希望達，煩惱減而快樂增，於是知群力之妙，可以無求不獲，乃汲汲以彀充其群為第一要事。\n\n然而得親愛狎識以成互助合作之群者，蓋因形欲之同，而欲之所同，則在藉物之力而濟我之私，故所同之欲乃私欲也。私欲同故親愛，所同者是私欲，故又憎忌，憎忌交加，故互助者或以互拒，互作者或以互毀，拒毀並作，故又恐佈，拒毀相續，故又怨恨。\n\n怨恨私欲，同時奮發，故不獨互拒互毀，而亦互爭互奪。毀奪紛乘，則愈恐怖，以恐怖故愈求互助，求互助故愈用親愛。親愛、憎忌、恐怖、怨恨，轉輾增上，轉輾銜結。故互助互作，互拒互毀，互爭互奪，同時並存，同時並行。其毗於我私、憎忌、怨恨、恐怖之甚者，且倒以互助互作為射，互拒互奪為鵠焉，乃反以合群而益增煩惱、益多苦障矣！\n\n於是又知合群而互助求樂之術，不獨彀充其群，尤須有職守綱維之事也，乃為之名位而職守，乃為之政法而綱維。然政法相制，名位相格，以利害故群各自群，以親疏故群又分群，毀奪間作，仍不能免。且攬綱維者，或毗重我私、恐佈而用強權，執政法者或毗重憎忌、怨恨而尚復仇，則又反以術群之職守綱維，而益增煩惱，益多苦障矣！\n\n沿習彌久，流變彌雜，終以一親愛之善情，對於憎忌、怨恨、恐怖之惡情，寡不敵眾。故雖術群之道逐事修良，卒不能達互助互作而不互拒互毀、互爭互奪之初願也。\n\n益密其牽制，有若三權憲政；益嚴其拒格，有若地方自治；益巧其掠奪，有若株社、印稅；益盛其爭毀，有若帝國軍政。夫以群功交利而增之，快樂固多，而以群力交害而增之，煩惱尤眾。此增起之煩惱，豈始志之所期哉！\n\n夫快樂以群而增進，煩惱亦以群而倍快樂為增進；然則以離群而快樂減省，煩惱亦必以離群而倍快樂為減省。煩惱既不可獨祛，則快樂亦不可獨得，其有不願以合群求快樂而增煩惱，願以離群損煩惱而失快樂者乎？\n\n損之又損，以至於無，煩惱、快樂胥何存哉！然以損斷煩惱而并失快樂，殆亦非吾之始志乎？則欲遂吾之始志，群又終不可離乎？\n\n交蘆子曰：吾初認識一能感動、覺知、思想、憶念之色礙聚，始確知有吾矣；吾繼認識一一異形、異能、異欲之色礙聚，始確知有非吾之萬物矣；吾繼又認識一一同形、同能、同欲之色礙聚，與之共求所欲，共習所事，始確知吾為人、吾為人群之一人矣。\n\n交蘆子曰：吾始確知有吾，確知有非吾之萬物，確知吾為人群之一人，即蘊積三種之疑問，憤憤然而欲明之矣。\n\n云何三種疑問？\n\n- 一也：曰、吾及非吾，宇宙萬物，誰為有本，誰為本體，云何起源，云何究竟？\n- 二也：曰吾及非吾，宇宙萬物，種種形質，種種名理，種種事用，云何能知？\n- 三也：曰吾及非吾，吾及吾人，相待之理，交藉之業，如何施設方稱吾願？\n\n蘊兮、發兮、積兮，續兮，自詰、自應、自疑、自明，明已復疑，疑已復明，轉疑轉明，轉明轉疑，不明必疑，纖疑必明，蓋嘗疑窮量絕，明極光通，疑無可疑，明無可明矣！\n\n云何明？明於明。云何不明？不明於不明。明者自明，無明明者；不明者自不明，無不明不明者。交蘆子亦自明其明，明其自明而已；無明明者，無不明不明者，故卒亦不明其果明果不明耶？蛇知蛇足，不咬蛇足，然一經非蛇者咬嚼，明非不明，不明非明，非三不明，必是三明，則姑名之曰三明云爾。\n\n## 名義分第二\n\n\n曷謂三明？一曰、學術，二曰、宗教，三曰、人倫；明此三事，是名三明。\n\n曷謂宗教？\n\n曰：心明自心，見心自性，證一切法性唯自心，悟入自心更無一法，境智如如言思永絕，宗也。自心起心，緣心自相，自心無相，相即萬法，開示自心，具一切法，德業重重，名理無盡，教也。\n\n宗唯自證，無表無示，離名絕義；教待緣起，有師有資，建言立行。宗則非教，教則非宗，宗教相違，宗教各立，一也。以自證故，能稱法性開示名相，以緣起故，覺悟有情趣入法性，以宗成教，以教成宗，宗教相持，宗教同立，二也。心符法性，稱性緣起，即宗之教，教依宗立，三也。法隨法行，還證自心，即教之宗，宗依教立，四也。具此四義，是名宗教。\n\n交蘆子曰：此宗教之勝義也。\n\n隨俗稱謂，復有多義：\n\n- 一曰、宗者、崇尚尊信，教者、律儀言行，是應可崇尚尊信之律儀言行，或是俗所崇尚尊信之律儀言行，故名宗教。\n- 二曰、宗者、趣向，是必要之由致，教者、法義，乃楷定之名理，言行契應，故名宗教。\n- 三曰、宗者、家派，教者、學行，是一家之學，或是一派之行，故名宗教。\n- 四曰、宗者、道理，教者、名詮，是名詮所傳持之道理，是道理所依止之名詮，故名宗教。\n\n此之四義，但隨俗稱，具前勝義，方名宗教，不具前義，非真宗教。人天小教，假名宗教耳！\n\n曷謂學術？\n\n曰：隨順名數，尋伺事物，形質德業，同異總別，因果前後，生化次第，簡擇明了，勝解印持，學也；隨順尋伺，習令慣熟，任運明了，巧便效用；或藉別緣，加行尋伺，勤勇無間，增進勢力，術也。\n\n泛義言之，則計聞思念模擬練習皆學也，積習累行巧知慣能皆術也。一物不學，一物不知，一事不學，一事不能，故曰不學無術。\n\n若以嚴義格之，此未得稱學術。凡學術、即學即術，即術即學，不獨必學乃有術，亦必有術乃為學。故學術者，是學術之士條貫所知義理所具功用，依比量規律著為言詮，能令未成學術之人，研思效習而可成就學術者也。\n\n曷謂人倫？\n\n曰：\n\n- 倫者、類也，對待立名者也。\n- 倫者、群也，同類相聚者也。\n- 倫者、能也，交藉為用者也。\n- 倫者、習俗也，相沿成性者也。\n- 倫者、侖思也，有道術以調劑和平利樂其群俗者也——侖思猶云理性，亦猶云有意識之行為——。\n\n群俗之相待、相聚、相藉、相沿，有名義楷定其分齊而持守者曰倫理，有倫理之群俗所起之事行曰倫業。\n\n人倫所明，在正倫理以利倫業，非以明人，明人則學術宗教之事也。物皆有群，不必有倫；非徒有群，故名曰倫。倫不必人，是人之倫，遮非非人，故曰人倫。\n\n## 界別分第三\n\n\n明無明相，一切相離，離相如如，亦離離相，譬彼虛空，寧堪割據！然彼虛空方圓任器，車得車空，即有坐乘運載之功，舍得舍空，即有居處安藏之業，不可責舍業於車空，不能取車功於舍空。\n\n空者、理事也，器者、名言也。能詮名言，分齊既立，所詮理事，限量隨殊。學術之名不具宗教之理，宗教所言非盡人倫之事，又烏得無界別哉？\n\n交蘆子曰：三明之界別，既定於名義分矣，今特就名所詮義，對辨之耳。\n\n對辨之數，且分四門：\n\n- 一、廣狹門，以量外幟\n- 二、深淺門，以測內容\n- 三、先後門，以察生起\n- 四、永暫門，以序存在\n\n即此四重，又有三觀：\n\n#### 第一觀：依法界觀\n\n現證心性，周遍含容，離一切相，即一切法，即此心法，寄言宗教，無中無邊，亦中亦邊，無上無下，亦上亦下，無起無滅，亦起亦滅，無始無終，亦始亦終，言思所及，兼所不及，一切有法皆宗教攝。\n\n是故宗教最廣、最深、最先、最永，學術次廣、次深、次先、次永，人倫為狹、為淺、為後、為暫。\n\n列表如下：\n\n| 界別 | 教（宗教） | 宗（學術） |\n|:----:|:----------:|:----------:|\n| 聖　界 | 真覺界：教（以利他故許有學術） | 宗 |\n|  | 偏真界：教（已入滅者及獨覺者無教無學；未入滅者及聲聞者定有學術） | 宗 |\n|  | 大士界：教（定有學術） | 宗 |\n| 凡　界 | 人　界：教（或有學術或無學術或有人倫或無人倫） | 宗 |\n|  | 天　界：教（或有學術或無學術是天倫故定無人倫） | 宗 |\n|  | 鬼　界：教（許有學術若神等故定無人倫是鬼倫故） | 宗 |\n|  | 畜　界：教（許有學術若龍等故定無人倫是畜倫故） | 宗 |\n|  | 獄　界：教（亦許有學術定無人倫） | 宗 |\n\n#### 第二觀：依理界觀\n\n現見宗教、人倫之理，皆以名數文字等學表詮楷定，雖曰華藏剎海，僧祇劫波，圖騰社會，大同世界，我神彼君，吾族他社，乃至無方無體，無時無生，仍此名數文字等學表詮楷定。\n\n若離學術，必無從建立宗教、人倫之理詮。然宗教閎大，非限人倫，人倫跼蹐，難擬宗教。\n\n是故學術為廣、為深、為先、為永，宗教次廣、次深、次先、次永，人倫最狹、最淺、最後、最暫。\n\n#### 第三觀：依業界觀\n\n現見學術宗教之事，皆是人倫之所造作，不得離人倫而外有，不得前人倫而已成。然宗教之事，必藉學術，學術之事，可非宗教，以宗教事，亦由效習名言起也。\n\n是故人倫最廣、最深、最先、最永，學術次廣、次深、次先、次永，宗教為狹、為淺、為後、為暫。\n\n而此四重三觀之辨，吾明學術，取理界觀；吾明宗教，取法界觀；吾明人倫，取業界觀。\n\n- 學術之明，即名想而觀察法相，是因俗以立詮。\n- 宗教之明，順事相而證入法性，是忘詮以體真。\n- 人倫之明，隨法性而起事行，是由真而適俗。\n\n真俗二諦，不可偏廢，則並存之可也。\n\n而三明施設之次第，本當先宗教、而後學術、人倫，何則？\n\n- 非先明宗教，則無以起信定志，趣道造極，一也。\n- 未明宗教，則必於名相多所惑亂取著，而反為學術障礙自心，二也。\n- 未明宗教，則必溺情習俗，不能自勝，無以正德利用，膏沐群倫，三也。\n\n然建立名言，固以利俗，魚相忘於江湖，人相忘於習俗，不因習俗之所知所守，寢導有情而轉思轉化，縱能自得，必難悟人，則言與不言等，豈所謂善巧名言者歟？\n\n且學術雖不即真，而人心固好求實，彼孜孜為學術者，奚嘗一旦忘庶幾得悟真理耶？遺其所偏，擴其明見，揭其所封，存其成法，亦未始非闢裂迷網之前矛也。\n\n是故學術明居先，宗教明次之，而以人倫明殿焉。蓋兩利為利，人所共知，況有情同體，本無自他者哉！\n\n（見海刊一卷十期）"
++    },
++    {
++      "name": "actual-fixture-xinjing_shiyi.md",
++      "body": "---\nauthor: 民國 釋太虛著\nbian: 第五編·法性空慧學\nbook: 般若波羅密多心經釋義\nbook_idx: 7\nbook_total: 7\nchapter: 全文\nparent_slug: cbeta-太虛大師全書-第五編·法性空慧學\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 般若波羅密多心經釋義\ntype: cbeta\nwork: 般若波羅密多心經釋義\n---\n\n## 般若波羅密多心經釋義\n——二十八年三月在昆明西山雲棲寺講——\n\n科分懸論\n\n一　提教綱\n\n甲　不判時教\n\n乙　教理略判\n\n1.　內證離言法\n\n2.　應機巧說教\n\n（一）　五乘共教\n\n（二）　三乘共教\n\n（三）　大乘不共教\n\n丙　教史略判\n\n1.　佛世的一味法\n\n2.　佛後的分代法\n\n（一）　印度的三個時代\n\n（二）　傳存的三種文系\n\n二　解經題\n\n甲　分解\n\n1　般若\n\n2　波羅密多\n\n3　心\n\n4　經\n\n乙　合解\n\n三　明譯傳\n\n釋經\n\n甲一　直示聖證\n\n甲二　巧施至教\n\n乙一　顯說明義\n\n丙一　歷諸法明照見皆空\n\n丁一　就五蘊明即空\n\n丁二　正明諸法空相\n\n丁三　推空相窮諸法\n\n丙二　依般若明度一切苦\n\n丁一　依般若成菩薩行\n\n丁二　依般若成如來果\n\n丁三　依般若成利濟用\n\n乙二　密咒發願\n\n懸論\n\n### 懸　論\n\n一　提教綱\n\n### 一　提教綱\n\n甲　不判時教\n\n#### 甲　不判時教\n\n關於提教綱，古來各宗祖師有種種說法，如天台五重玄義，賢首十門玄談，以及\n\n其餘的各家，大概是將釋迦如來一代所說的教法，分為幾個時期，幾種教法，名為一\n\n代時教。天台五時者：第一、說華嚴時，第二、說阿含時，第三、說方等時，第四、\n\n說般若時，第五、說法華涅槃時。八教者：一、藏教，二、通教，三、別教，四、圓\n\n教，名化法四教；五、頓教，六、漸教，七、祕密教，八、不定教，名化儀四教。藏\n\n教專攝小乘，通教通大小乘，別教是歷別大乘，圓教是圓融大乘。此天台所分時教也\n\n。賢首則分為三時五教：一、先照時說華嚴經，二、轉照時說阿含方等般若，三、還\n\n照時說法華等。轉照時分初中後三，合之亦同天台的五時。五教者：小、始、終、頓\n\n、圓。小教即攝小乘法；始教明一切法空，為大乘之始；終教進明不空為非有非空教\n\n；頓教不立次第，所謂一超直入如來地，賢首判教時禪宗已在中國興起，因特立此教\n\n以收攝之；圓教則以華嚴等經為最上圓滿之教。此中國各祖師所判，還有其他種種之\n\n不同，不必一一細數。而在印度傳來的判教法，則有兩種的三時三教，玄奘法師傳承\n\n那爛陀寺戒賢論師所分者：一、有教，即說阿含等，謂有五蘊、十二處、十八界等法\n\n。二、空教，即般若說一切法皆空等。三、非有非空的中道教，即深密、華嚴等。唐\n\n時又有一位印度的日照三藏傳來清辨，智光論師所分者：一、有時教，如阿含等說有\n\n諸法。二、境空心有時教，如解深密經等說三界唯心，唯有心識。三、心境皆空時教\n\n，即以般若等明一切皆空，為究竟了義。此皆古時中印兩土祖師所分判，在古來祖師\n\n皆為適應當時的思想環境，故作如是分判。在現今研究佛經，已無此種分判的必需，\n\n故但將教理教史來略說其概要。\n\n乙　教理略判\n\n#### 乙　教理略判\n\n１　內證離言法\n\n#### １　內證離言法\n\n此言內證者，乃諸佛自內所證，不限於釋迦牟尼佛，法華經所謂唯佛與佛乃能究\n\n盡諸法實相也。此非語言文字之所能表，亦非心思之所能到，乃諸佛內證智境，聲聞\n\n、緣覺、菩薩只能證知少分，五趣異生無少分知。然諸佛言教皆依此自內證法而流出\n\n，故證法為教法之本。\n\n２　應機巧說教\n\n#### ２　應機巧說教\n\n（一）　五乘共教\n\n#### （一）　五乘共教\n\n佛既於一切諸法自覺圓滿，為滿覺他本願故，應眾生機善巧開演，乃有諸乘教法\n\n。此諸乘教法既契於佛內證之理，又必須契合眾生之機宜，乃能使乘之各成其益。五\n\n乘共教者，即人乘，天乘，聲聞乘，辟支佛乘，菩薩乘所共同之教理。人天乘固須依\n\n之修人天行得人天果，即出世三乘亦皆以之為基，一切聖凡依正染淨因果皆依之而立\n\n。此法是何？即從因緣所生法明一切法正因果之理是也。此為全體佛法之大宗，其中\n\n最要者，為異熟因果的業報法，合乎此者即是佛法，違此者即非佛法，故為五乘所共\n\n之正法的法印。如明業報則有向上心，不願墮落，欲保存其來世人身，乃修行人乘十\n\n善。再進而上求生天，亦由信因果以持戒修善習禪定而得；即出世三乘所解所行，亦\n\n不能越出因果範圍。此理在世間宗教、科學都有所說，但自佛法看來，彼等所說或偏\n\n或謬，都不圓滿，唯佛法中乃澈底掃除一切邪謬，而建立一切世出世間染淨因果，為\n\n由人乃至菩薩佛之五乘共通教法。\n\n（二）　三乘共教\n\n#### （二）　三乘共教\n\n觀察三界六道眾生，生而又死，死而又生，死彼生此，流轉不斷，而說世間流轉\n\n的十二因緣法；知一切有漏法皆是苦，而明超出三界流轉的無漏法，即所謂了生死的\n\n法。漏者：如房屋或瓶壺等類有了破漏即非完好，喻身心中有了煩惱，終要漏落生死\n\n之苦。凡未能完全了知三界五趣因果皆為有漏，流轉不息，均於三苦、八苦等不能盡\n\n免，不易發出離人天心。若能確知有漏皆苦，即不肯修人天乘，最低限度也要求了脫\n\n生死。進觀有生必有異滅的有為法皆是無常，不能永久安住，生而變異，變壞而滅，\n\n最後有仍歸於無；更對世間起厭離心，不生貪著而求超出。三觀諸法無我，若色法，\n\n若心法，有為法，無為法，若內若外一切諸法，皆無可執取為我者。既知畢竟無我，\n\n即無由起貪、瞋、癡、慢，造招三界有漏業報，故了我空即證生空，不再造生死業，\n\n亦不感生死果，由此而得解脫證涅槃之寂常安靜，是為涅槃寂靜。聲聞、辟支佛、菩\n\n薩皆由此而得解脫生死，平常稱此為小乘法，其實是三乘的共法。\n\n（三）　大乘不共法\n\n#### （三）　大乘不共法\n\n此明超出前二種之大乘特有的勝法，依佛智所證的平等法性，諸法實相，非空非\n\n不空，非有非不有，無相無不相，一法遍於一切法，一切法不離一法，十世古今不隔\n\n當念；由此遍觀一切有情亦悉同體無二。因一切眾生皆在苦中而起救拔之心，即是大\n\n悲心。要普救眾生苦，必須成無上覺，即是發無上菩提心。此為人乘、天乘、聲聞乘\n\n、緣覺乘所未能者，故云不共。而在本乘之中又可分為三種。（甲）特勝大乘，依古人\n\n判教而說，則雖成佛亦有高下，譬如圓教的佛，頓教的佛等，今則以大乘發菩提心得\n\n無上果是同，故成佛後平等無二，但就佛應機上說亦可有其差別所重者。特勝大乘者\n\n，就因緣所生法中特明究竟皆空之最勝義，遍破外小及世俗相，即諸部明甚深空義之\n\n般若經是。（乙）普為大乘，前專顯大乘法體殊勝，此則明自他兼度之大用，大乘無\n\n所不含容，無所不包涵，為利他故不捨一法，如欲利聲聞、緣覺即須通達聲聞，緣覺\n\n乘法，欲利人天等亦復如是，各有當機勝用。此如為深密、華嚴、法華、涅槃等所說\n\n者是；自住大乘而亦令一切人、天、聲聞、緣覺各得其益，非專為一類人一時機而說\n\n。（丙）適應大乘，一色一香皆第一義，以一切法緣起無礙故，一法即攝盡一切法，\n\n隨拈一法為中心，都可遍通一切法，以一為主，諸餘是伴，一一法與一一眾生皆是如\n\n此。譬如色法，一花一葉之色皆是遍法界諸法為緣所起，諸法無超越此一法之外者，\n\n故諸佛說法無一定規範，所謂大用現前，不存軌則，藥無貴賤，愈病則良。可隨稱一\n\n法為最勝，謂非餘法之所能及，使聞者速能起決定信心而得受用，並非世間人我彼此\n\n抑揚讚毀者可比。如專弘淨土者，即尊淨土為第一而斥除一切，專弘禪宗者即以禪宗\n\n為最勝而呵棄一切，乃至持一咒修一行者各各皆如是說。蓋因法法皆妙，實均具有無\n\n上最勝功德，但適所應宜而遇緣即宗，故此亦可稱為圓融大乘。中國之台、賢圓教，\n\n即從法華、華嚴中大發揮斯義。\n\n以上可略明教理之分齊，而本經之屬於特勝大乘亦可知矣。\n\n丙　教史略判\n\n#### 丙　教史略判\n\n１　佛世的一味法\n\n#### １　佛世的一味法\n\n佛在世時只有一味佛法，無論說大說小，說空說有，頓說漸說，顯說密說，皆為\n\n佛應機巧說教。無次第，無勝劣，聞者皆信佛為法本，總為佛說，不起分別，故稱佛\n\n當時所說之法為一味佛法。但到了佛滅以後，就有了分別。\n\n２　佛後的分代法\n\n#### ２　佛後的分代法\n\n（一）印度的三個時代\n\n#### （一）印度的三個時代\n\n或謂正法五百年，或謂正法一千年，像法一千年，末法一萬年。或以五百年為一\n\n階段，稱為初五百年，第二五百年，第三五百年等。就歷史上看，佛滅後流傳在印度\n\n的佛法可分為三個時期：一、小行大隱時代，佛滅後初五百年，佛法已由印度傳及錫\n\n蘭諸地，唯盛行者即前所云三乘共教之小乘法。因當時佛去世未久，而住持佛法者為\n\n迦葉、阿難等聲聞弟子，典型尚在，統攝徒眾而教授教誡，故盛行三乘共教，而大乘\n\n不共教法則隱沒而不彰。二、大盛小附時代，次五百年有馬鳴、龍樹、提婆出世，提\n\n倡大乘佛法，得無著、世親等繼之，大乘盛行，而小乘亦附之而行。佛教之傳入中國\n\n正在此時。三、密主顯從時代，第三五百年中到一千二三百年時，有龍智菩薩開南天\n\n鐵塔，從金剛薩埵受祕密經咒儀軌，盛揚密教，此時在印度的小乘經論漸歸隱沒，而\n\n大乘經教亦隨從密教而行，專以密咒為主，並於此時開始傳入西藏。\n\n（二）傳存的三種文系\n\n#### （二）傳存的三種文系\n\n上就印度所流傳佛法分為三個時代，但第三五百年後印度的佛教已由衰而滅。再\n\n就傳承至現今的來看，則可分為三大系統：一、錫、緬、暹、巴利文系，佛法從阿育\n\n王時傳入錫蘭島、緬甸等處，即為保存原語的巴利文佛教，此正為佛滅後初五百年以\n\n內印度盛行的三乘共教，今南方諸國若暹羅等猶存其遺制。二、華、鮮、日、中國文\n\n系，到了第二五百年時，正是中國由漢到唐的時代，佛法由印度盛傳來震旦，經五六\n\n百年之時間翻譯成為中國文，漸漸傳及於朝鮮、日本等處，此正是印度大乘盛行而小\n\n乘附行之時，故中國所傳存至今者亦偏重於大乘佛法。三、藏、蒙、尼、西藏文系，\n\n到第三五百年時始傳入西藏，翻譯成為西藏文系，此時正當印度密教盛行而顯教附從\n\n時期，故西藏佛教以密宗著稱，而蒙古、尼泊爾等地亦承其化，此皆時代環境影響之\n\n所成也。印度雖為產生佛教之祖國，今已不能具體保存，現今世界流行之佛教，厥唯\n\n以上之三大系，其中翻譯最完備，承前啟後而具足大小乘、顯密教者，尤在中國文系\n\n。觀察現在世界所流傳之三系佛法，即可回溯到印度三個時代的佛教，再從而上推即\n\n可匯歸到佛住世時之一味佛法。今所講之般若心經，依教史看，即可知是印度第二時\n\n期所盛行，而傳存於中國文系之大乘經。此經為巴利文系所無，而西藏文系雖有此經\n\n，不甚重之。\n\n上從講教理、教史之大概，以闡明此經在佛教法中所屬之分位，即為提教綱之要\n\n旨。\n\n二　解經題\n\n### 二　解經題\n\n甲　分解\n\n#### 甲　分解\n\n１　般若\n\n#### １　般若\n\n般若波羅密多，是梵語的譯音。般若義譯智慧，或單譯為慧，但與中國通常所謂\n\n智慧者不同，是專指從佛的出世法所生的智慧，在中國無相當的名詞來代替，故沿用\n\n原音，然在說明其意義時仍作智慧解。當知此種智慧不是世智辯聰的智慧，乃出世清\n\n淨智慧。諸經論中分為文字般若，觀照般若，實相般若者：依文字言說所集成的經論\n\n教典，或聽講或讀誦所生的智慧，對於文義通達無礙，得其勝解者名文字般若。進而\n\n深思諦察，離文字語言之相，於一切心行中觀照實相之理的智慧名觀照般若。再由此\n\n觀照深造修習，一切語默動靜皆不離般若，由淺入深，由細觀而捨粗觀，所謂以楔出\n\n楔，達到一切法分別相盡，現前一念心光，契同遍一切無彼此內外是非人我之真如法\n\n性，名實相般若，亦名根本般若。\n\n諸經論上又有將此般若智慧分為三種者：一、加行智，二、根本智，三、後得智\n\n。在煖、頂、忍、世第一四加行位中所修之智慧名加行智。此四加行皆是與定心相應\n\n的加倍的精進修行，由四尋思觀引發四如實智，進而親證諸法空性，名根本智。由根\n\n本智得達諸行如幻，修一切行，名後得智。此三智皆名無分別，故同屬於般若。其中\n\n最主要者，乃在根本無分別智，加行智時本尚有分別，以能引發無分別智故，從果得\n\n名，亦稱無分別智。後得智正分別世出世間染淨因果，以從澈底通達一切都無分別的\n\n根本智而起，從因得名，亦名無分別智。\n\n諸經論中復說有三種智：一、一切智，二、道種智，三、一切種智。一切智與上\n\n根本智相等，能遍知一切法之真如相故。道種智分別世、出世間、五乘、三乘道之染\n\n淨因果差別相，亦等於上之後得智。一切種智亦名一切相智，亦名一切智智，專指佛\n\n果之大圓滿覺智，念念中通達法性法相，化道斷惑之一切種也。地上菩薩前念起一切\n\n智，後念起道種智，未能一念中起，故尚未得此智，或云到八地以上能空有雙觀，乍\n\n得一切種智，然一念中通達性相事理照了無餘，唯佛而已。佛名一切智智人，佛智即\n\n一切種智，故無一念中不明明了了知世出世間一切染淨因果。而道種智、一切種智皆\n\n以一切智為根本，一切智即般若自體。\n\n依上來的分別，合古今所說，可攝為五重：一、勝解般若，與文字般若相當，對\n\n於大乘經論所明勝義空性，勝解無疑，方名般若。二、加行般若，依勝解之理，深思\n\n諦觀當下心境，以引發甚深般若，名加行般若，即上觀照般若加行智。三、正體般若\n\n，前二種皆為引發般若之方便，由勝解加行所引生之真般若，名正體般若，此與實相\n\n般若、根本智、一切智相等。四、方便般若，此與後得智、道種智相當，能分別了知\n\n一切因果，起上求下化之行。五、究竟般若，此與一切種智相當，即阿耨多羅三藐三\n\n菩提之無上般若也。\n\n扼要言之，何者般若？即通達一切法自性本空而無所得無分別之智慧，名曰般若\n\n。如勝解般若，即於經論文句中所詮表的諸法自性空義善能決了，名為勝解般若。乃\n\n至究竟般若，亦復如是。\n\n２　波羅密多\n\n#### ２　波羅密多\n\n波羅密多譯云到彼岸，是譬喻之詞，譬喻過渡，到了彼岸則過渡一事就算達到了\n\n究竟目的。在譯音上古譯音促，但云波羅密，後來翻譯者加一多字，多字乃梵語中的\n\n尾音，別無意義，後人謬解，或稱多心經，或將多字譯為定，此皆不知譯音賒促關係\n\n而訛誤也。到彼岸之義，以生死為此岸，涅槃為彼岸，煩惱是中流之河，能度之到彼\n\n岸之工具即是菩提，菩提支分即戒定慧或布施持戒等六度行，由之以斷煩惱，了生死\n\n、入涅槃，即是到彼岸。涅槃的通義，譯為寂滅，將一切煩惱業苦，用菩提來擇滅而\n\n得到究竟安甯之地。此通常的解釋，通於三乘。\n\n然在大乘法中特重菩提，涅槃菩提通名佛的二轉依果。涅槃又云圓寂，寂是寂滅\n\n，圓是已圓滿成就福足慧足的無上菩提。欲達到於無上涅槃、菩提，須修布施、般若\n\n等行，名到彼岸。依此分析的說明，應以圓成佛地五法名到彼岸，如佛地經所明：一\n\n，清淨法界，二、大圓鏡智，三、平等性智，四、妙觀察智，五、成所作智。由大圓\n\n鏡智到成所作智名為四智菩提，菩薩只能分證妙觀察，平等性二智，到佛果方圓滿四\n\n智。\n\n此又應以佛果三德名到彼岸。涅槃即是斷德，能斷除一切煩惱生死故；菩提即是\n\n智德，阿耨多羅三藐三菩提即是究竟智慧故；由此而成為普利眾生之恩德，既證佛果\n\n自然能利益恩沾群品故。此三德正為發菩提心修無上行者所求達到之彼岸。\n\n由上總括而說，即是轉依所得法身。轉依義甚深細，如成唯識論中等之所詳解，\n\n菩提涅槃總名二轉依果。此法身非平常所指法、報、化三身中之法身，彼三身中的法\n\n身是對報、化而言，今就廣義乃對二乘解脫身而言法身。例如戒蘊，定蘊，慧蘊，解\n\n脫蘊，解脫知見蘊之五分總聚，在二乘名解脫身，身者總聚之義，如人身以四大、五\n\n蘊總聚為體，佛的法身就是一切自利利他功德善法圓滿的總聚，故名法身。\n\n３　心\n\n#### ３　心\n\n（一）就法說\n\n#### （一）就法說\n\n狹義的心：簡別色法而說，五根及六塵內外一切境名為色，能緣慮之見聞覺知思\n\n量觀察者名為心，此仍包括一切心心所法。若再嚴格的說，正名為心者即八識心王，\n\n心所法是心王所有之法，不名為心。若更進一步的分析，將八識分為心、意、識、了\n\n，前五識但名為了，第六識正名識，第七末那名意，第八阿賴耶方纔名為心。能集聚\n\n一切種子，發起一切現行故，纔是一切萬法之根本的心。\n\n廣義的心：依世間所說及聖教所說，可作四種分別：一、肉團心，即指人身中五\n\n臟六腑之心臟。中國古來象形所造心字，篆書即象動物的心臟形狀。心為人身之總樞\n\n紐，在生物學之生理上考之，心掌全身血液流動，心臟健全，身則生活，能發見聞覺\n\n知之用。心臟若病，周身皆病，心臟若壞，此身即死。瑜伽論等謂人受胎時先生心臟\n\n，乃次第生百骸五官，死時心在最後冷，即停止活動。此肉團心色法所成，由此色法\n\n亦名心矣。二、緣慮心，與上以能緣慮名心者同。三、集起心，與上唯第八識名心者\n\n同。四、真實心，即以一切無分別無所得之真如性為心，名為常住真心，此心本離一\n\n切煩惱染污，乃自性清淨究竟真實心。如此則一切有為色心法所顯無為法性，總名為\n\n心；如楞嚴經所謂五蘊、十二處、十八界、七大，皆如來藏妙真如性之常住真心是。\n\n（二）就喻說\n\n#### （二）就喻說\n\n一、中心，如一國土有一國土的中心，一城市有一城市的中心，在方位上有中心\n\n點，乃至一草一木及任何一事一物皆有其中心點，此由前面肉團心的意思引伸而出，\n\n稱之為心。二、心要，即事理之綱領宗要，如學理相傳上稱為心印，能得此心要則一\n\n切皆可貫通，如網舉綱，全網皆張，如衣提領，全衣皆直，各種學說皆有此心要義。\n\n４　經\n\n#### ４　經\n\n經：梵語素呾纜，或云修多羅，修垢路，譯云契經，即契理契機之教法。經有線\n\n的意思，是貫攝佛所說法使不散失義。素呾纜的最狹義，即指十二分教中的第一分。\n\n若就諸藏分別，或將大藏教典分為二分，如西藏分甘珠——經藏、丹珠——論藏、二\n\n藏，將佛所說的經律收在一類名為甘珠，菩薩羅漢祖師所造的論疏等收在一類名為丹\n\n珠；此對論藏總以經律名經。或除密咒儀軌另名咒藏，專將顯說經律稱之為經。再就\n\n中國最普通的傳說，分經律論三藏，通達經律論者稱為三藏法師，如此則簡別律論而\n\n稱經。或分經律論雜四藏，或更加密咒為五藏。所謂經者，乃對餘三藏或四藏稱之。\n\n又：佛所說者名經，佛自說者，或因有人請問而說，或觀機緣成熟無問自說，此\n\n正是佛所說之經。又佛在世時常有諸大菩薩及聲聞弟子乃至諸天神人鬼等所說，經佛\n\n印可者即等於佛說，亦得名經。因此後世弟子或外道等所造，妄自稱經，大大不可。\n\n就廣義的經說，通顯教密咒皆名經，明顯的教義固是經，即含義祕密之咒字亦得\n\n名經，皆佛利生方便法故。又通於能詮所詮皆名經，所詮五乘之教理行果，乃至一切\n\n法無分別無所得真如性皆得名經，故世有所謂無字真經者，即是理經。而世間人生正\n\n行，經常大法等，亦皆得稱為經，宇宙諸法法爾如是之如實相，及不違謬於實相諸學\n\n說，無不是經。所以華嚴云：剖一微塵，出大千經卷；則經義之廣可知矣。\n\n乙　合解\n\n#### 乙　合解\n\n１　般若波羅密多\n\n#### １　般若波羅密多\n\n先將般若與波羅密多合解。一、般若之波羅密多，此對布施之波羅密多，持戒之\n\n波羅密多乃至禪定之波羅密多而言，以明此波羅密多是由般若而得，依能達到的般若\n\n名所達到的波羅密多。此般若即前勝解、加行、正體、方便般若，而所達到之波羅密\n\n多彼岸即前之涅槃，如此則般若不是波羅密多，波羅密多不是般若，般若是能到彼岸\n\n之法，波羅密多是所到之彼岸。然如此解釋雖可通，但未能盡其深玅之義。二、般若\n\n即波羅密多，此般若即前實相正體般若，實相般若境智一如，般若即是涅槃，究竟般\n\n若即是一切種智，即是所達到的無上涅槃菩提彼岸，如是境智行果不二故，般若即是\n\n波羅密多。\n\n２　般若波羅密多心\n\n#### ２　般若波羅密多心\n\n再加上心字來合解，亦分兩層義：一、般若波羅密多之心，前解心字有法說喻說\n\n，此心字即喻說中的中心及心要之義，非餘緣慮、肉團等心也。佛所說一切之般若波\n\n羅密多經，皆以此經為其中心之心要，乃至諸佛所說一切法，諸菩薩所修證一切行果\n\n，皆以此經為總攝心要之中心，如咒中最要者稱為心咒，或心中心咒，今此經是經中\n\n之心經，故此心字即是般若波羅密多之心。二、般若波羅密多即心，佛所有一切無漏\n\n功德，乃至三乘所修所證之行果，皆從般若波羅密多生出，故般若稱為佛母。如是則\n\n般若波羅密多即是一切三乘聖者功德法之心，故般若波羅密多即是心。復次、此般若\n\n波羅密多，不但是聖果無漏法之心，亦即一切有為無為、有漏無漏法之中心。何以故\n\n？遍一切法皆須有般若波羅密多之究竟智慧才能照了，離此般若波羅密多即不能普遍\n\n通達故，所以一切法皆為般若波羅密多所攝，般若波羅密多即一切法的中心，故云般\n\n若波羅密多即心。又前法說中廣義的真實心，即實相般若、正體般若、一切智、根本\n\n智及一切種智的究竟般若，此即常住真心。般若波羅密多即是心故，故云般若波羅密\n\n多心。\n\n３　般若波羅密多心經\n\n#### ３　般若波羅密多心經\n\n最後來將般若、波羅密多、心、經四個名詞的全題合解，亦分兩重說明：一、般\n\n若波羅密多心之經，經即指當時觀自在菩薩在佛前所說之言說，及佛後結集成為此數\n\n百字的文字言句之經，此經是能詮之文，初說時以音聲為體，以名句言說為用；既集\n\n成文字以後，即以色法為體，屈曲點畫形象為用，如此以能詮表義理者名經，而所詮\n\n表之義即是般若波羅密多心。依所詮義名能詮經，故名般若波羅密多心之經。二、般\n\n若波羅密多心即經，經字的廣義通能詮所詮。所詮的五蘊、十二處、十八界等法，乃\n\n至此一切法之唯識義，皆空義，名為理經，則攝境從心，經即以心法為體；若攝相歸\n\n性，經即以真如法性為體；如此則般若波羅密多心即是經，此經亦即以般若波羅密多\n\n心為體，故云般若波羅密多心即經。又所詮之行，或以人天善行，或以聲聞、緣覺解\n\n脫行，或以大乘菩提行為經，三乘的行法皆以般若波羅密多為中心，故般若波羅密多\n\n心即經。又所詮之果，諸聖果功德乃至如來轉依法身，皆以般若波羅密多為中心，故\n\n般若波羅密多心即經。\n\n三　明譯傳\n\n### 三　明譯傳\n\n甲　本經諸譯\n\n#### 甲　本經諸譯\n\n今考之正續藏，此經傳譯，在中國古時已有六種譯本，近有人因\n\n此經出玄奘法師聽梵僧口授，遂疑恐無梵本根據，由奘師自編者，因略說其翻譯歷史\n\n以斷疑誤。此經最早的譯本，即南北朝之初，姚秦三藏法師鳩摩羅什初譯來中國，經\n\n題名般若波羅密多大明咒經。題中無心字，而大明咒即是心的意思：明即咒義，咒的\n\n梵音是陀羅尼，此云總持，即總攝持一切心要之中心也，故大明咒經即等於心經。其\n\n次為唐三藏玄奘法師所譯，名般若波羅密多心經，即今所用本。第三、為唐時摩竭提\n\n國沙門法月所譯，名普遍智藏般若波羅密多心經；普遍智藏四字，或為適應當時的思\n\n想所加之尊稱。第四、為唐時大興善寺智慧輪法師所譯，亦名般若波羅密多心經，與\n\n奘師所譯經題同。第五、為唐末時罽賓國三藏般若、利言等同譯，此乃團體合譯，因\n\n當時有數十人或數百人組織成之譯場，多人合譯一經，見貞元聖教錄載所譯之部數頗\n\n多，此不過是其中之一；經題亦同奘譯，名般若波羅密多心經。第六、為宋初西天三\n\n藏施護所譯，名佛說佛母般若波羅密多經，佛說二字本是諸經通用，此中所特加者為\n\n佛母二字。考施護所譯者多為關於密部之經咒，因此時已在印度密教盛行之後，大乘\n\n顯教附之而行——見前教史略判，因此、心經亦成為密宗附從之經。密宗有佛部母部\n\n，以般若為佛母部，故此譯加佛母二字，亦當時思想環境之必然性也。相傳還有法成\n\n，不空，慈賢，三種譯本，今考之正續藏均未見，近代又有人將西藏文的心經譯成漢\n\n文，內容與施護所譯大致相同，亦可見此經傳到西藏必在唐末宋初之時，與施護所據\n\n之梵本時代相同。\n\n乙　諸譯異同\n\n#### 乙　諸譯異同\n\n關於各種譯本的內容，其正宗分大約與玄奘法師所譯大同小異，\n\n文句雖有小異，而意義實不相差，諸譯中以奘師譯文最略，其餘都有緣起分及流通分\n\n，前面有如是我聞；一時；佛、或世尊、或薄誐梵；在王舍大城靈鷲山中、或鷲峰山\n\n中，或耆闍山中；與大比丘及大菩薩若干人俱；佛入甚深光明宣說三摩地或入三摩地\n\n名廣大甚深等；觀自在菩薩說完以後，佛從三昧而起，印可觀自在所說。後面有天龍\n\n八部等皆大歡喜，信受奉行。至於文句的不同，如玄奘等譯的照見五蘊皆空，而法月\n\n等譯為照見五蘊自性皆空，施護則譯為當觀五蘊自性皆空。亦奘等所譯的不生、不滅\n\n、不垢、不淨、不增、不減，施護則譯為無所生、無所滅、無垢染、無清淨、無增長\n\n、無損減，不過詳略之異耳。\n\n丙　正明今譯\n\n#### 丙　正明今譯\n\n諸譯中以奘師所譯最為簡要，可稱為心要中之心要，故後世流通\n\n唯在此本，譯題中稱唐三藏法師玄奘譯，三藏法師如常釋，或加稱奉詔譯者，是奉當\n\n時的皇帝詔命而譯，以尊重其事也。這一位法師在唐朝的歷史上最為偉大，就是婦孺\n\n皆知的唐僧，他的學問道德功業，不但使中國人仰慕無極，即世界學者亦皆共知共仰\n\n。近來英國有一位威爾斯著了一部世界史綱，把中國的玄奘法師講得比孔子還詳備。\n\n至於奘師所譯的心經，簡要沒有頭尾，恰等楞伽諸譯中性賢所譯的四卷楞伽的譯本，\n\n蓋專注重在其中的心要以便誦持也。\n\n丁　今譯弘傳\n\n#### 丁　今譯弘傳\n\n在中國經典中流傳最普遍的莫過於此般若心經，如咒中則以大悲\n\n咒，往生咒，或六字大明咒為最普遍，佛號則以阿彌陀佛為最普遍，經則獨推此經，\n\n顯、密、禪、淨各宗無不頂戴奉持。而且深入民間，一般稍知佛法者皆尊重此經或讀\n\n誦此經。古今注解此經亦最多，除佚失者外，現在尚存者仍有數百種之多。此經不但\n\n令人持誦講解以依之修行，而且因之而得感應者亦復最多，所以凡是祈禱、慶祝、追\n\n薦者多誦此經。即玄奘法師的一生亦得益於此經，他到西域求法的時候，途中每遇災\n\n難，誦此經即能化險為夷，他以親證實驗此經之功德而翻譯弘傳，故能使中國一般人\n\n讀誦信受奉持，經一千五百年之流傳而不衰，誠不可思議也。\n\n諸位今天能夠聽聞讀誦此經，亦福德善根所感，應當生殷重心，作希有難得想，\n\n虔誠奉持，自能獲大受用。\n\n釋經\n\n### 釋　經\n\n甲一　直示聖證\n\n### 甲一　直示聖證\n\n此一科文，直捷顯示聖智所證的境界，即前所說的內證離言法。聖者謂三乘有\n\n學、已破無明證真如，異於凡夫，故稱聖者。如佛之所以名佛者，以得無上菩提故\n\n；聖者之所以名聖者，以行深般若、已破無明、斷煩惱證真如故。在無量聖者之中\n\n，今依久已證得真如的觀自在菩薩來直示聖智所證境界。稱菩薩者，顯是大乘聖者\n\n，大乘聖者是趨向於阿耨多羅三藐三菩提的，故稱菩薩。菩薩即梵語菩提薩埵之簡\n\n稱，菩提是覺義，即上求佛果以自覺；薩埵是有情義，即下化眾生以覺他；以菩提\n\n佛果為上求，薩埵有情為下化，合名之為菩薩。或加摩訶薩者，即大菩薩，此最低\n\n限度亦須入初歡喜地者方為真實菩薩，未入地前則假名耳。菩薩是通稱，觀自在是\n\n別名，在翻譯上有譯為觀世音或光世音者，或譯為觀世音、觀自在者，都是此一位\n\n菩薩的名號。自在是無礙義，以觀照無有障礙故，觀即自在，如人能隨自己意志而\n\n行，不為其他所轉移而能轉移其他無所礙，成就如是功德即名自在，觀能自在，故\n\n能照見五蘊皆空。行深般若波羅密多時，菩薩有時行根本無分別智而無自他上下能\n\n所分別之可得，有時行後得智而修上求下化之行，能所分明，而七地以前菩薩亦有\n\n時妄想計度現行，此簡別非行後得智及妄想分別時，乃行甚深般若波羅密多根本無\n\n分別智之時。此經他譯在緣起分中，敘佛在大眾前入甚深三昧，般若的最深者即根\n\n本智、一切智的實相般若，故云行深般若波羅密多時。在此聖智現行之時，故能照\n\n見五蘊皆空。照見者，明明了了，親證親見，不同推測想像而知，若由比度推測而\n\n知者，或可名智而不能名見。五蘊者，即下面所說的色受想行識，諸有為法總為五\n\n聚，有情身心乃至山河大地，皆不出此五蘊。亦可是照見五蘊諸法皆空，故其他譯\n\n本有譯為照見五蘊等皆空者。或譯為照見五蘊自性皆空者，五蘊等皆緣起假有之法\n\n，無實自性，一切法之所以名某某法者，以其各有自性故，今以聖智照了悉皆自性\n\n本空，既無自性，即無實法可得名為某某，故云五蘊皆空。度一切苦厄，苦者、所\n\n謂三苦、八苦，廣如瑜伽師地論明百一十苦；厄者、如三途、八難等諸厄難；乃至\n\n色無色界禪定中未到涅槃，及菩薩未到成佛以前，均有微細的行苦存在。然此苦厄\n\n，皆由業報所感的身心世界而有，而業報之構成不越五蘊等法，既能照見五蘊皆空\n\n，則自然能度脫一切苦厄。故五蘊等畢竟皆空，則身心世界一切苦厄皆不可得；所\n\n謂皮之不存，毛將焉附。然須如觀自在菩薩修甚深般若照見皆空，方能度脫也。\n\n甲二　巧施至教\n\n### 甲二　巧施至教\n\n乙一　顯說明義\n\n#### 乙一　顯說明義\n\n丙一　歷諸法明照見皆空\n\n#### 丙一　歷諸法明照見皆空\n\n丁一　就五蘊明即空\n\n#### 丁一　就五蘊明即空\n\n舍利子，在佛的聲聞弟子中智慧第一，故觀自在菩薩特為說甚深般若。舍利是\n\n鶖鳥的梵語，目甚明銳，尊者母目似之，故依之立名；尊者從母名舍利子。有譯作\n\n舍利弗者，弗字即子字梵音，今華梵並舉故云舍利弗。或有誤解為佛荼毘後所化出\n\n之舍利子者，或謂指各人身中有一顆舍利子者，於是全盤誤會，以為此經是專講舍\n\n利子的經，謂舍利子的色即是空，空即是色等，此皆不懂梵音之義所致。觀自在菩\n\n薩以舍利子為聞此經當機之主，故先呼其名而為說。初四句有兩層義：色不異空，\n\n空不異色者，既云不異，仍表明色與空是兩法，不過性質相同耳。再進一層說：色\n\n即是空，空即是色；則直為一法而無二矣。此色字包括四大、五根、五塵，乃至一\n\n切法處色，皆名為色，比世間對精神而稱的物質更廣，而般若所照見之空，是遍一\n\n切色蘊法的，並非與色相對之空，或如茶壺有茶空不名空壺，茶盡以後方名壺空，\n\n而色法在處即空之在處，無一微塵許不是空，一切色法當體即空，故云色即是空。\n\n反之、空之在處亦即色之在處，故云空即是色。古時有一禪師問學人云：「你能將\n\n虛空捉住否」？答云：「學人不會捉，請和尚捉看」。禪師即將學人鼻子用力捉住\n\n，學人呼痛，禪師云：「虛空如是捉」。蓋色即空，則捉色身即是捉虛空也。然佛\n\n法不說斷滅相，不是先將一切色法認以為有，然後再去斷除消滅方名為空，以諸法\n\n宛然處即是空故，故空亦諸色宛然，而空即是色。色蘊如是，再推之於受、想、行\n\n、識，亦復如是。受、有苦受、樂受、不苦不樂受等。想、即取種種名字言說相之\n\n想。行、即行動造作，又以行動遷流為其廣義，凡為前色、受、想及後之識蘊所不\n\n攝者，皆名行蘊。識、即眼等八識。此四蘊亦同色蘊之色空不異無二，廣說是：受\n\n不異空，空不異受；受即是空，空即是受。乃至識不異空，空不異識；識即是空，\n\n空即是識。佛法明空，則一空一切空，色心等皆空，方可為般若所照見之空。\n\n丁二　正明諸法空相\n\n#### 丁二　正明諸法空相\n\n此承上色空不二義，進一步明諸法的真空實相。此實相或名實性、法性、名真\n\n如，為一切法中究竟真實不可破壞者。若就表面看，五蘊等諸法是有生滅等的，然\n\n若以智慧觀察即破壞無餘，故唯是空。此真空實相，若就其本來如是性說，並非由\n\n般若照見方生起的，故不生；即此空性永久常住如是，亦非般若不照見時便無，故\n\n不滅。若就其德相說，在異生位雖被無明妄想計度諸法所隱沒不顯，如有所垢污，\n\n但其實不但不曾為垢污，即垢污的本身亦仍自性是空。垢淨對待，對垢稱淨，既本\n\n無所垢污，亦無清淨，故云不垢不淨。若就其分量說，在聖不增，在凡不減，諸佛\n\n出世若不出世，法爾如是。諸佛所照見者，亦照見其本來如是之空相而無所增益；\n\n凡夫所迷者，亦為無明煩惱障蔽此本來如是之真空實相而無所損減，故云不增不減。\n\n丁三　推空相窮諸法\n\n#### 丁三　推空相窮諸法\n\n此一大段推諸法明空相以足前意。前文已說明諸法的空相是常遍的、是絕對的\n\n，無與空相對之色，故承上文云：是故空中無色，無受想行識。不但無五蘊，即眼\n\n耳鼻舌身意六根，色聲香味觸法六塵之十二處亦無。此中眼根者，皮肉之眼是眼根\n\n的依處，名扶塵根，不是真眼根，其中還有微細的淨色根方名眼根。耳朵名為耳根\n\n，鼻孔名為鼻根，舌頭名為舌根，身體名為身根，亦復如此。此均屬於色法，意根\n\n則非色法，通常以前一剎那之識名意，大乘法相別立第七末那名意。六塵即六根所\n\n對之境，眼根對色塵，耳根對聲塵，鼻嗅香，舌嘗味，身覺觸，意根則對去來生滅\n\n一切法塵，此名十二處。由般若照見者只有空，更無可指為眼等六根，色等六塵者\n\n，故亦無可名之為眼等乃至色等也。無眼界乃至無意識界者：此中以乃至二字包括\n\n十八界，十八界者：即眼界、耳界、鼻界、舌界、身界、意界，色界、聲界、香界\n\n、味界、觸界、法界，眼識界、耳識界、鼻識界、舌識界、身識界、意識界；今舉\n\n前一界後一界略去中間十六界。界者，界別之義，因十八界之法各有其界限而不混\n\n，如色但為眼識所了，聲但為耳識所了，其現行各有不同之種子，此乃三乘通義所\n\n說：今大乘般若智照見皆空，則無可得。無無明，亦無無明盡；乃至無老死，亦無\n\n老死盡者：此明無十二緣起的流轉還滅。十二緣起者：即無明緣行，行緣識，識緣\n\n名色，名色緣六入，六入緣觸，觸緣受，受緣愛，愛緣取，取緣有，有緣生，生緣\n\n老死憂悲苦惱，此是煩惱業生死流轉法。無明盡乃至老死盡，此明還滅法，還滅即\n\n了脫生死，在般若照見皆空中，本無無明行識乃至無老死的流轉，所以亦無無明盡\n\n乃至老死盡的還滅。無苦、集、滅、道者：此明四諦亦無。苦諦即生死之苦；集諦\n\n即煩惱業，能集起苦故，應名苦集諦；滅諦即涅槃，亦名苦滅諦，證涅槃則苦皆滅\n\n盡故；道諦即菩提，是所修滅苦之行。集苦是世間因果，道滅是出世間因果。然在\n\n行深般若波羅密多之時的照見中，則唯是空，無世間苦相可得，亦無世間滅苦相可\n\n得。無智亦無得者：智、是三乘菩提，得、即三乘涅槃，與解脫、解脫知見同，由\n\n解脫知見得解脫。得是成就，同於二十四不相應行法中的得。在三乘教中如是說，\n\n但在第一義空中，從本以來不生不滅，無得無失，故無新生之智相，亦無新得之可\n\n得相。以無所得故者：此句總結。前面一大段以出因，此一句證明出空無的所以然\n\n之故。何以空中無色？以無所得故。乃至何以空中無智亦無得？以無所得故。\n\n丙二　依般若明度一切苦\n\n#### 丙二　依般若明度一切苦\n\n丁一　依般若成菩薩行\n\n#### 丁一　依般若成菩薩行\n\n菩提薩埵即大乘菩薩，義如前釋。何以能成為菩薩呢？依般若波羅密多故。罣\n\n、如羅網罩著不得自由，礙、即內外上下前後左右有所障礙，若能依般若波羅密多\n\n照見五蘊等法皆空，即無罣礙。凡夫所以處處生牽罣者，以執內身外境諸法為實有\n\n故，有罣礙就有得失心，有得失心就有恐怖。初地菩薩初離五種怖畏，佛法中所謂\n\n大無畏的精神者，不是世間肆無忌憚的惡行及血氣之勇，乃照見一切法空，無人我\n\n是非等相對待，三界皆空，人生如夢，故能成就無怖畏之功德。因此亦能遠離顛倒\n\n夢想，顛倒者，如頭本在上腳本在下，而使之頭下腳上，以黑為白，以是為非，以\n\n無為有，皆謂之顛倒；諸法本空而執之為有，或於空執為斷滅相，不能以幻化還幻\n\n化亦是顛倒。能遠離顛倒則常得根本無分別慧現前，一切夢想習氣亦漸離淨。夢想\n\n或譯妄想，乃無始以來的顛倒習氣所現，不知所從來，不知其何往，但現起時宛然\n\n而有，在夢想中安立種種言說境像喜怒哀樂等事，覺了之後一無所有。吾人醒時的\n\n妄想境因不實故恰等於夢，所以說人生就是一場大夢。依般若波羅密多以修行，能\n\n令遠離一切罣礙、恐怖、顛倒、夢想，成就菩薩功德。上上昇進，至圓滿即成佛。\n\n丁二　依般若成如來果\n\n#### 丁二　依般若成如來果\n\n究竟涅槃一句，或屬上文作遠離顛倒夢想究竟，即得涅槃解，義亦可通。但就\n\n文義應屬下文。究竟涅槃三世諸佛，明此諸佛是證得究竟涅槃的，不是菩薩化現，\n\n也不是世間的尊稱。佛即梵語佛陀，通常解為覺義，其實覺是菩提，佛是覺者，者\n\n字表已成就阿耨多羅三藐三菩提的有情，如世間有學問的人名為學者。佛與菩薩各\n\n有分齊，能發菩提心成就上求下化之功德者，名為菩薩；能圓滿成就阿耨多羅三藐\n\n三菩提者，方名為佛。阿耨多羅三藐三菩提，此云無上正等正覺。阿字譯無，如阿\n\n彌陀譯無量壽，耨多羅譯上，三藐譯正等，三菩提譯正覺；三藐簡譯為遍，即無上\n\n遍正覺。凡夫迷而不覺；外道自稱為覺而覺非正；聲聞、辟支佛只得正覺一分而不\n\n遍；菩薩能照達二空普度眾生，可名遍正覺，但非無上，還有勝進的功用故；惟究\n\n竟佛果乃可稱為無上遍正覺。然如何成就無上遍正覺，亦依般若波羅密多故而成就。\n\n丁三　依般若成利濟用\n\n#### 丁三　依般若成利濟用\n\n咒的廣義即陀羅尼，此云總持，能總持一切義理，一切功德勝用故。有法陀羅\n\n尼，義陀羅尼，忍陀羅尼，咒陀羅尼；而狹義的咒即祈禱詞。大神咒者，謂大神力\n\n能轉易一切，此般若波羅密多的大智慧行，能令轉生死得涅槃，轉煩惱成菩提，故\n\n云是大大神咒；此通三乘。明是智慧光明，菩薩、獨覺皆能以自心的智慧照破無明\n\n，而聲聞則須聞佛的教法乃能斷煩惱而得出世，般若明智能破無明，故云是大明咒\n\n；此通獨覺、大乘。是無上咒者，唯指大乘的無上涅槃，依般若不但能得三乘涅槃\n\n，而正能得無上涅槃故。是無等等咒者，無等等即阿耨多羅三藐三菩提。無上涅槃\n\n，諸法無與倫比，稱為無等，唯阿耨多羅三藐三菩提能與之等，名無等等；般若之\n\n究竟即大菩提，故云是無等等咒。因般若是上四重功用總持咒，故能除煩惱生死，\n\n乃至能圓滿自利利他福足慧足等一切苦厄，真實不虛。\n\n乙二　密咒發願\n\n#### 乙二　密咒發願\n\n密咒之義，若廣說則一字一句含義無窮無盡，所謂諸法實相甚深祕密，惟佛與\n\n佛乃能究竟了知，但能虔誠誦持，即得感應。然從粗顯義上，亦可略為解釋。所謂\n\n咒者，即將意願寄託於言句上，凝注心力發為聲音以為禱祝，故可咒好亦可咒壞，\n\n如對冤家以惡心咒詛令其生病或死等，亦名為咒，至禱祝吉祥往生等，名為咒願。\n\n今此咒即前四種陀羅尼中的咒陀羅尼，亦是總括全經義理功德之總持法。\n\n揭諦、即度一切苦厄之度，重說揭諦者，即自度亦兼他度也。何以能度？依般\n\n若功德而得度。波羅即波羅密多到彼岸之義，故波羅揭諦即度到彼岸之義。僧、即\n\n僧伽，此譯為眾；波羅僧揭諦，即度大眾到彼岸之義。菩提、即阿耨多羅三藐三菩\n\n提。咒字是簡略的符號，故每摘用一二字代表全句。娑婆訶、即速疾成就義。若順\n\n序義譯，便成為：度，度，到彼岸度，到彼岸度，到彼岸大眾度，無上遍正覺速疾\n\n成就。此是梵文文法次序，若依中國文次第譯其義，就是：度度，度到彼岸，度大\n\n眾到彼岸，速疾成就無上遍正覺。故誦此咒，即等於誦發菩提心願文，亦等於誦經\n\n畢發願迴向自他速成正覺。\n\n（塵空記）",
++      "rules": [
++        {
++          "pattern": "^(綱要|敘論|緒論|前言|結論|科分|教釋|總論|通論|導論|自序|序言|後記|跋|附錄)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(編|卷|章|篇|品|部|分)[\\s　]*$",
++          "level": 2
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+節[\\s　]*$",
++          "level": 3
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[\\s　]",
++          "level": 4
++        },
++        {
++          "pattern": "^第[一二三四五六七八九十百千零〇兩\\d]+(觀|目|事|則|類)[:：]",
++          "level": 4
++        },
++        {
++          "pattern": "^[一二三四五六七八九十][\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^十[一二三四五六七八九][\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^二十[一二三四五六七八九]?[\\s　、．.]?",
++          "level": 4
++        },
++        {
++          "pattern": "^\\d+[\\s　、．.]",
++          "level": 4
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　、．.]",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][一二三四五六七八九十][\\s　、．.]?",
++          "level": 5
++        },
++        {
++          "pattern": "^[甲乙丙丁戊己庚辛壬癸][\\s　]*$",
++          "level": 5
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　、．.]",
++          "level": 6
++        },
++        {
++          "pattern": "^[子丑寅卯辰巳午未申酉戌亥][\\s　]*$",
++          "level": 6
++        }
++      ],
++      "expected": "---\nauthor: 民國 釋太虛著\nbian: 第五編·法性空慧學\nbook: 般若波羅密多心經釋義\nbook_idx: 7\nbook_total: 7\nchapter: 全文\nparent_slug: cbeta-太虛大師全書-第五編·法性空慧學\nseries: 太虛大師全書\nsource_canon: CBETA TX\ntitle: 般若波羅密多心經釋義\ntype: cbeta\nwork: 般若波羅密多心經釋義\n---\n\n## 般若波羅密多心經釋義\n——二十八年三月在昆明西山雲棲寺講——\n\n科分懸論\n\n一　提教綱\n\n甲　不判時教\n\n乙　教理略判\n\n1.　內證離言法\n\n2.　應機巧說教\n\n（一）　五乘共教\n\n（二）　三乘共教\n\n（三）　大乘不共教\n\n丙　教史略判\n\n1.　佛世的一味法\n\n2.　佛後的分代法\n\n（一）　印度的三個時代\n\n（二）　傳存的三種文系\n\n二　解經題\n\n甲　分解\n\n1　般若\n\n2　波羅密多\n\n3　心\n\n4　經\n\n乙　合解\n\n三　明譯傳\n\n釋經\n\n甲一　直示聖證\n\n甲二　巧施至教\n\n乙一　顯說明義\n\n丙一　歷諸法明照見皆空\n\n丁一　就五蘊明即空\n\n丁二　正明諸法空相\n\n丁三　推空相窮諸法\n\n丙二　依般若明度一切苦\n\n丁一　依般若成菩薩行\n\n丁二　依般若成如來果\n\n丁三　依般若成利濟用\n\n乙二　密咒發願\n\n懸論\n\n### 懸　論\n\n一　提教綱\n\n#### 一　提教綱\n\n甲　不判時教\n\n##### 甲　不判時教\n\n關於提教綱，古來各宗祖師有種種說法，如天台五重玄義，賢首十門玄談，以及\n\n其餘的各家，大概是將釋迦如來一代所說的教法，分為幾個時期，幾種教法，名為一\n\n代時教。天台五時者：第一、說華嚴時，第二、說阿含時，第三、說方等時，第四、\n\n說般若時，第五、說法華涅槃時。八教者：一、藏教，二、通教，三、別教，四、圓\n\n教，名化法四教；五、頓教，六、漸教，七、祕密教，八、不定教，名化儀四教。藏\n\n教專攝小乘，通教通大小乘，別教是歷別大乘，圓教是圓融大乘。此天台所分時教也\n\n。賢首則分為三時五教：一、先照時說華嚴經，二、轉照時說阿含方等般若，三、還\n\n照時說法華等。轉照時分初中後三，合之亦同天台的五時。五教者：小、始、終、頓\n\n、圓。小教即攝小乘法；始教明一切法空，為大乘之始；終教進明不空為非有非空教\n\n；頓教不立次第，所謂一超直入如來地，賢首判教時禪宗已在中國興起，因特立此教\n\n以收攝之；圓教則以華嚴等經為最上圓滿之教。此中國各祖師所判，還有其他種種之\n\n不同，不必一一細數。而在印度傳來的判教法，則有兩種的三時三教，玄奘法師傳承\n\n那爛陀寺戒賢論師所分者：一、有教，即說阿含等，謂有五蘊、十二處、十八界等法\n\n。二、空教，即般若說一切法皆空等。三、非有非空的中道教，即深密、華嚴等。唐\n\n時又有一位印度的日照三藏傳來清辨，智光論師所分者：一、有時教，如阿含等說有\n\n諸法。二、境空心有時教，如解深密經等說三界唯心，唯有心識。三、心境皆空時教\n\n，即以般若等明一切皆空，為究竟了義。此皆古時中印兩土祖師所分判，在古來祖師\n\n皆為適應當時的思想環境，故作如是分判。在現今研究佛經，已無此種分判的必需，\n\n故但將教理教史來略說其概要。\n\n乙　教理略判\n\n##### 乙　教理略判\n\n１　內證離言法\n\n#### １　內證離言法\n\n此言內證者，乃諸佛自內所證，不限於釋迦牟尼佛，法華經所謂唯佛與佛乃能究\n\n盡諸法實相也。此非語言文字之所能表，亦非心思之所能到，乃諸佛內證智境，聲聞\n\n、緣覺、菩薩只能證知少分，五趣異生無少分知。然諸佛言教皆依此自內證法而流出\n\n，故證法為教法之本。\n\n２　應機巧說教\n\n#### ２　應機巧說教\n\n（一）　五乘共教\n\n#### （一）　五乘共教\n\n佛既於一切諸法自覺圓滿，為滿覺他本願故，應眾生機善巧開演，乃有諸乘教法\n\n。此諸乘教法既契於佛內證之理，又必須契合眾生之機宜，乃能使乘之各成其益。五\n\n乘共教者，即人乘，天乘，聲聞乘，辟支佛乘，菩薩乘所共同之教理。人天乘固須依\n\n之修人天行得人天果，即出世三乘亦皆以之為基，一切聖凡依正染淨因果皆依之而立\n\n。此法是何？即從因緣所生法明一切法正因果之理是也。此為全體佛法之大宗，其中\n\n最要者，為異熟因果的業報法，合乎此者即是佛法，違此者即非佛法，故為五乘所共\n\n之正法的法印。如明業報則有向上心，不願墮落，欲保存其來世人身，乃修行人乘十\n\n善。再進而上求生天，亦由信因果以持戒修善習禪定而得；即出世三乘所解所行，亦\n\n不能越出因果範圍。此理在世間宗教、科學都有所說，但自佛法看來，彼等所說或偏\n\n或謬，都不圓滿，唯佛法中乃澈底掃除一切邪謬，而建立一切世出世間染淨因果，為\n\n由人乃至菩薩佛之五乘共通教法。\n\n（二）　三乘共教\n\n#### （二）　三乘共教\n\n觀察三界六道眾生，生而又死，死而又生，死彼生此，流轉不斷，而說世間流轉\n\n的十二因緣法；知一切有漏法皆是苦，而明超出三界流轉的無漏法，即所謂了生死的\n\n法。漏者：如房屋或瓶壺等類有了破漏即非完好，喻身心中有了煩惱，終要漏落生死\n\n之苦。凡未能完全了知三界五趣因果皆為有漏，流轉不息，均於三苦、八苦等不能盡\n\n免，不易發出離人天心。若能確知有漏皆苦，即不肯修人天乘，最低限度也要求了脫\n\n生死。進觀有生必有異滅的有為法皆是無常，不能永久安住，生而變異，變壞而滅，\n\n最後有仍歸於無；更對世間起厭離心，不生貪著而求超出。三觀諸法無我，若色法，\n\n若心法，有為法，無為法，若內若外一切諸法，皆無可執取為我者。既知畢竟無我，\n\n即無由起貪、瞋、癡、慢，造招三界有漏業報，故了我空即證生空，不再造生死業，\n\n亦不感生死果，由此而得解脫證涅槃之寂常安靜，是為涅槃寂靜。聲聞、辟支佛、菩\n\n薩皆由此而得解脫生死，平常稱此為小乘法，其實是三乘的共法。\n\n（三）　大乘不共法\n\n#### （三）　大乘不共法\n\n此明超出前二種之大乘特有的勝法，依佛智所證的平等法性，諸法實相，非空非\n\n不空，非有非不有，無相無不相，一法遍於一切法，一切法不離一法，十世古今不隔\n\n當念；由此遍觀一切有情亦悉同體無二。因一切眾生皆在苦中而起救拔之心，即是大\n\n悲心。要普救眾生苦，必須成無上覺，即是發無上菩提心。此為人乘、天乘、聲聞乘\n\n、緣覺乘所未能者，故云不共。而在本乘之中又可分為三種。（甲）特勝大乘，依古人\n\n判教而說，則雖成佛亦有高下，譬如圓教的佛，頓教的佛等，今則以大乘發菩提心得\n\n無上果是同，故成佛後平等無二，但就佛應機上說亦可有其差別所重者。特勝大乘者\n\n，就因緣所生法中特明究竟皆空之最勝義，遍破外小及世俗相，即諸部明甚深空義之\n\n般若經是。（乙）普為大乘，前專顯大乘法體殊勝，此則明自他兼度之大用，大乘無\n\n所不含容，無所不包涵，為利他故不捨一法，如欲利聲聞、緣覺即須通達聲聞，緣覺\n\n乘法，欲利人天等亦復如是，各有當機勝用。此如為深密、華嚴、法華、涅槃等所說\n\n者是；自住大乘而亦令一切人、天、聲聞、緣覺各得其益，非專為一類人一時機而說\n\n。（丙）適應大乘，一色一香皆第一義，以一切法緣起無礙故，一法即攝盡一切法，\n\n隨拈一法為中心，都可遍通一切法，以一為主，諸餘是伴，一一法與一一眾生皆是如\n\n此。譬如色法，一花一葉之色皆是遍法界諸法為緣所起，諸法無超越此一法之外者，\n\n故諸佛說法無一定規範，所謂大用現前，不存軌則，藥無貴賤，愈病則良。可隨稱一\n\n法為最勝，謂非餘法之所能及，使聞者速能起決定信心而得受用，並非世間人我彼此\n\n抑揚讚毀者可比。如專弘淨土者，即尊淨土為第一而斥除一切，專弘禪宗者即以禪宗\n\n為最勝而呵棄一切，乃至持一咒修一行者各各皆如是說。蓋因法法皆妙，實均具有無\n\n上最勝功德，但適所應宜而遇緣即宗，故此亦可稱為圓融大乘。中國之台、賢圓教，\n\n即從法華、華嚴中大發揮斯義。\n\n以上可略明教理之分齊，而本經之屬於特勝大乘亦可知矣。\n\n丙　教史略判\n\n##### 丙　教史略判\n\n１　佛世的一味法\n\n#### １　佛世的一味法\n\n佛在世時只有一味佛法，無論說大說小，說空說有，頓說漸說，顯說密說，皆為\n\n佛應機巧說教。無次第，無勝劣，聞者皆信佛為法本，總為佛說，不起分別，故稱佛\n\n當時所說之法為一味佛法。但到了佛滅以後，就有了分別。\n\n２　佛後的分代法\n\n#### ２　佛後的分代法\n\n（一）印度的三個時代\n\n#### （一）印度的三個時代\n\n或謂正法五百年，或謂正法一千年，像法一千年，末法一萬年。或以五百年為一\n\n階段，稱為初五百年，第二五百年，第三五百年等。就歷史上看，佛滅後流傳在印度\n\n的佛法可分為三個時期：一、小行大隱時代，佛滅後初五百年，佛法已由印度傳及錫\n\n蘭諸地，唯盛行者即前所云三乘共教之小乘法。因當時佛去世未久，而住持佛法者為\n\n迦葉、阿難等聲聞弟子，典型尚在，統攝徒眾而教授教誡，故盛行三乘共教，而大乘\n\n不共教法則隱沒而不彰。二、大盛小附時代，次五百年有馬鳴、龍樹、提婆出世，提\n\n倡大乘佛法，得無著、世親等繼之，大乘盛行，而小乘亦附之而行。佛教之傳入中國\n\n正在此時。三、密主顯從時代，第三五百年中到一千二三百年時，有龍智菩薩開南天\n\n鐵塔，從金剛薩埵受祕密經咒儀軌，盛揚密教，此時在印度的小乘經論漸歸隱沒，而\n\n大乘經教亦隨從密教而行，專以密咒為主，並於此時開始傳入西藏。\n\n（二）傳存的三種文系\n\n#### （二）傳存的三種文系\n\n上就印度所流傳佛法分為三個時代，但第三五百年後印度的佛教已由衰而滅。再\n\n就傳承至現今的來看，則可分為三大系統：一、錫、緬、暹、巴利文系，佛法從阿育\n\n王時傳入錫蘭島、緬甸等處，即為保存原語的巴利文佛教，此正為佛滅後初五百年以\n\n內印度盛行的三乘共教，今南方諸國若暹羅等猶存其遺制。二、華、鮮、日、中國文\n\n系，到了第二五百年時，正是中國由漢到唐的時代，佛法由印度盛傳來震旦，經五六\n\n百年之時間翻譯成為中國文，漸漸傳及於朝鮮、日本等處，此正是印度大乘盛行而小\n\n乘附行之時，故中國所傳存至今者亦偏重於大乘佛法。三、藏、蒙、尼、西藏文系，\n\n到第三五百年時始傳入西藏，翻譯成為西藏文系，此時正當印度密教盛行而顯教附從\n\n時期，故西藏佛教以密宗著稱，而蒙古、尼泊爾等地亦承其化，此皆時代環境影響之\n\n所成也。印度雖為產生佛教之祖國，今已不能具體保存，現今世界流行之佛教，厥唯\n\n以上之三大系，其中翻譯最完備，承前啟後而具足大小乘、顯密教者，尤在中國文系\n\n。觀察現在世界所流傳之三系佛法，即可回溯到印度三個時代的佛教，再從而上推即\n\n可匯歸到佛住世時之一味佛法。今所講之般若心經，依教史看，即可知是印度第二時\n\n期所盛行，而傳存於中國文系之大乘經。此經為巴利文系所無，而西藏文系雖有此經\n\n，不甚重之。\n\n上從講教理、教史之大概，以闡明此經在佛教法中所屬之分位，即為提教綱之要\n\n旨。\n\n二　解經題\n\n#### 二　解經題\n\n甲　分解\n\n##### 甲　分解\n\n１　般若\n\n#### １　般若\n\n般若波羅密多，是梵語的譯音。般若義譯智慧，或單譯為慧，但與中國通常所謂\n\n智慧者不同，是專指從佛的出世法所生的智慧，在中國無相當的名詞來代替，故沿用\n\n原音，然在說明其意義時仍作智慧解。當知此種智慧不是世智辯聰的智慧，乃出世清\n\n淨智慧。諸經論中分為文字般若，觀照般若，實相般若者：依文字言說所集成的經論\n\n教典，或聽講或讀誦所生的智慧，對於文義通達無礙，得其勝解者名文字般若。進而\n\n深思諦察，離文字語言之相，於一切心行中觀照實相之理的智慧名觀照般若。再由此\n\n觀照深造修習，一切語默動靜皆不離般若，由淺入深，由細觀而捨粗觀，所謂以楔出\n\n楔，達到一切法分別相盡，現前一念心光，契同遍一切無彼此內外是非人我之真如法\n\n性，名實相般若，亦名根本般若。\n\n諸經論上又有將此般若智慧分為三種者：一、加行智，二、根本智，三、後得智\n\n。在煖、頂、忍、世第一四加行位中所修之智慧名加行智。此四加行皆是與定心相應\n\n的加倍的精進修行，由四尋思觀引發四如實智，進而親證諸法空性，名根本智。由根\n\n本智得達諸行如幻，修一切行，名後得智。此三智皆名無分別，故同屬於般若。其中\n\n最主要者，乃在根本無分別智，加行智時本尚有分別，以能引發無分別智故，從果得\n\n名，亦稱無分別智。後得智正分別世出世間染淨因果，以從澈底通達一切都無分別的\n\n根本智而起，從因得名，亦名無分別智。\n\n諸經論中復說有三種智：一、一切智，二、道種智，三、一切種智。一切智與上\n\n根本智相等，能遍知一切法之真如相故。道種智分別世、出世間、五乘、三乘道之染\n\n淨因果差別相，亦等於上之後得智。一切種智亦名一切相智，亦名一切智智，專指佛\n\n果之大圓滿覺智，念念中通達法性法相，化道斷惑之一切種也。地上菩薩前念起一切\n\n智，後念起道種智，未能一念中起，故尚未得此智，或云到八地以上能空有雙觀，乍\n\n得一切種智，然一念中通達性相事理照了無餘，唯佛而已。佛名一切智智人，佛智即\n\n一切種智，故無一念中不明明了了知世出世間一切染淨因果。而道種智、一切種智皆\n\n以一切智為根本，一切智即般若自體。\n\n依上來的分別，合古今所說，可攝為五重：一、勝解般若，與文字般若相當，對\n\n於大乘經論所明勝義空性，勝解無疑，方名般若。二、加行般若，依勝解之理，深思\n\n諦觀當下心境，以引發甚深般若，名加行般若，即上觀照般若加行智。三、正體般若\n\n，前二種皆為引發般若之方便，由勝解加行所引生之真般若，名正體般若，此與實相\n\n般若、根本智、一切智相等。四、方便般若，此與後得智、道種智相當，能分別了知\n\n一切因果，起上求下化之行。五、究竟般若，此與一切種智相當，即阿耨多羅三藐三\n\n菩提之無上般若也。\n\n扼要言之，何者般若？即通達一切法自性本空而無所得無分別之智慧，名曰般若\n\n。如勝解般若，即於經論文句中所詮表的諸法自性空義善能決了，名為勝解般若。乃\n\n至究竟般若，亦復如是。\n\n２　波羅密多\n\n#### ２　波羅密多\n\n波羅密多譯云到彼岸，是譬喻之詞，譬喻過渡，到了彼岸則過渡一事就算達到了\n\n究竟目的。在譯音上古譯音促，但云波羅密，後來翻譯者加一多字，多字乃梵語中的\n\n尾音，別無意義，後人謬解，或稱多心經，或將多字譯為定，此皆不知譯音賒促關係\n\n而訛誤也。到彼岸之義，以生死為此岸，涅槃為彼岸，煩惱是中流之河，能度之到彼\n\n岸之工具即是菩提，菩提支分即戒定慧或布施持戒等六度行，由之以斷煩惱，了生死\n\n、入涅槃，即是到彼岸。涅槃的通義，譯為寂滅，將一切煩惱業苦，用菩提來擇滅而\n\n得到究竟安甯之地。此通常的解釋，通於三乘。\n\n然在大乘法中特重菩提，涅槃菩提通名佛的二轉依果。涅槃又云圓寂，寂是寂滅\n\n，圓是已圓滿成就福足慧足的無上菩提。欲達到於無上涅槃、菩提，須修布施、般若\n\n等行，名到彼岸。依此分析的說明，應以圓成佛地五法名到彼岸，如佛地經所明：一\n\n，清淨法界，二、大圓鏡智，三、平等性智，四、妙觀察智，五、成所作智。由大圓\n\n鏡智到成所作智名為四智菩提，菩薩只能分證妙觀察，平等性二智，到佛果方圓滿四\n\n智。\n\n此又應以佛果三德名到彼岸。涅槃即是斷德，能斷除一切煩惱生死故；菩提即是\n\n智德，阿耨多羅三藐三菩提即是究竟智慧故；由此而成為普利眾生之恩德，既證佛果\n\n自然能利益恩沾群品故。此三德正為發菩提心修無上行者所求達到之彼岸。\n\n由上總括而說，即是轉依所得法身。轉依義甚深細，如成唯識論中等之所詳解，\n\n菩提涅槃總名二轉依果。此法身非平常所指法、報、化三身中之法身，彼三身中的法\n\n身是對報、化而言，今就廣義乃對二乘解脫身而言法身。例如戒蘊，定蘊，慧蘊，解\n\n脫蘊，解脫知見蘊之五分總聚，在二乘名解脫身，身者總聚之義，如人身以四大、五\n\n蘊總聚為體，佛的法身就是一切自利利他功德善法圓滿的總聚，故名法身。\n\n３　心\n\n#### ３　心\n\n（一）就法說\n\n#### （一）就法說\n\n狹義的心：簡別色法而說，五根及六塵內外一切境名為色，能緣慮之見聞覺知思\n\n量觀察者名為心，此仍包括一切心心所法。若再嚴格的說，正名為心者即八識心王，\n\n心所法是心王所有之法，不名為心。若更進一步的分析，將八識分為心、意、識、了\n\n，前五識但名為了，第六識正名識，第七末那名意，第八阿賴耶方纔名為心。能集聚\n\n一切種子，發起一切現行故，纔是一切萬法之根本的心。\n\n廣義的心：依世間所說及聖教所說，可作四種分別：一、肉團心，即指人身中五\n\n臟六腑之心臟。中國古來象形所造心字，篆書即象動物的心臟形狀。心為人身之總樞\n\n紐，在生物學之生理上考之，心掌全身血液流動，心臟健全，身則生活，能發見聞覺\n\n知之用。心臟若病，周身皆病，心臟若壞，此身即死。瑜伽論等謂人受胎時先生心臟\n\n，乃次第生百骸五官，死時心在最後冷，即停止活動。此肉團心色法所成，由此色法\n\n亦名心矣。二、緣慮心，與上以能緣慮名心者同。三、集起心，與上唯第八識名心者\n\n同。四、真實心，即以一切無分別無所得之真如性為心，名為常住真心，此心本離一\n\n切煩惱染污，乃自性清淨究竟真實心。如此則一切有為色心法所顯無為法性，總名為\n\n心；如楞嚴經所謂五蘊、十二處、十八界、七大，皆如來藏妙真如性之常住真心是。\n\n（二）就喻說\n\n#### （二）就喻說\n\n一、中心，如一國土有一國土的中心，一城市有一城市的中心，在方位上有中心\n\n點，乃至一草一木及任何一事一物皆有其中心點，此由前面肉團心的意思引伸而出，\n\n稱之為心。二、心要，即事理之綱領宗要，如學理相傳上稱為心印，能得此心要則一\n\n切皆可貫通，如網舉綱，全網皆張，如衣提領，全衣皆直，各種學說皆有此心要義。\n\n４　經\n\n#### ４　經\n\n經：梵語素呾纜，或云修多羅，修垢路，譯云契經，即契理契機之教法。經有線\n\n的意思，是貫攝佛所說法使不散失義。素呾纜的最狹義，即指十二分教中的第一分。\n\n若就諸藏分別，或將大藏教典分為二分，如西藏分甘珠——經藏、丹珠——論藏、二\n\n藏，將佛所說的經律收在一類名為甘珠，菩薩羅漢祖師所造的論疏等收在一類名為丹\n\n珠；此對論藏總以經律名經。或除密咒儀軌另名咒藏，專將顯說經律稱之為經。再就\n\n中國最普通的傳說，分經律論三藏，通達經律論者稱為三藏法師，如此則簡別律論而\n\n稱經。或分經律論雜四藏，或更加密咒為五藏。所謂經者，乃對餘三藏或四藏稱之。\n\n又：佛所說者名經，佛自說者，或因有人請問而說，或觀機緣成熟無問自說，此\n\n正是佛所說之經。又佛在世時常有諸大菩薩及聲聞弟子乃至諸天神人鬼等所說，經佛\n\n印可者即等於佛說，亦得名經。因此後世弟子或外道等所造，妄自稱經，大大不可。\n\n就廣義的經說，通顯教密咒皆名經，明顯的教義固是經，即含義祕密之咒字亦得\n\n名經，皆佛利生方便法故。又通於能詮所詮皆名經，所詮五乘之教理行果，乃至一切\n\n法無分別無所得真如性皆得名經，故世有所謂無字真經者，即是理經。而世間人生正\n\n行，經常大法等，亦皆得稱為經，宇宙諸法法爾如是之如實相，及不違謬於實相諸學\n\n說，無不是經。所以華嚴云：剖一微塵，出大千經卷；則經義之廣可知矣。\n\n乙　合解\n\n##### 乙　合解\n\n１　般若波羅密多\n\n#### １　般若波羅密多\n\n先將般若與波羅密多合解。一、般若之波羅密多，此對布施之波羅密多，持戒之\n\n波羅密多乃至禪定之波羅密多而言，以明此波羅密多是由般若而得，依能達到的般若\n\n名所達到的波羅密多。此般若即前勝解、加行、正體、方便般若，而所達到之波羅密\n\n多彼岸即前之涅槃，如此則般若不是波羅密多，波羅密多不是般若，般若是能到彼岸\n\n之法，波羅密多是所到之彼岸。然如此解釋雖可通，但未能盡其深玅之義。二、般若\n\n即波羅密多，此般若即前實相正體般若，實相般若境智一如，般若即是涅槃，究竟般\n\n若即是一切種智，即是所達到的無上涅槃菩提彼岸，如是境智行果不二故，般若即是\n\n波羅密多。\n\n２　般若波羅密多心\n\n#### ２　般若波羅密多心\n\n再加上心字來合解，亦分兩層義：一、般若波羅密多之心，前解心字有法說喻說\n\n，此心字即喻說中的中心及心要之義，非餘緣慮、肉團等心也。佛所說一切之般若波\n\n羅密多經，皆以此經為其中心之心要，乃至諸佛所說一切法，諸菩薩所修證一切行果\n\n，皆以此經為總攝心要之中心，如咒中最要者稱為心咒，或心中心咒，今此經是經中\n\n之心經，故此心字即是般若波羅密多之心。二、般若波羅密多即心，佛所有一切無漏\n\n功德，乃至三乘所修所證之行果，皆從般若波羅密多生出，故般若稱為佛母。如是則\n\n般若波羅密多即是一切三乘聖者功德法之心，故般若波羅密多即是心。復次、此般若\n\n波羅密多，不但是聖果無漏法之心，亦即一切有為無為、有漏無漏法之中心。何以故\n\n？遍一切法皆須有般若波羅密多之究竟智慧才能照了，離此般若波羅密多即不能普遍\n\n通達故，所以一切法皆為般若波羅密多所攝，般若波羅密多即一切法的中心，故云般\n\n若波羅密多即心。又前法說中廣義的真實心，即實相般若、正體般若、一切智、根本\n\n智及一切種智的究竟般若，此即常住真心。般若波羅密多即是心故，故云般若波羅密\n\n多心。\n\n３　般若波羅密多心經\n\n#### ３　般若波羅密多心經\n\n最後來將般若、波羅密多、心、經四個名詞的全題合解，亦分兩重說明：一、般\n\n若波羅密多心之經，經即指當時觀自在菩薩在佛前所說之言說，及佛後結集成為此數\n\n百字的文字言句之經，此經是能詮之文，初說時以音聲為體，以名句言說為用；既集\n\n成文字以後，即以色法為體，屈曲點畫形象為用，如此以能詮表義理者名經，而所詮\n\n表之義即是般若波羅密多心。依所詮義名能詮經，故名般若波羅密多心之經。二、般\n\n若波羅密多心即經，經字的廣義通能詮所詮。所詮的五蘊、十二處、十八界等法，乃\n\n至此一切法之唯識義，皆空義，名為理經，則攝境從心，經即以心法為體；若攝相歸\n\n性，經即以真如法性為體；如此則般若波羅密多心即是經，此經亦即以般若波羅密多\n\n心為體，故云般若波羅密多心即經。又所詮之行，或以人天善行，或以聲聞、緣覺解\n\n脫行，或以大乘菩提行為經，三乘的行法皆以般若波羅密多為中心，故般若波羅密多\n\n心即經。又所詮之果，諸聖果功德乃至如來轉依法身，皆以般若波羅密多為中心，故\n\n般若波羅密多心即經。\n\n三　明譯傳\n\n#### 三　明譯傳\n\n甲　本經諸譯\n\n##### 甲　本經諸譯\n\n今考之正續藏，此經傳譯，在中國古時已有六種譯本，近有人因\n\n此經出玄奘法師聽梵僧口授，遂疑恐無梵本根據，由奘師自編者，因略說其翻譯歷史\n\n以斷疑誤。此經最早的譯本，即南北朝之初，姚秦三藏法師鳩摩羅什初譯來中國，經\n\n題名般若波羅密多大明咒經。題中無心字，而大明咒即是心的意思：明即咒義，咒的\n\n梵音是陀羅尼，此云總持，即總攝持一切心要之中心也，故大明咒經即等於心經。其\n\n次為唐三藏玄奘法師所譯，名般若波羅密多心經，即今所用本。第三、為唐時摩竭提\n\n國沙門法月所譯，名普遍智藏般若波羅密多心經；普遍智藏四字，或為適應當時的思\n\n想所加之尊稱。第四、為唐時大興善寺智慧輪法師所譯，亦名般若波羅密多心經，與\n\n奘師所譯經題同。第五、為唐末時罽賓國三藏般若、利言等同譯，此乃團體合譯，因\n\n當時有數十人或數百人組織成之譯場，多人合譯一經，見貞元聖教錄載所譯之部數頗\n\n多，此不過是其中之一；經題亦同奘譯，名般若波羅密多心經。第六、為宋初西天三\n\n藏施護所譯，名佛說佛母般若波羅密多經，佛說二字本是諸經通用，此中所特加者為\n\n佛母二字。考施護所譯者多為關於密部之經咒，因此時已在印度密教盛行之後，大乘\n\n顯教附之而行——見前教史略判，因此、心經亦成為密宗附從之經。密宗有佛部母部\n\n，以般若為佛母部，故此譯加佛母二字，亦當時思想環境之必然性也。相傳還有法成\n\n，不空，慈賢，三種譯本，今考之正續藏均未見，近代又有人將西藏文的心經譯成漢\n\n文，內容與施護所譯大致相同，亦可見此經傳到西藏必在唐末宋初之時，與施護所據\n\n之梵本時代相同。\n\n乙　諸譯異同\n\n##### 乙　諸譯異同\n\n關於各種譯本的內容，其正宗分大約與玄奘法師所譯大同小異，\n\n文句雖有小異，而意義實不相差，諸譯中以奘師譯文最略，其餘都有緣起分及流通分\n\n，前面有如是我聞；一時；佛、或世尊、或薄誐梵；在王舍大城靈鷲山中、或鷲峰山\n\n中，或耆闍山中；與大比丘及大菩薩若干人俱；佛入甚深光明宣說三摩地或入三摩地\n\n名廣大甚深等；觀自在菩薩說完以後，佛從三昧而起，印可觀自在所說。後面有天龍\n\n八部等皆大歡喜，信受奉行。至於文句的不同，如玄奘等譯的照見五蘊皆空，而法月\n\n等譯為照見五蘊自性皆空，施護則譯為當觀五蘊自性皆空。亦奘等所譯的不生、不滅\n\n、不垢、不淨、不增、不減，施護則譯為無所生、無所滅、無垢染、無清淨、無增長\n\n、無損減，不過詳略之異耳。\n\n丙　正明今譯\n\n##### 丙　正明今譯\n\n諸譯中以奘師所譯最為簡要，可稱為心要中之心要，故後世流通\n\n唯在此本，譯題中稱唐三藏法師玄奘譯，三藏法師如常釋，或加稱奉詔譯者，是奉當\n\n時的皇帝詔命而譯，以尊重其事也。這一位法師在唐朝的歷史上最為偉大，就是婦孺\n\n皆知的唐僧，他的學問道德功業，不但使中國人仰慕無極，即世界學者亦皆共知共仰\n\n。近來英國有一位威爾斯著了一部世界史綱，把中國的玄奘法師講得比孔子還詳備。\n\n至於奘師所譯的心經，簡要沒有頭尾，恰等楞伽諸譯中性賢所譯的四卷楞伽的譯本，\n\n蓋專注重在其中的心要以便誦持也。\n\n丁　今譯弘傳\n\n##### 丁　今譯弘傳\n\n在中國經典中流傳最普遍的莫過於此般若心經，如咒中則以大悲\n\n咒，往生咒，或六字大明咒為最普遍，佛號則以阿彌陀佛為最普遍，經則獨推此經，\n\n顯、密、禪、淨各宗無不頂戴奉持。而且深入民間，一般稍知佛法者皆尊重此經或讀\n\n誦此經。古今注解此經亦最多，除佚失者外，現在尚存者仍有數百種之多。此經不但\n\n令人持誦講解以依之修行，而且因之而得感應者亦復最多，所以凡是祈禱、慶祝、追\n\n薦者多誦此經。即玄奘法師的一生亦得益於此經，他到西域求法的時候，途中每遇災\n\n難，誦此經即能化險為夷，他以親證實驗此經之功德而翻譯弘傳，故能使中國一般人\n\n讀誦信受奉持，經一千五百年之流傳而不衰，誠不可思議也。\n\n諸位今天能夠聽聞讀誦此經，亦福德善根所感，應當生殷重心，作希有難得想，\n\n虔誠奉持，自能獲大受用。\n\n釋經\n\n### 釋　經\n\n甲一　直示聖證\n\n##### 甲一　直示聖證\n\n此一科文，直捷顯示聖智所證的境界，即前所說的內證離言法。聖者謂三乘有\n\n學、已破無明證真如，異於凡夫，故稱聖者。如佛之所以名佛者，以得無上菩提故\n\n；聖者之所以名聖者，以行深般若、已破無明、斷煩惱證真如故。在無量聖者之中\n\n，今依久已證得真如的觀自在菩薩來直示聖智所證境界。稱菩薩者，顯是大乘聖者\n\n，大乘聖者是趨向於阿耨多羅三藐三菩提的，故稱菩薩。菩薩即梵語菩提薩埵之簡\n\n稱，菩提是覺義，即上求佛果以自覺；薩埵是有情義，即下化眾生以覺他；以菩提\n\n佛果為上求，薩埵有情為下化，合名之為菩薩。或加摩訶薩者，即大菩薩，此最低\n\n限度亦須入初歡喜地者方為真實菩薩，未入地前則假名耳。菩薩是通稱，觀自在是\n\n別名，在翻譯上有譯為觀世音或光世音者，或譯為觀世音、觀自在者，都是此一位\n\n菩薩的名號。自在是無礙義，以觀照無有障礙故，觀即自在，如人能隨自己意志而\n\n行，不為其他所轉移而能轉移其他無所礙，成就如是功德即名自在，觀能自在，故\n\n能照見五蘊皆空。行深般若波羅密多時，菩薩有時行根本無分別智而無自他上下能\n\n所分別之可得，有時行後得智而修上求下化之行，能所分明，而七地以前菩薩亦有\n\n時妄想計度現行，此簡別非行後得智及妄想分別時，乃行甚深般若波羅密多根本無\n\n分別智之時。此經他譯在緣起分中，敘佛在大眾前入甚深三昧，般若的最深者即根\n\n本智、一切智的實相般若，故云行深般若波羅密多時。在此聖智現行之時，故能照\n\n見五蘊皆空。照見者，明明了了，親證親見，不同推測想像而知，若由比度推測而\n\n知者，或可名智而不能名見。五蘊者，即下面所說的色受想行識，諸有為法總為五\n\n聚，有情身心乃至山河大地，皆不出此五蘊。亦可是照見五蘊諸法皆空，故其他譯\n\n本有譯為照見五蘊等皆空者。或譯為照見五蘊自性皆空者，五蘊等皆緣起假有之法\n\n，無實自性，一切法之所以名某某法者，以其各有自性故，今以聖智照了悉皆自性\n\n本空，既無自性，即無實法可得名為某某，故云五蘊皆空。度一切苦厄，苦者、所\n\n謂三苦、八苦，廣如瑜伽師地論明百一十苦；厄者、如三途、八難等諸厄難；乃至\n\n色無色界禪定中未到涅槃，及菩薩未到成佛以前，均有微細的行苦存在。然此苦厄\n\n，皆由業報所感的身心世界而有，而業報之構成不越五蘊等法，既能照見五蘊皆空\n\n，則自然能度脫一切苦厄。故五蘊等畢竟皆空，則身心世界一切苦厄皆不可得；所\n\n謂皮之不存，毛將焉附。然須如觀自在菩薩修甚深般若照見皆空，方能度脫也。\n\n甲二　巧施至教\n\n##### 甲二　巧施至教\n\n乙一　顯說明義\n\n##### 乙一　顯說明義\n\n丙一　歷諸法明照見皆空\n\n##### 丙一　歷諸法明照見皆空\n\n丁一　就五蘊明即空\n\n##### 丁一　就五蘊明即空\n\n舍利子，在佛的聲聞弟子中智慧第一，故觀自在菩薩特為說甚深般若。舍利是\n\n鶖鳥的梵語，目甚明銳，尊者母目似之，故依之立名；尊者從母名舍利子。有譯作\n\n舍利弗者，弗字即子字梵音，今華梵並舉故云舍利弗。或有誤解為佛荼毘後所化出\n\n之舍利子者，或謂指各人身中有一顆舍利子者，於是全盤誤會，以為此經是專講舍\n\n利子的經，謂舍利子的色即是空，空即是色等，此皆不懂梵音之義所致。觀自在菩\n\n薩以舍利子為聞此經當機之主，故先呼其名而為說。初四句有兩層義：色不異空，\n\n空不異色者，既云不異，仍表明色與空是兩法，不過性質相同耳。再進一層說：色\n\n即是空，空即是色；則直為一法而無二矣。此色字包括四大、五根、五塵，乃至一\n\n切法處色，皆名為色，比世間對精神而稱的物質更廣，而般若所照見之空，是遍一\n\n切色蘊法的，並非與色相對之空，或如茶壺有茶空不名空壺，茶盡以後方名壺空，\n\n而色法在處即空之在處，無一微塵許不是空，一切色法當體即空，故云色即是空。\n\n反之、空之在處亦即色之在處，故云空即是色。古時有一禪師問學人云：「你能將\n\n虛空捉住否」？答云：「學人不會捉，請和尚捉看」。禪師即將學人鼻子用力捉住\n\n，學人呼痛，禪師云：「虛空如是捉」。蓋色即空，則捉色身即是捉虛空也。然佛\n\n法不說斷滅相，不是先將一切色法認以為有，然後再去斷除消滅方名為空，以諸法\n\n宛然處即是空故，故空亦諸色宛然，而空即是色。色蘊如是，再推之於受、想、行\n\n、識，亦復如是。受、有苦受、樂受、不苦不樂受等。想、即取種種名字言說相之\n\n想。行、即行動造作，又以行動遷流為其廣義，凡為前色、受、想及後之識蘊所不\n\n攝者，皆名行蘊。識、即眼等八識。此四蘊亦同色蘊之色空不異無二，廣說是：受\n\n不異空，空不異受；受即是空，空即是受。乃至識不異空，空不異識；識即是空，\n\n空即是識。佛法明空，則一空一切空，色心等皆空，方可為般若所照見之空。\n\n丁二　正明諸法空相\n\n##### 丁二　正明諸法空相\n\n此承上色空不二義，進一步明諸法的真空實相。此實相或名實性、法性、名真\n\n如，為一切法中究竟真實不可破壞者。若就表面看，五蘊等諸法是有生滅等的，然\n\n若以智慧觀察即破壞無餘，故唯是空。此真空實相，若就其本來如是性說，並非由\n\n般若照見方生起的，故不生；即此空性永久常住如是，亦非般若不照見時便無，故\n\n不滅。若就其德相說，在異生位雖被無明妄想計度諸法所隱沒不顯，如有所垢污，\n\n但其實不但不曾為垢污，即垢污的本身亦仍自性是空。垢淨對待，對垢稱淨，既本\n\n無所垢污，亦無清淨，故云不垢不淨。若就其分量說，在聖不增，在凡不減，諸佛\n\n出世若不出世，法爾如是。諸佛所照見者，亦照見其本來如是之空相而無所增益；\n\n凡夫所迷者，亦為無明煩惱障蔽此本來如是之真空實相而無所損減，故云不增不減。\n\n丁三　推空相窮諸法\n\n##### 丁三　推空相窮諸法\n\n此一大段推諸法明空相以足前意。前文已說明諸法的空相是常遍的、是絕對的\n\n，無與空相對之色，故承上文云：是故空中無色，無受想行識。不但無五蘊，即眼\n\n耳鼻舌身意六根，色聲香味觸法六塵之十二處亦無。此中眼根者，皮肉之眼是眼根\n\n的依處，名扶塵根，不是真眼根，其中還有微細的淨色根方名眼根。耳朵名為耳根\n\n，鼻孔名為鼻根，舌頭名為舌根，身體名為身根，亦復如此。此均屬於色法，意根\n\n則非色法，通常以前一剎那之識名意，大乘法相別立第七末那名意。六塵即六根所\n\n對之境，眼根對色塵，耳根對聲塵，鼻嗅香，舌嘗味，身覺觸，意根則對去來生滅\n\n一切法塵，此名十二處。由般若照見者只有空，更無可指為眼等六根，色等六塵者\n\n，故亦無可名之為眼等乃至色等也。無眼界乃至無意識界者：此中以乃至二字包括\n\n十八界，十八界者：即眼界、耳界、鼻界、舌界、身界、意界，色界、聲界、香界\n\n、味界、觸界、法界，眼識界、耳識界、鼻識界、舌識界、身識界、意識界；今舉\n\n前一界後一界略去中間十六界。界者，界別之義，因十八界之法各有其界限而不混\n\n，如色但為眼識所了，聲但為耳識所了，其現行各有不同之種子，此乃三乘通義所\n\n說：今大乘般若智照見皆空，則無可得。無無明，亦無無明盡；乃至無老死，亦無\n\n老死盡者：此明無十二緣起的流轉還滅。十二緣起者：即無明緣行，行緣識，識緣\n\n名色，名色緣六入，六入緣觸，觸緣受，受緣愛，愛緣取，取緣有，有緣生，生緣\n\n老死憂悲苦惱，此是煩惱業生死流轉法。無明盡乃至老死盡，此明還滅法，還滅即\n\n了脫生死，在般若照見皆空中，本無無明行識乃至無老死的流轉，所以亦無無明盡\n\n乃至老死盡的還滅。無苦、集、滅、道者：此明四諦亦無。苦諦即生死之苦；集諦\n\n即煩惱業，能集起苦故，應名苦集諦；滅諦即涅槃，亦名苦滅諦，證涅槃則苦皆滅\n\n盡故；道諦即菩提，是所修滅苦之行。集苦是世間因果，道滅是出世間因果。然在\n\n行深般若波羅密多之時的照見中，則唯是空，無世間苦相可得，亦無世間滅苦相可\n\n得。無智亦無得者：智、是三乘菩提，得、即三乘涅槃，與解脫、解脫知見同，由\n\n解脫知見得解脫。得是成就，同於二十四不相應行法中的得。在三乘教中如是說，\n\n但在第一義空中，從本以來不生不滅，無得無失，故無新生之智相，亦無新得之可\n\n得相。以無所得故者：此句總結。前面一大段以出因，此一句證明出空無的所以然\n\n之故。何以空中無色？以無所得故。乃至何以空中無智亦無得？以無所得故。\n\n丙二　依般若明度一切苦\n\n##### 丙二　依般若明度一切苦\n\n丁一　依般若成菩薩行\n\n##### 丁一　依般若成菩薩行\n\n菩提薩埵即大乘菩薩，義如前釋。何以能成為菩薩呢？依般若波羅密多故。罣\n\n、如羅網罩著不得自由，礙、即內外上下前後左右有所障礙，若能依般若波羅密多\n\n照見五蘊等法皆空，即無罣礙。凡夫所以處處生牽罣者，以執內身外境諸法為實有\n\n故，有罣礙就有得失心，有得失心就有恐怖。初地菩薩初離五種怖畏，佛法中所謂\n\n大無畏的精神者，不是世間肆無忌憚的惡行及血氣之勇，乃照見一切法空，無人我\n\n是非等相對待，三界皆空，人生如夢，故能成就無怖畏之功德。因此亦能遠離顛倒\n\n夢想，顛倒者，如頭本在上腳本在下，而使之頭下腳上，以黑為白，以是為非，以\n\n無為有，皆謂之顛倒；諸法本空而執之為有，或於空執為斷滅相，不能以幻化還幻\n\n化亦是顛倒。能遠離顛倒則常得根本無分別慧現前，一切夢想習氣亦漸離淨。夢想\n\n或譯妄想，乃無始以來的顛倒習氣所現，不知所從來，不知其何往，但現起時宛然\n\n而有，在夢想中安立種種言說境像喜怒哀樂等事，覺了之後一無所有。吾人醒時的\n\n妄想境因不實故恰等於夢，所以說人生就是一場大夢。依般若波羅密多以修行，能\n\n令遠離一切罣礙、恐怖、顛倒、夢想，成就菩薩功德。上上昇進，至圓滿即成佛。\n\n丁二　依般若成如來果\n\n##### 丁二　依般若成如來果\n\n究竟涅槃一句，或屬上文作遠離顛倒夢想究竟，即得涅槃解，義亦可通。但就\n\n文義應屬下文。究竟涅槃三世諸佛，明此諸佛是證得究竟涅槃的，不是菩薩化現，\n\n也不是世間的尊稱。佛即梵語佛陀，通常解為覺義，其實覺是菩提，佛是覺者，者\n\n字表已成就阿耨多羅三藐三菩提的有情，如世間有學問的人名為學者。佛與菩薩各\n\n有分齊，能發菩提心成就上求下化之功德者，名為菩薩；能圓滿成就阿耨多羅三藐\n\n三菩提者，方名為佛。阿耨多羅三藐三菩提，此云無上正等正覺。阿字譯無，如阿\n\n彌陀譯無量壽，耨多羅譯上，三藐譯正等，三菩提譯正覺；三藐簡譯為遍，即無上\n\n遍正覺。凡夫迷而不覺；外道自稱為覺而覺非正；聲聞、辟支佛只得正覺一分而不\n\n遍；菩薩能照達二空普度眾生，可名遍正覺，但非無上，還有勝進的功用故；惟究\n\n竟佛果乃可稱為無上遍正覺。然如何成就無上遍正覺，亦依般若波羅密多故而成就。\n\n丁三　依般若成利濟用\n\n##### 丁三　依般若成利濟用\n\n咒的廣義即陀羅尼，此云總持，能總持一切義理，一切功德勝用故。有法陀羅\n\n尼，義陀羅尼，忍陀羅尼，咒陀羅尼；而狹義的咒即祈禱詞。大神咒者，謂大神力\n\n能轉易一切，此般若波羅密多的大智慧行，能令轉生死得涅槃，轉煩惱成菩提，故\n\n云是大大神咒；此通三乘。明是智慧光明，菩薩、獨覺皆能以自心的智慧照破無明\n\n，而聲聞則須聞佛的教法乃能斷煩惱而得出世，般若明智能破無明，故云是大明咒\n\n；此通獨覺、大乘。是無上咒者，唯指大乘的無上涅槃，依般若不但能得三乘涅槃\n\n，而正能得無上涅槃故。是無等等咒者，無等等即阿耨多羅三藐三菩提。無上涅槃\n\n，諸法無與倫比，稱為無等，唯阿耨多羅三藐三菩提能與之等，名無等等；般若之\n\n究竟即大菩提，故云是無等等咒。因般若是上四重功用總持咒，故能除煩惱生死，\n\n乃至能圓滿自利利他福足慧足等一切苦厄，真實不虛。\n\n乙二　密咒發願\n\n##### 乙二　密咒發願\n\n密咒之義，若廣說則一字一句含義無窮無盡，所謂諸法實相甚深祕密，惟佛與\n\n佛乃能究竟了知，但能虔誠誦持，即得感應。然從粗顯義上，亦可略為解釋。所謂\n\n咒者，即將意願寄託於言句上，凝注心力發為聲音以為禱祝，故可咒好亦可咒壞，\n\n如對冤家以惡心咒詛令其生病或死等，亦名為咒，至禱祝吉祥往生等，名為咒願。\n\n今此咒即前四種陀羅尼中的咒陀羅尼，亦是總括全經義理功德之總持法。\n\n揭諦、即度一切苦厄之度，重說揭諦者，即自度亦兼他度也。何以能度？依般\n\n若功德而得度。波羅即波羅密多到彼岸之義，故波羅揭諦即度到彼岸之義。僧、即\n\n僧伽，此譯為眾；波羅僧揭諦，即度大眾到彼岸之義。菩提、即阿耨多羅三藐三菩\n\n提。咒字是簡略的符號，故每摘用一二字代表全句。娑婆訶、即速疾成就義。若順\n\n序義譯，便成為：度，度，到彼岸度，到彼岸度，到彼岸大眾度，無上遍正覺速疾\n\n成就。此是梵文文法次序，若依中國文次第譯其義，就是：度度，度到彼岸，度大\n\n眾到彼岸，速疾成就無上遍正覺。故誦此咒，即等於誦發菩提心願文，亦等於誦經\n\n畢發願迴向自他速成正覺。\n\n（塵空記）"
++    }
++  ]
++}
+diff --git a/docs/rust-migration/normalization.md b/docs/rust-migration/normalization.md
+new file mode 100644
+--- /dev/null
++++ b/docs/rust-migration/normalization.md
+@@ -0,0 +1,44 @@
++# Markdown normalization
++
++Paragraph normalization and heading scanning/rewriting run in the Rust
++`compat_util` module. These are pure operations: they neither open a library nor
++register roots or write files. The original paragraph algorithm and its frozen
++229-case oracle are unchanged by the heading migration.
++
++`compat_util::transform("normalize_heads", {"body": ..., "rules": [...]})`
++accepts ordered `{pattern: string, level: integer}` rules, with levels 1–6.
++The first matching rule wins. This native profile uses the Rust `regex` dialect;
++lookaround and backreferences are unsupported and return errors. All rules are
++validated eagerly, including for an empty body. Limits are 16 MiB of UTF-8 body,
++256 rules, 64 KiB of aggregate pattern text and 1 MiB per compiled regex.
++Empty rules preserve the body's bytes within the body-size limit.
++
++`normalize_heads_with` owns Python-compatible line splitting, ATX recognition,
++fence/HTML block state, title extraction, heading rewrite and newline assembly.
++It accepts a classifier returning an optional level for each eligible title.
++No classifier is called for skipped blocks; errors stop the operation immediately.
++The conservative legacy HTML behavior closes blocks on blank lines. Mixed LF
++and CRLF documents use CRLF when rebuilt; trailing LF/CRLF counts are retained.
++These historical normalization semantics are not a general Markdown parser.
++
++The Python `normalize_heads(body, rules)` facade eagerly validates levels and
++compiles the original trusted Python patterns. Its callback only matches the
++title supplied by Rust. Compiled flags, lookaround, backreferences and live
++pattern objects retain Python semantics. This is an explicit Python extension
++boundary: the success trace says `core=rust`, `matcher=python_regex` and records
++the actual callback count. With no rules, `matcher=none` and the count is zero.
++Python regex complexity remains the responsibility of the trusted caller;
++the native declarative rule limits do not restrict this compatibility matcher.
++
++The FFI releases the GIL during scanning and attaches for each callback. Callback
++errors keep their original Python exception instance, with no retry or partial
++result. Failed facade/bridge calls clear traces, including a nested native success
++inside a failing callback. Float levels preserve the old behavior: validation
++may accept them, but a matching rule raises TypeError when an integer is needed.
++
++Replacing any of the eight captured parser/rewriter helpers activates the live
++Python implementation and a `core=python` receipt. Restoring those identities
++restores native execution. An unbuilt checkout may use that Python implementation;
++an installed native candidate or `LLMBASE_REQUIRE_NATIVE=1` fails closed when the
++extension cannot load. Taixu-specific title promotion and deduplication remain
++downstream policy, outside this generic primitive.

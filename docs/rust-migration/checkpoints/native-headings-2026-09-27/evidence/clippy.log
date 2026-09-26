@@ -1,0 +1,3 @@
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b14-heads/source/crates/llmbase-core)
+   Compiling llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b14-heads/source/crates/llmbase-python)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.43s
