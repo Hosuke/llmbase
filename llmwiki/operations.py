@@ -36,6 +36,7 @@ class Operation:
     params: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
     writes: bool = False  # True → acquire worker.job_lock before dispatch
     category: str = "general"  # grouping for CLI help / docs
+    required_scopes: tuple[str, ...] | None = None  # explicit HTTP extension capability contract
 
 
 _REGISTRY: dict[str, Operation] = {}
@@ -58,14 +59,13 @@ def all_operations() -> list[Operation]:
 def _needs_write_lock(op: "Operation", args: dict) -> bool:
     """Some ops are normally read-only but escalate to writes based on args.
 
-    Currently only kb_ask does this (promote=True triggers index rebuilds
-    and concept writes inside query_with_search).
+    kb_ask files answers or promotes concepts when requested; kb_lint may fix files.
     """
     if op.writes:
         return True
-    if op.name == "kb_ask" and args.get("promote") is True:
+    if op.name == "kb_ask" and (args.get("promote") or args.get("file_back")):
         return True
-    if op.name == "kb_lint" and args.get("fix") is True:
+    if op.name == "kb_lint" and args.get("fix"):
         return True
     return False
 
@@ -85,7 +85,8 @@ def dispatch(name: str, base_dir: Path, arguments: dict | None = None) -> Any:
         if not job_lock.acquire(blocking=False):
             raise RuntimeError("another write operation is running")
         try:
-            return op.handler(base_dir, **args)
+            from . import _native
+            return _native.with_writer(base_dir, lambda: op.handler(base_dir, **args))
         finally:
             try:
                 job_lock.release()
@@ -158,6 +159,11 @@ def _safe_concept_path(concepts_dir: Path, slug: str) -> Path | None:
 
 
 def _op_get(base_dir: Path, slug: str, section: str | None = None) -> dict:
+    from . import _native
+    if _native.available():
+        from .resolve import _get_converters
+        return _native.dispatch("compat_kb_get", {"slug": slug, "section": section,
+            "resolve_cjk": bool(_get_converters()[0])}, base_dir)["result"]
     import frontmatter
     from .config import load_config
     from .resolve import load_aliases, resolve_link
@@ -198,6 +204,11 @@ def _op_get(base_dir: Path, slug: str, section: str | None = None) -> dict:
 
 
 def _op_get_sections(base_dir: Path, slug: str) -> dict:
+    from . import _native
+    if _native.available():
+        from .resolve import _get_converters
+        return _native.dispatch("compat_kb_sections", {"slug": slug,
+            "resolve_cjk": bool(_get_converters()[0])}, base_dir)["result"]
     import frontmatter
     from .config import load_config
     from .resolve import load_aliases, resolve_link
@@ -229,6 +240,9 @@ def _op_get_sections(base_dir: Path, slug: str) -> dict:
 
 
 def _op_list(base_dir: Path, tag: str | None = None) -> dict:
+    from . import _native
+    if _native.available():
+        return _native.dispatch("compat_kb_list", {"tag": tag}, base_dir)["result"]
     import frontmatter
     from .config import load_config
 
@@ -271,6 +285,9 @@ def _op_taxonomy(base_dir: Path, lang: str = "zh") -> dict:
 
 
 def _op_stats(base_dir: Path) -> dict:
+    from . import _native
+    if _native.available():
+        return _native.dispatch("compat_kb_stats", {}, base_dir)["result"]
     from .config import load_config
 
     cfg = load_config(base_dir)
@@ -432,7 +449,7 @@ _CANONICAL: list[Operation] = [
             },
             "required": ["question"],
         },
-        writes=False,  # promote=True escalates to write via its own path
+        writes=False,  # file_back/promote escalate to the shared writer lease.
         category="read",
     ),
     Operation(

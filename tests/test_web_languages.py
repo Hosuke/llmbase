@@ -86,6 +86,7 @@ def test_xici_generate_rejects_profile_lang_without_xici_style(tmp_kb, monkeypat
     monkeypatch.setattr("llmwiki.xici.generate_xici", fail_generate)
     app = create_web_app(tmp_kb)
     app.config["TESTING"] = True
+    app.config["llmbase"]["allow_unauthenticated_local"] = True
     client = app.test_client()
 
     r = client.post("/api/xici/generate", json={"lang": "wenyan"})
@@ -109,6 +110,7 @@ def test_xici_generate_accepts_factory_xici_lang(tmp_kb, monkeypatch):
     monkeypatch.setattr("llmwiki.xici.generate_xici", fake_generate)
     app = create_web_app(tmp_kb)
     app.config["TESTING"] = True
+    app.config["llmbase"]["allow_unauthenticated_local"] = True
     client = app.test_client()
 
     r = client.post("/api/xici/generate", json={"lang": "zh"})

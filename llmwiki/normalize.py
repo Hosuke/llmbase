@@ -232,6 +232,12 @@ def normalize_paragraphs(body: str) -> str:
     already consumed; callers needing word-boundary space can override
     ``SENTENCE_TERMINATORS`` to include more punctuation).
     """
+    from . import _native
+    if _native.available():
+        return _native.utility_transform("normalize_paragraphs", {
+            "body": body, "terminators": SENTENCE_TERMINATORS,
+            "wrappers": CLOSING_WRAPPERS,
+        })
     nl = _line_ending(body)
     lines = body.splitlines()
     out: list[str] = []
@@ -389,6 +395,46 @@ def normalize_paragraphs(body: str) -> str:
 
 
 def normalize_heads(body: str, rules: list[HeadRule]) -> str:
+    """Rewrite eligible ATX headings using ordered, trusted Python regex rules.
+
+    Rust owns document scanning and rewriting. Python supplies regex matching;
+    explicit parser helper replacements use the live Python extension boundary.
+    """
+    from . import _native
+    from operator import index
+
+    _native.clear_trace()
+    try:
+        native = _native.available()
+        overridden = any(globals()[name] is not original
+                         for name, original in _HEAD_DEFAULTS.items())
+        if not native or overridden:
+            value = _normalize_heads_python(body, rules)
+            _native.python_boundary("normalize_heads", "parser_override" if overridden
+                                    else "unbuilt_development")
+            return value
+        compiled = []
+        if rules:
+            for rule in rules:
+                level = rule["level"]
+                if not (1 <= level <= 6):
+                    raise ValueError(f"Invalid heading level {level!r}: must be 1-6")
+                compiled.append((re.compile(rule["pattern"]), level))
+
+        def match_title(title):
+            for pattern, level in compiled:
+                if pattern.search(title):
+                    # Like the legacy '#' * level, reject a float only if used.
+                    return index(level)
+            return None
+
+        return _native.normalize_heads_run(body, match_title if rules else None)
+    except BaseException:
+        _native.clear_trace()
+        raise
+
+
+def _normalize_heads_python(body: str, rules: list[HeadRule]) -> str:
     """Rewrite ATX heading levels based on title-pattern rules.
 
     For each ATX heading, rules are checked in order; the first whose
@@ -479,3 +525,10 @@ def _rewrite_heading_level(line: str, level: int) -> str:
         return line
     indent, _opener, sep, title, closer = m.groups()
     return f"{indent}{'#' * level}{sep}{title}{closer}"
+
+
+_HEAD_DEFAULTS = {name: globals()[name] for name in (
+    "_FENCE_CLOSE_RE", "_FENCE_OPEN_RE", "_HEADING_RE", "_HTML_BLOCK_RE",
+    "_HEADING_REWRITE_RE", "_line_ending", "_preserve_trailing_newline",
+    "_rewrite_heading_level",
+)}

@@ -1,0 +1,2402 @@
+{
+  "schema": 1,
+  "baseline_commit": "a7c4d9da764462e09c0769ecd8ba548a46d27e83",
+  "source_sha256": "082c894d50cb1baa2a972f502a2a73f7121a8024cc8ca59e277c37bb72713aa7",
+  "pure": [
+    {
+      "action": "fallback",
+      "args": {
+        "articles": []
+      },
+      "expected": []
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "alpha",
+            "tags": []
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "all",
+          "label": {
+            "en": "All Articles",
+            "zh": "全部文章",
+            "ja": "全記事"
+          },
+          "children": [],
+          "article_slugs": [
+            "alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "Mixed Topic"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "mixed topic"
+            ]
+          },
+          {
+            "slug": "c",
+            "tags": [
+              "single"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "mixed-topic",
+          "label": {
+            "en": "Mixed Topic",
+            "zh": "mixed-topic",
+            "ja": "mixed-topic"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "other",
+          "label": {
+            "en": "Other",
+            "zh": "其他",
+            "ja": "その他"
+          },
+          "children": [],
+          "article_slugs": [
+            "c"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "same",
+              "tie"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "tie",
+              "same"
+            ]
+          },
+          {
+            "slug": "c",
+            "tags": []
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "same",
+          "label": {
+            "en": "Same",
+            "zh": "same",
+            "ja": "same"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "other",
+          "label": {
+            "en": "Other",
+            "zh": "其他",
+            "ja": "その他"
+          },
+          "children": [],
+          "article_slugs": [
+            "c"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "dup",
+            "tags": [
+              "old"
+            ]
+          },
+          {
+            "slug": "dup",
+            "tags": [
+              "new"
+            ]
+          },
+          {
+            "slug": "other",
+            "tags": [
+              "new"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "new",
+          "label": {
+            "en": "New",
+            "zh": "new",
+            "ja": "new"
+          },
+          "children": [],
+          "article_slugs": [
+            "dup",
+            "other"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "s0",
+            "tags": [
+              "tag 0",
+              "common"
+            ]
+          },
+          {
+            "slug": "s1",
+            "tags": [
+              "tag 0",
+              "common"
+            ]
+          },
+          {
+            "slug": "s2",
+            "tags": [
+              "tag 1",
+              "common"
+            ]
+          },
+          {
+            "slug": "s3",
+            "tags": [
+              "tag 1",
+              "common"
+            ]
+          },
+          {
+            "slug": "s4",
+            "tags": [
+              "tag 2",
+              "common"
+            ]
+          },
+          {
+            "slug": "s5",
+            "tags": [
+              "tag 2",
+              "common"
+            ]
+          },
+          {
+            "slug": "s6",
+            "tags": [
+              "tag 3",
+              "common"
+            ]
+          },
+          {
+            "slug": "s7",
+            "tags": [
+              "tag 3",
+              "common"
+            ]
+          },
+          {
+            "slug": "s8",
+            "tags": [
+              "tag 4",
+              "common"
+            ]
+          },
+          {
+            "slug": "s9",
+            "tags": [
+              "tag 4",
+              "common"
+            ]
+          },
+          {
+            "slug": "s10",
+            "tags": [
+              "tag 5",
+              "common"
+            ]
+          },
+          {
+            "slug": "s11",
+            "tags": [
+              "tag 5",
+              "common"
+            ]
+          },
+          {
+            "slug": "s12",
+            "tags": [
+              "tag 6",
+              "common"
+            ]
+          },
+          {
+            "slug": "s13",
+            "tags": [
+              "tag 6",
+              "common"
+            ]
+          },
+          {
+            "slug": "s14",
+            "tags": [
+              "tag 7",
+              "common"
+            ]
+          },
+          {
+            "slug": "s15",
+            "tags": [
+              "tag 7",
+              "common"
+            ]
+          },
+          {
+            "slug": "s16",
+            "tags": [
+              "tag 8",
+              "common"
+            ]
+          },
+          {
+            "slug": "s17",
+            "tags": [
+              "tag 8",
+              "common"
+            ]
+          },
+          {
+            "slug": "s18",
+            "tags": [
+              "tag 9",
+              "common"
+            ]
+          },
+          {
+            "slug": "s19",
+            "tags": [
+              "tag 9",
+              "common"
+            ]
+          },
+          {
+            "slug": "s20",
+            "tags": [
+              "tag 10",
+              "common"
+            ]
+          },
+          {
+            "slug": "s21",
+            "tags": [
+              "tag 10",
+              "common"
+            ]
+          },
+          {
+            "slug": "s22",
+            "tags": [
+              "tag 11",
+              "common"
+            ]
+          },
+          {
+            "slug": "s23",
+            "tags": [
+              "tag 11",
+              "common"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "common",
+          "label": {
+            "en": "Common",
+            "zh": "common",
+            "ja": "common"
+          },
+          "children": [],
+          "article_slugs": [
+            "s0",
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6",
+            "s7",
+            "s8",
+            "s9",
+            "s10",
+            "s11",
+            "s12",
+            "s13",
+            "s14",
+            "s15",
+            "s16",
+            "s17",
+            "s18",
+            "s19",
+            "s20",
+            "s21",
+            "s22",
+            "s23"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "ßtest"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "ßtest"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "ßtest",
+          "label": {
+            "en": "Sstest",
+            "zh": "ßtest",
+            "ja": "ßtest"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "ǳabc"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "ǳabc"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "ǳabc",
+          "label": {
+            "en": "ǲabc",
+            "zh": "ǳabc",
+            "ja": "ǳabc"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "ᾀabc"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "ᾀabc"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "ᾀabc",
+          "label": {
+            "en": "ᾈabc",
+            "zh": "ᾀabc",
+            "ja": "ᾀabc"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "ქართული"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "ქართული"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "ქართული",
+          "label": {
+            "en": "ქართული",
+            "zh": "ქართული",
+            "ja": "ქართული"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "中a 國b"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "中a 國b"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "中a-國b",
+          "label": {
+            "en": "中A 國B",
+            "zh": "中a-國b",
+            "ja": "中a-國b"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "don't stop"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "don't stop"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "don't-stop",
+          "label": {
+            "en": "Don'T Stop",
+            "zh": "don't-stop",
+            "ja": "don't-stop"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "école"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "école"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "école",
+          "label": {
+            "en": "ÉCole",
+            "zh": "école",
+            "ja": "école"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "ΟΣ"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "ΟΣ"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "ος",
+          "label": {
+            "en": "Ος",
+            "zh": "ος",
+            "ja": "ος"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "𠮷 topic"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "𠮷 topic"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "𠮷-topic",
+          "label": {
+            "en": "𠮷 Topic",
+            "zh": "𠮷-topic",
+            "ja": "𠮷-topic"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "fallback",
+      "args": {
+        "articles": [
+          {
+            "slug": "a",
+            "tags": [
+              "category:經/史"
+            ]
+          },
+          {
+            "slug": "b",
+            "tags": [
+              "category:經/史"
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "category:經/史",
+          "label": {
+            "en": "Category:經/史",
+            "zh": "category:經/史",
+            "ja": "category:經/史"
+          },
+          "children": [],
+          "article_slugs": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "en"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "zh"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "ja"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "zh-en"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "文言"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "",
+        "lang": "unknown"
+      },
+      "expected": ""
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "en"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "zh"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "ja"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "zh-en"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "文言"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": null,
+        "lang": "unknown"
+      },
+      "expected": null
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "en"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "zh"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "ja"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "zh-en"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "文言"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "plain",
+        "lang": "unknown"
+      },
+      "expected": "plain"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "en"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "zh"
+      },
+      "expected": "孟子"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "ja"
+      },
+      "expected": "孟子"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "zh-en"
+      },
+      "expected": "Mencius / 孟子"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "文言"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "Mencius / 孟子",
+        "lang": "unknown"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "en"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "zh"
+      },
+      "expected": "孟子"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "ja"
+      },
+      "expected": "孟子"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "zh-en"
+      },
+      "expected": "孟子 / Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "文言"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "孟子 / Mencius",
+        "lang": "unknown"
+      },
+      "expected": "Mencius"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "en"
+      },
+      "expected": "𠮷"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "zh"
+      },
+      "expected": "英語"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "ja"
+      },
+      "expected": "英語"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "zh-en"
+      },
+      "expected": "𠮷 / 英語"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "文言"
+      },
+      "expected": "𠮷"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "𠮷 / 英語",
+        "lang": "unknown"
+      },
+      "expected": "𠮷"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "en"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "zh"
+      },
+      "expected": "ひらがな"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "ja"
+      },
+      "expected": "ひらがな"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "zh-en"
+      },
+      "expected": "ひらがな / English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "文言"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "ひらがな / English",
+        "lang": "unknown"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "en"
+      },
+      "expected": "甲"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "zh"
+      },
+      "expected": "甲"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "ja"
+      },
+      "expected": "甲"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "zh-en"
+      },
+      "expected": " / 甲 / 乙 / "
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "文言"
+      },
+      "expected": "甲"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": " / 甲 / 乙 / ",
+        "lang": "unknown"
+      },
+      "expected": "甲"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "en"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "zh"
+      },
+      "expected": "日本語"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "ja"
+      },
+      "expected": "日本語"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "zh-en"
+      },
+      "expected": "English / 日本語 / 中文"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "文言"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_title",
+      "args": {
+        "title": "English / 日本語 / 中文",
+        "lang": "unknown"
+      },
+      "expected": "English"
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "en",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "Root",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "Beta"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "zh",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "根",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "學"
+            },
+            {
+              "slug": "alpha",
+              "title": "學"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "𠮷"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "𠮷"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "ja",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "Root",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "學"
+            },
+            {
+              "slug": "alpha",
+              "title": "學"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "𠮷"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "𠮷"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "zh-en",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "Root",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "Alpha / 學"
+            },
+            {
+              "slug": "alpha",
+              "title": "Alpha / 學"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha / 學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta / 𠮷"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "Beta / 𠮷"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "文言",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "Root",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "Beta"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "action": "localize_tree",
+      "args": {
+        "tree": [
+          {
+            "id": "root",
+            "label": {
+              "en": "Root",
+              "zh": "根",
+              "custom": "另"
+            },
+            "article_slugs": [
+              "alpha",
+              "alpha",
+              "missing"
+            ],
+            "unknown": {
+              "keep": [
+                1,
+                true
+              ]
+            },
+            "children": [
+              {
+                "id": "child",
+                "label": "古書",
+                "article_slugs": [
+                  "alpha",
+                  "beta"
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "later",
+            "label": {},
+            "article_slugs": [
+              "beta",
+              "gamma"
+            ],
+            "children": []
+          }
+        ],
+        "lang": "custom",
+        "titles": {
+          "alpha": "Alpha / 學",
+          "beta": "Beta / 𠮷",
+          "gamma": "Plain"
+        }
+      },
+      "expected": [
+        {
+          "id": "root",
+          "label": "另",
+          "count": 3,
+          "total": 5,
+          "articles": [
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "alpha",
+              "title": "Alpha"
+            },
+            {
+              "slug": "missing",
+              "title": "missing"
+            }
+          ],
+          "children": [
+            {
+              "id": "child",
+              "label": "古書",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta"
+                }
+              ],
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "label": "later",
+          "count": 2,
+          "total": 2,
+          "articles": [
+            {
+              "slug": "beta",
+              "title": "Beta"
+            },
+            {
+              "slug": "gamma",
+              "title": "Plain"
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "libraries": [
+    {
+      "name": "cached",
+      "files": {
+        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n",
+        "knowledge/entries/alpha.md": "---\ntitle: Alpha / 學\ntags: [Mixed Topic, tie]\nsummary: 原義\neditorial_extension: {keep: [1, true]}\n---\n文言𠮷正文。\n",
+        "knowledge/entries/beta.md": "---\ntitle: Beta / 𠮷\ntags: [mixed topic, tie]\nsummary: 義\nprivate: true\n---\n私記不改。\n",
+        "knowledge/entries/gamma.md": "---\ntags: []\n---\n無題亦保。\n",
+        "knowledge/entries/ignore.txt": "not an article\n",
+        "knowledge/entries/nested/hidden.md": "---\ntitle: Nested\n---\nnot shallow\n",
+        "knowledge/metadata/taxonomy.json": "{\"categories\": [{\"id\": \"root\", \"label\": {\"en\": \"Root\", \"zh\": \"根\", \"custom\": \"另\"}, \"article_slugs\": [\"alpha\", \"alpha\", \"missing\"], \"unknown\": {\"keep\": [1, true]}, \"children\": [{\"id\": \"child\", \"label\": \"古書\", \"article_slugs\": [\"alpha\", \"beta\"], \"children\": []}]}, {\"id\": \"later\", \"label\": {}, \"article_slugs\": [\"beta\", \"gamma\"], \"children\": []}], \"locked\": true, \"unknown\": {\"original\": \"保留\"}}"
+      },
+      "results": {
+        "load": {
+          "categories": [
+            {
+              "id": "root",
+              "label": {
+                "en": "Root",
+                "zh": "根",
+                "custom": "另"
+              },
+              "article_slugs": [
+                "alpha",
+                "alpha",
+                "missing"
+              ],
+              "unknown": {
+                "keep": [
+                  1,
+                  true
+                ]
+              },
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "article_slugs": [
+                    "alpha",
+                    "beta"
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": {},
+              "article_slugs": [
+                "beta",
+                "gamma"
+              ],
+              "children": []
+            }
+          ],
+          "locked": true,
+          "unknown": {
+            "original": "保留"
+          }
+        },
+        "articles": [
+          {
+            "slug": "alpha",
+            "title": "Alpha / 學",
+            "tags": [
+              "Mixed Topic",
+              "tie"
+            ],
+            "summary": "原義"
+          },
+          {
+            "slug": "beta",
+            "title": "Beta / 𠮷",
+            "tags": [
+              "mixed topic",
+              "tie"
+            ],
+            "summary": "義"
+          },
+          {
+            "slug": "gamma",
+            "title": "gamma",
+            "tags": [],
+            "summary": ""
+          }
+        ],
+        "titles": {
+          "alpha": "Alpha / 學",
+          "gamma": "gamma",
+          "beta": "Beta / 𠮷"
+        },
+        "build": {
+          "en": [
+            {
+              "id": "root",
+              "label": "Root",
+              "count": 1,
+              "total": 3,
+              "articles": [
+                {
+                  "slug": "missing",
+                  "title": "missing"
+                }
+              ],
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "count": 2,
+                  "total": 2,
+                  "articles": [
+                    {
+                      "slug": "alpha",
+                      "title": "Alpha"
+                    },
+                    {
+                      "slug": "beta",
+                      "title": "Beta"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": "later",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "zh": [
+            {
+              "id": "root",
+              "label": "根",
+              "count": 1,
+              "total": 3,
+              "articles": [
+                {
+                  "slug": "missing",
+                  "title": "missing"
+                }
+              ],
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "count": 2,
+                  "total": 2,
+                  "articles": [
+                    {
+                      "slug": "alpha",
+                      "title": "學"
+                    },
+                    {
+                      "slug": "beta",
+                      "title": "𠮷"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": "later",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "ja": [
+            {
+              "id": "root",
+              "label": "Root",
+              "count": 1,
+              "total": 3,
+              "articles": [
+                {
+                  "slug": "missing",
+                  "title": "missing"
+                }
+              ],
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "count": 2,
+                  "total": 2,
+                  "articles": [
+                    {
+                      "slug": "alpha",
+                      "title": "學"
+                    },
+                    {
+                      "slug": "beta",
+                      "title": "𠮷"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": "later",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "zh-en": [
+            {
+              "id": "root",
+              "label": "Root",
+              "count": 1,
+              "total": 3,
+              "articles": [
+                {
+                  "slug": "missing",
+                  "title": "missing"
+                }
+              ],
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "count": 2,
+                  "total": 2,
+                  "articles": [
+                    {
+                      "slug": "alpha",
+                      "title": "Alpha / 學"
+                    },
+                    {
+                      "slug": "beta",
+                      "title": "Beta / 𠮷"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": "later",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "文言": [
+            {
+              "id": "root",
+              "label": "Root",
+              "count": 1,
+              "total": 3,
+              "articles": [
+                {
+                  "slug": "missing",
+                  "title": "missing"
+                }
+              ],
+              "children": [
+                {
+                  "id": "child",
+                  "label": "古書",
+                  "count": 2,
+                  "total": 2,
+                  "articles": [
+                    {
+                      "slug": "alpha",
+                      "title": "Alpha"
+                    },
+                    {
+                      "slug": "beta",
+                      "title": "Beta"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "later",
+              "label": "later",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      },
+      "inventory": {
+        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80",
+        "knowledge/entries/alpha.md": "9048c2c00eaaeee95573441944645903ec929fe94eea0364a56f68e067482a1a",
+        "knowledge/entries/gamma.md": "4ecabaddc5cff3a11a227b7d9e606b651e90084c89588facc6dc239c78f4e372",
+        "knowledge/entries/ignore.txt": "21ebae58d40628d6595344dde96db4da51df402ab05887568e9aac82c2abd188",
+        "knowledge/entries/beta.md": "08ff01cebe62a601fc6f09431ce9404d28c71c55f07106e5436497e37b51367e",
+        "knowledge/metadata/taxonomy.json": "19f5a18bd2b62b641b732cc1d8076328e5b438b49fe01615965cbbd5cc0df182",
+        "knowledge/entries/nested/hidden.md": "0c32ce5d492e2f51fada3477aebeb1d744e54dd4e303812696efc5c5a38a9260"
+      }
+    },
+    {
+      "name": "uncached",
+      "files": {
+        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n",
+        "knowledge/entries/alpha.md": "---\ntitle: Alpha / 學\ntags: [Mixed Topic, tie]\nsummary: 原義\neditorial_extension: {keep: [1, true]}\n---\n文言𠮷正文。\n",
+        "knowledge/entries/beta.md": "---\ntitle: Beta / 𠮷\ntags: [mixed topic, tie]\nsummary: 義\nprivate: true\n---\n私記不改。\n",
+        "knowledge/entries/gamma.md": "---\ntags: []\n---\n無題亦保。\n",
+        "knowledge/entries/ignore.txt": "not an article\n",
+        "knowledge/entries/nested/hidden.md": "---\ntitle: Nested\n---\nnot shallow\n"
+      },
+      "results": {
+        "load": {
+          "categories": []
+        },
+        "articles": [
+          {
+            "slug": "alpha",
+            "title": "Alpha / 學",
+            "tags": [
+              "Mixed Topic",
+              "tie"
+            ],
+            "summary": "原義"
+          },
+          {
+            "slug": "beta",
+            "title": "Beta / 𠮷",
+            "tags": [
+              "mixed topic",
+              "tie"
+            ],
+            "summary": "義"
+          },
+          {
+            "slug": "gamma",
+            "title": "gamma",
+            "tags": [],
+            "summary": ""
+          }
+        ],
+        "titles": {
+          "alpha": "Alpha / 學",
+          "gamma": "gamma",
+          "beta": "Beta / 𠮷"
+        },
+        "build": {
+          "en": [
+            {
+              "id": "mixed-topic",
+              "label": "Mixed Topic",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta"
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "other",
+              "label": "Other",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "zh": [
+            {
+              "id": "mixed-topic",
+              "label": "mixed-topic",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "𠮷"
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "other",
+              "label": "其他",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "ja": [
+            {
+              "id": "mixed-topic",
+              "label": "mixed-topic",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "𠮷"
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "other",
+              "label": "その他",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "zh-en": [
+            {
+              "id": "mixed-topic",
+              "label": "Mixed Topic",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha / 學"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta / 𠮷"
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "other",
+              "label": "Other",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ],
+          "文言": [
+            {
+              "id": "mixed-topic",
+              "label": "Mixed Topic",
+              "count": 2,
+              "total": 2,
+              "articles": [
+                {
+                  "slug": "alpha",
+                  "title": "Alpha"
+                },
+                {
+                  "slug": "beta",
+                  "title": "Beta"
+                }
+              ],
+              "children": []
+            },
+            {
+              "id": "other",
+              "label": "Other",
+              "count": 1,
+              "total": 1,
+              "articles": [
+                {
+                  "slug": "gamma",
+                  "title": "gamma"
+                }
+              ],
+              "children": []
+            }
+          ]
+        }
+      },
+      "inventory": {
+        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80",
+        "knowledge/entries/alpha.md": "9048c2c00eaaeee95573441944645903ec929fe94eea0364a56f68e067482a1a",
+        "knowledge/entries/gamma.md": "4ecabaddc5cff3a11a227b7d9e606b651e90084c89588facc6dc239c78f4e372",
+        "knowledge/entries/ignore.txt": "21ebae58d40628d6595344dde96db4da51df402ab05887568e9aac82c2abd188",
+        "knowledge/entries/beta.md": "08ff01cebe62a601fc6f09431ce9404d28c71c55f07106e5436497e37b51367e",
+        "knowledge/entries/nested/hidden.md": "0c32ce5d492e2f51fada3477aebeb1d744e54dd4e303812696efc5c5a38a9260"
+      }
+    },
+    {
+      "name": "missing-concepts",
+      "files": {
+        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n"
+      },
+      "results": {
+        "load": {
+          "categories": []
+        },
+        "articles": [],
+        "titles": {},
+        "build": {
+          "en": [],
+          "zh": [],
+          "ja": [],
+          "zh-en": [],
+          "文言": []
+        }
+      },
+      "inventory": {
+        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80"
+      }
+    }
+  ]
+}

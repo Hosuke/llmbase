@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { Shimmer } from '../components/Loading';
-import { useLang, localizeTitle } from '../lib/lang';
+import { useLang } from '../lib/lang';
 import { api, type Trail } from '../lib/api';
 
 export function Trails() {

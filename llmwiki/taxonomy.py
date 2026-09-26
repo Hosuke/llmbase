@@ -403,12 +403,7 @@ def _apply_category_tags(concepts_dir: Path, slug: str, category_path: list[str]
     article_path.write_text(frontmatter.dumps(post), encoding="utf-8")
 
 
-def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
-    """Read cached taxonomy and return localized tree for the web API.
-
-    This is fast (no LLM call). If no cache exists, generates a simple
-    tag-based fallback synchronously.
-    """
+def _legacy_build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
     cfg = load_config(base_dir)
     meta_dir = Path(cfg["paths"]["meta"])
     concepts_dir = Path(cfg["paths"]["concepts"])
@@ -428,6 +423,40 @@ def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]
     # Localize labels and resolve article_slugs → {slug, title}
     title_map = _build_title_map(concepts_dir)
     return _localize_tree(raw_tree, lang, title_map)
+
+
+def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
+    """Read cached taxonomy and return localized tree for the web API.
+
+    This is fast (no LLM call). If no cache exists, generates a simple
+    tag-based fallback synchronously.
+    """
+    from . import _native
+    _native.clear_trace()
+    if (_native.available()
+            and _load_articles is _DEFAULT_LOAD_ARTICLES
+            and _fallback_taxonomy is _DEFAULT_FALLBACK_TAXONOMY
+            and _dedup_tree is _DEFAULT_DEDUP_TREE
+            and _build_title_map is _DEFAULT_BUILD_TITLE_MAP
+            and _localize_tree is _DEFAULT_LOCALIZE_TREE
+            and _localize_title is _DEFAULT_LOCALIZE_TITLE):
+        cfg = load_config(base_dir)
+        return _native.taxonomy_transform("build", {
+            "concepts_dir": str(Path(cfg["paths"]["concepts"])),
+            "meta_dir": str(Path(cfg["paths"]["meta"])),
+            "lang": lang})
+    if not _native.available():
+        return _legacy_build_taxonomy(base_dir, lang)
+    # A live helper override runs the established Python orchestration against
+    # the real replacements; the callback work is not attributed to Rust.
+    _native.clear_trace()
+    try:
+        result = _legacy_build_taxonomy(base_dir, lang)
+    except BaseException:
+        _native.clear_trace()
+        raise
+    _native.python_boundary("build_taxonomy", "live taxonomy helper override")
+    return result
 
 
 def _dedup_tree(nodes: list[dict], seen: set | None = None):
@@ -544,14 +573,23 @@ def _add_to_other(categories: list, slug: str):
     })
 
 
-def load_taxonomy(base_dir: Path | None = None) -> dict:
-    """Load cached taxonomy (raw, not localized)."""
+def _legacy_load_taxonomy(base_dir: Path | None = None) -> dict:
     cfg = load_config(base_dir)
     meta_dir = Path(cfg["paths"]["meta"])
     path = meta_dir / "taxonomy.json"
     if path.exists():
         return json.loads(path.read_text())
     return {"categories": []}
+
+
+def load_taxonomy(base_dir: Path | None = None) -> dict:
+    """Load cached taxonomy (raw, not localized)."""
+    from . import _native
+    _native.clear_trace()
+    if _native.available():
+        cfg = load_config(base_dir)
+        return _native.taxonomy_transform("load", {"meta_dir": str(Path(cfg["paths"]["meta"]))})
+    return _legacy_load_taxonomy(base_dir)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────
@@ -676,11 +714,7 @@ def _ensure_complete_assignment(tree: list[dict], articles: list[dict]) -> list[
     return tree
 
 
-def _fallback_taxonomy(articles: list[dict]) -> list[dict]:
-    """Tag-frequency-based taxonomy when LLM is unavailable.
-
-    Groups articles by their most common tags. No hardcoded domains.
-    """
+def _legacy_fallback_taxonomy(articles: list[dict]) -> list[dict]:
     from collections import Counter
 
     if not articles:
@@ -740,14 +774,18 @@ def _fallback_taxonomy(articles: list[dict]) -> list[dict]:
     return categories
 
 
-def _localize_title(title: str, lang: str) -> str:
-    """Extract the language-specific part of a bilingual title.
+def _fallback_taxonomy(articles: list[dict]) -> list[dict]:
+    """Tag-frequency-based taxonomy when LLM is unavailable.
 
-    "Mencius / 孟子" + lang=zh → "孟子"
-    "Mencius / 孟子" + lang=en → "Mencius"
-    "Mencius / 孟子" + lang=zh-en → "Mencius / 孟子"
-    "some-slug-only" → "some-slug-only" (no change)
+    Groups articles by their most common tags. No hardcoded domains.
     """
+    from . import _native
+    if _native.available():
+        return _native.taxonomy_transform("fallback", {"articles": articles})
+    return _legacy_fallback_taxonomy(articles)
+
+
+def _legacy_localize_title(title: str, lang: str) -> str:
     import re
     if not title or "/" not in title:
         return title
@@ -768,12 +806,21 @@ def _localize_title(title: str, lang: str) -> str:
         return en or parts[0]
 
 
-def _localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
-    """Convert raw taxonomy tree to the format the web API expects.
+def _localize_title(title: str, lang: str) -> str:
+    """Extract the language-specific part of a bilingual title.
 
-    Resolves article_slugs to {slug, title} objects. Both category labels
-    AND article titles are localized to the requested language.
+    "Mencius / 孟子" + lang=zh → "孟子"
+    "Mencius / 孟子" + lang=en → "Mencius"
+    "Mencius / 孟子" + lang=zh-en → "Mencius / 孟子"
+    "some-slug-only" → "some-slug-only" (no change)
     """
+    from . import _native
+    if _native.available():
+        return _native.taxonomy_transform("localize_title", {"title": title, "lang": lang})
+    return _legacy_localize_title(title, lang)
+
+
+def _legacy_localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
     result = []
     for node in tree:
         slugs = node.get("article_slugs", [])
@@ -800,8 +847,32 @@ def _localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> li
     return result
 
 
-def _load_articles(concepts_dir: Path) -> list[dict]:
-    """Load article metadata from disk."""
+def _localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
+    """Convert raw taxonomy tree to the format the web API expects.
+
+    Resolves article_slugs to {slug, title} objects. Both category labels
+    AND article titles are localized to the requested language.
+    """
+    from . import _native
+    if (_native.available()
+            and _localize_title is _DEFAULT_LOCALIZE_TITLE
+            and _localize_tree is _DEFAULT_LOCALIZE_TREE):
+        return _native.taxonomy_transform("localize_tree",
+            {"tree": tree, "lang": lang, "titles": title_map})
+    if not _native.available():
+        return _legacy_localize_tree(tree, lang, title_map)
+    # A replaced _localize_title is honored through the real legacy recursion.
+    _native.clear_trace()
+    try:
+        result = _legacy_localize_tree(tree, lang, title_map)
+    except BaseException:
+        _native.clear_trace()
+        raise
+    _native.python_boundary("localize_tree", "live _localize_title override")
+    return result
+
+
+def _legacy_load_articles(concepts_dir: Path) -> list[dict]:
     articles = []
     if not concepts_dir.exists():
         return articles
@@ -816,8 +887,15 @@ def _load_articles(concepts_dir: Path) -> list[dict]:
     return articles
 
 
-def _build_title_map(concepts_dir: Path) -> dict[str, str]:
-    """Build slug → title mapping."""
+def _load_articles(concepts_dir: Path) -> list[dict]:
+    """Load article metadata from disk."""
+    from . import _native
+    if _native.available():
+        return _native.taxonomy_transform("load_articles", {"concepts_dir": str(concepts_dir)})
+    return _legacy_load_articles(concepts_dir)
+
+
+def _legacy_build_title_map(concepts_dir: Path) -> dict[str, str]:
     title_map = {}
     if not concepts_dir.exists():
         return title_map
@@ -825,3 +903,22 @@ def _build_title_map(concepts_dir: Path) -> dict[str, str]:
         post = frontmatter.load(str(md_file))
         title_map[md_file.stem] = post.metadata.get("title", md_file.stem)
     return title_map
+
+
+def _build_title_map(concepts_dir: Path) -> dict[str, str]:
+    """Build slug → title mapping."""
+    from . import _native
+    if _native.available():
+        pairs = _native.taxonomy_transform("title_map", {"concepts_dir": str(concepts_dir)})
+        return {slug: title for slug, title in pairs}
+    return _legacy_build_title_map(concepts_dir)
+
+
+# Default helper identities captured after definition; live replacements are
+# honored through the established extension path (see llmwiki/sections.py).
+_DEFAULT_LOAD_ARTICLES = _load_articles
+_DEFAULT_FALLBACK_TAXONOMY = _fallback_taxonomy
+_DEFAULT_DEDUP_TREE = _dedup_tree
+_DEFAULT_BUILD_TITLE_MAP = _build_title_map
+_DEFAULT_LOCALIZE_TREE = _localize_tree
+_DEFAULT_LOCALIZE_TITLE = _localize_title

@@ -118,3 +118,17 @@ def split_by_heading(body: str, level: int) -> list[Section]:
             content=content,
         ))
     return sections
+
+
+_legacy_split_by_heading = split_by_heading
+_DEFAULT_ITER_HEADINGS = _iter_headings
+
+
+def split_by_heading(body: str, level: int) -> list[Section]:
+    from . import _native
+    if _native.available() and _iter_headings is _DEFAULT_ITER_HEADINGS:
+        return [Section(**row) for row in _native.utility_transform("split", {"body": body, "level": level})]
+    result = _legacy_split_by_heading(body, level)
+    if _native.available():
+        _native.python_boundary("split_by_heading", "live heading iterator override")
+    return result

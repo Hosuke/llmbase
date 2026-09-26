@@ -1,0 +1,31 @@
+[package]
+name = "llmbase-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "llmbase"
+path = "src/main.rs"
+
+[dependencies]
+llmbase-core = { path = "../llmbase-core" }
+llmbase-model = { path = "../llmbase-model" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true
+clap = { version = "4.5", features = ["derive", "env"] }
+axum = { version="0.8", features=["multipart"] }
+tokio = { version = "1", features = ["full"] }
+rmcp = { version = "=3.4.0", features = ["transport-io"] }
+subtle = "2.6"
+futures-util = "0.3"
+
+[dev-dependencies]
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "stream", "rustls-tls"] }
+bytes = "1"

@@ -1,0 +1,355 @@
+[
+  {
+    "name": "kb_search",
+    "description": "Full-text search across the knowledge base wiki articles.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "top_k": {
+          "type": "integer",
+          "default": 10
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_search_raw",
+    "description": "Fallback full-text search over the raw/ ingest directory (pre-compile source material). Use when kb_search misses — raw holds verbatim scraped sources, dictionaries, and book chapters that may contain exact wording lost during compile.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "top_k": {
+          "type": "integer",
+          "default": 10
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_ask",
+    "description": "Ask a question against the knowledge base (deep research with context retrieval). Set promote=true to let the LLM judge whether to sediment the Q&A as a new wiki concept.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "default": "default"
+        },
+        "file_back": {
+          "type": "boolean",
+          "default": false
+        },
+        "deep": {
+          "type": "boolean",
+          "default": true
+        },
+        "promote": {
+          "type": "boolean",
+          "default": false
+        },
+        "model": {
+          "type": "string"
+        },
+        "api_key": {
+          "type": "string",
+          "writeOnly": true,
+          "description": "Per-request LLM API key override. HTTP callers MUST use the X-LLM-Key header instead; the /api/ask body is rejected with 400 if any api_key-like field is present."
+        }
+      },
+      "required": [
+        "question"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_get",
+    "description": "Get a wiki article by slug (alias-aware: accepts Chinese/pinyin/English names). Optional `section` param extracts just that section's subtree (heading + content + descendants); use kb_get_sections first to discover anchors.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string",
+          "description": "Section anchor from kb_get_sections (e.g. h2-緒論-bb6572)"
+        }
+      },
+      "required": [
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_get_sections",
+    "description": "Get the section tree (table of contents) for an article. Each section has level, title, anchor, start/end character offsets, and nested children. Anchors are stable across cosmetic title edits and sibling reorders.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_list",
+    "description": "List all wiki articles with titles and tags. Optional tag filter.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "type": "string"
+        }
+      }
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_backlinks",
+    "description": "Find all articles that reference a given article.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_taxonomy",
+    "description": "Get the hierarchical category tree of the knowledge base.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "lang": {
+          "type": "string",
+          "default": "zh"
+        }
+      }
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_stats",
+    "description": "Knowledge-base statistics: article count, raw count, word count.",
+    "params": {
+      "type": "object",
+      "properties": {}
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_ingest",
+    "description": "Ingest a URL or local file path into the raw corpus.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "URL or local file path"
+        },
+        "url": {
+          "type": "string",
+          "description": "Legacy alias for source"
+        }
+      }
+    },
+    "writes": true,
+    "category": "write"
+  },
+  {
+    "name": "kb_compile",
+    "description": "Compile raw documents into wiki articles. full=true recompiles everything.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "full": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "writes": true,
+    "category": "write"
+  },
+  {
+    "name": "kb_lint",
+    "description": "Run health checks on the KB. Legacy: fix=true delegates to kb_lint_fix.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "deep": {
+          "type": "boolean",
+          "default": false
+        },
+        "fix": {
+          "type": "boolean",
+          "default": false,
+          "description": "Legacy: run auto_fix"
+        }
+      }
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_lint_fix",
+    "description": "Auto-fix lint issues (metadata, broken links, duplicates, categories).",
+    "params": {
+      "type": "object",
+      "properties": {}
+    },
+    "writes": true,
+    "category": "write"
+  },
+  {
+    "name": "kb_export_article",
+    "description": "Export a single article with full context (linked articles, backlinks).",
+    "params": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_export_tag",
+    "description": "Export all articles with a given tag.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_export_graph",
+    "description": "Export the subgraph around an article up to a given depth.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer",
+          "default": 2
+        }
+      },
+      "required": [
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_export",
+    "description": "Legacy unified export (type: article/tag/graph). Prefer kb_export_article/tag/graph.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "article",
+            "tag",
+            "graph"
+          ]
+        },
+        "slug": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer",
+          "default": 2
+        }
+      },
+      "required": [
+        "type",
+        "slug"
+      ]
+    },
+    "writes": false,
+    "category": "read"
+  },
+  {
+    "name": "kb_rebuild_index",
+    "description": "Rebuild the wiki index, aliases, backlinks metadata.",
+    "params": {
+      "type": "object",
+      "properties": {}
+    },
+    "writes": true,
+    "category": "write"
+  },
+  {
+    "name": "kb_xici",
+    "description": "Get the guided reading (导读) — an LLM-generated introduction.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "lang": {
+          "type": "string",
+          "default": "zh"
+        }
+      }
+    },
+    "writes": false,
+    "category": "read"
+  }
+]

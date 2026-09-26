@@ -30,6 +30,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+from .. import _native
 
 
 # Stage names become directory segments under ``.pipeline/``; any
@@ -72,6 +73,12 @@ def append(base_dir: Path, stage: str, key: str, event: dict) -> None:
     on crash *after* ``write()`` but before ``fsync()``, the line is
     either fully visible or fully absent on next boot.
     """
+    if _native.available():
+        _log_path(base_dir, stage, key)  # Preserve public validation before the timestamp hook.
+        _native.pipeline_dispatch("compat_pipeline_append", {
+            "stage": stage, "key": key, "event": dict(event), "ts": _now_iso(),
+        }, base_dir)
+        return
     path = _log_path(base_dir, stage, key)
     path.parent.mkdir(parents=True, exist_ok=True)
     record = dict(event)
@@ -110,6 +117,12 @@ def iter_events(base_dir: Path, stage: str, key: str) -> Iterator[dict]:
     line is the last one on disk (a mid-write crash). Callers that
     need to detect corruption should run a separate audit.
     """
+    if _native.available():
+        _log_path(base_dir, stage, key)
+        yield from _native.pipeline_dispatch("compat_pipeline_events", {
+            "stage": stage, "key": key,
+        }, base_dir)
+        return
     path = _log_path(base_dir, stage, key)
     if not path.exists():
         return
@@ -148,6 +161,12 @@ def tail(base_dir: Path, stage: str, key: str, limit: int = 50) -> list[dict]:
     """Return the last ``limit`` events (most-recent last)."""
     if limit <= 0:
         return []
+    if _native.available() and iter_events is _DEFAULT_ITER_EVENTS:
+        _log_path(base_dir, stage, key)
+        return _native.pipeline_dispatch("compat_pipeline_tail", {
+            "stage": stage, "key": key, "limit": limit,
+        }, base_dir)
+    _native.clear_trace()
     events: list[dict] = []
     for e in iter_events(base_dir, stage, key):
         events.append(e)
@@ -181,3 +200,6 @@ def _key_hash(key: str) -> str:
 def _now_iso() -> str:
     """Monkeypatch target for tests needing deterministic timestamps."""
     return datetime.now(timezone.utc).isoformat()
+
+
+_DEFAULT_ITER_EVENTS = iter_events

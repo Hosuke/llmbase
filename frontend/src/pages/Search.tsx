@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
-import { Tag } from '../components/Tag';
 import { Loading } from '../components/Loading';
 import { api, type SearchResult } from '../lib/api';
 

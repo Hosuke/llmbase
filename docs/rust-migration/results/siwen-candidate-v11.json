@@ -1,0 +1,109 @@
+{
+  "llmwiki_version": "0.9.0",
+  "siwen_version": "0.1.0",
+  "llmwiki_module": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/siwen-venv/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "siwen_module": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/siwen-snapshot/siwen/__init__.py",
+  "extension": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/siwen-venv/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "86e2952d77fa707da13579fb276732f5c1e2e7780769b3145f06c8eb2837a314",
+  "wheel_sha256": "4ad0f60e92bad30a114e344585421732eb15296d5da62334d4879deffd1f584e",
+  "native_receipts": {
+    "find_uncompiled": {
+      "core": "rust",
+      "operation": "compat_compile_find",
+      "storage": "native_document_and_journal"
+    },
+    "list_existing_concepts": {
+      "core": "rust",
+      "operation": "compat_compile_existing",
+      "storage": "native_document_and_journal"
+    },
+    "rebuild_index": {
+      "core": "rust",
+      "operation": "compat_compile_rebuild",
+      "storage": "native_document_and_journal"
+    },
+    "query_last": {
+      "core": "rust",
+      "operation": "compat_query",
+      "orchestrator": "rust",
+      "model_boundary": "host_callback",
+      "stages": [
+        "index",
+        "selector",
+        "answer"
+      ],
+      "host_overrides": [],
+      "default_retrieval_public_only": true,
+      "writes": false
+    },
+    "flask_sources": {
+      "core": "rust",
+      "operation": "compat_kb_raw_list",
+      "library_id": "default",
+      "storage": "native_filesystem",
+      "indexed": false,
+      "writer_lock": false
+    }
+  },
+  "taxonomy_callback_calls": [
+    {
+      "marker": "第一類",
+      "article_count": 4
+    },
+    {
+      "marker": "第二類",
+      "article_count": 4
+    }
+  ],
+  "query_callback_count": 2,
+  "query_context_counts": [
+    4,
+    4
+  ],
+  "model_transport": "explicit offline Python callback",
+  "external_network": "blocked",
+  "required_endpoint_status": {
+    "/api/branding": 200,
+    "/api/languages": 200,
+    "/api/stats": 200,
+    "/api/collections": 200,
+    "/api/aliases": 200,
+    "/api/entities": 200,
+    "/api/tones": 200,
+    "/api/healthz": 200,
+    "/api/articles": 200,
+    "/api/articles/lite": 200,
+    "/api/sources": 200,
+    "/api/trails": 200,
+    "/api/classics": 200,
+    "/api/kepan": 200,
+    "/api/masters": 200,
+    "/api/lineages": 200,
+    "/api/schools": 200,
+    "/api/persons": 200,
+    "/api/books": 200,
+    "/api/outputs": 200,
+    "/api/taxonomy?lang=zh": 200,
+    "/api/xici?lang=zh": 200
+  },
+  "flask_hook_calls": 271,
+  "bake": {
+    "json_count": 133,
+    "html_count": 112,
+    "skipped": [],
+    "article_count": 4,
+    "classic_count": 2,
+    "book_chapters": {
+      "hosuke-laozi": [
+        "德-01"
+      ],
+      "yaomiao-zhuangzi": [],
+      "yaomiao-guanyin": []
+    },
+    "verified_clean": true
+  },
+  "synthetic_raw_bytes_unchanged": true,
+  "original_downstream_files_unchanged": true,
+  "original_status_unchanged": false,
+  "boundary": "Siwen custom compiler, Flask rendering and custom taxonomy remain Python extensions; receipts prove only named native operations"
+}

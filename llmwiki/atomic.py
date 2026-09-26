@@ -17,6 +17,10 @@ def atomic_write_json(path: Path, data: dict, ensure_ascii: bool = False):
 
     If the process crashes mid-write, the original file is untouched.
     """
+    from . import _native
+    if _native.available():
+        _native.atomic_write(path, json.dumps(data, indent=2, ensure_ascii=ensure_ascii).encode("utf-8"))
+        return
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -45,6 +49,10 @@ def atomic_write_text(path: Path, content: str):
     see the previous file (or no file) or the fully written new file —
     never a partial write, regardless of crash or concurrent reader.
     """
+    from . import _native
+    if _native.available():
+        _native.atomic_write(path, content.encode("utf-8"))
+        return
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 

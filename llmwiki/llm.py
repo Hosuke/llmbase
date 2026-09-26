@@ -3,12 +3,16 @@
 import os
 import time
 import logging
+import math
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
 import httpx
 from openai import OpenAI
+
+from . import _native
 
 logger = logging.getLogger("llmbase.llm")
 
@@ -137,6 +141,9 @@ def _is_llmbase_project(root: Path) -> bool:
 _ENV_SOURCE = _load_env()
 
 _client = None
+_default_client = None
+_DEFAULT_OPENAI = OpenAI
+_call_trace: ContextVar[dict | None] = ContextVar("llmwiki_model_call_trace", default=None)
 
 
 def _get_float_env(name: str, default: float) -> float:
@@ -146,7 +153,7 @@ def _get_float_env(name: str, default: float) -> float:
         return default
     try:
         val = float(raw)
-        if val <= 0:
+        if not math.isfinite(val) or val <= 0:
             raise ValueError("must be > 0")
         return val
     except ValueError:
@@ -182,7 +189,7 @@ def get_client(api_key: str | None = None) -> OpenAI:
             max_retries=2,
         )
 
-    global _client
+    global _client, _default_client
     if _client is None:
         _client = OpenAI(
             api_key=os.getenv("LLMBASE_API_KEY") or os.getenv("OPENAI_API_KEY"),
@@ -190,7 +197,11 @@ def get_client(api_key: str | None = None) -> OpenAI:
             timeout=httpx.Timeout(read_timeout, connect=connect_timeout),
             max_retries=2,
         )
+        _default_client = _client
     return _client
+
+
+_DEFAULT_GET_CLIENT = get_client
 
 
 def get_default_model() -> str:
@@ -237,12 +248,20 @@ def _redact_key(text: str, api_key: str | None) -> str:
     Defence-in-depth: OpenAI/httpx error messages can echo the key back
     (``"Incorrect API key provided: sk-****"`` or similar). Since we
     never write raw error strings without going through a logger, this
-    replacement catches per-request keys before they land in stdout /
-    syslog / structured log collectors. Module singleton's env key is
-    the operator's own credential — not redacted here."""
-    if not api_key or not isinstance(text, str):
+    replacement catches both per-request and environment keys before
+    they land in stdout / syslog / structured log collectors."""
+    if not isinstance(text, str):
         return text
-    return text.replace(api_key, "[redacted]")
+    for key in (api_key, os.getenv("LLMBASE_API_KEY"), os.getenv("OPENAI_API_KEY")):
+        if key:
+            text = text.replace(key, "[redacted]")
+    return text
+
+
+def last_call_trace() -> dict | None:
+    """Execution boundary of this context's latest LLM call, without credentials."""
+    trace = _call_trace.get()
+    return dict(trace) if trace is not None else None
 
 
 def _call_llm(
@@ -275,6 +294,33 @@ def _call_llm(
 
     *api_key*: when provided, uses a fresh un-cached client for this
     call (see ``get_client``)."""
+    custom_client = (
+        get_client is not _DEFAULT_GET_CLIENT
+        or OpenAI is not _DEFAULT_OPENAI
+        or (_client is not None and _client is not _default_client)
+    )
+    if not custom_client and _native.available():
+        # Configuration is read for every invocation. The secret travels as a
+        # separate in-memory argument, never profile/operation JSON or storage.
+        _call_trace.set({"core": "rust", "operation": "model_complete", "status": "pending"})
+        try:
+            response = _native.model_complete(
+                {
+                    "base_url": os.getenv("LLMBASE_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                    "model": model,
+                    "request_timeout_seconds": _get_float_env("LLMBASE_HTTP_TIMEOUT", 300.0),
+                    "connect_timeout_seconds": _get_float_env("LLMBASE_HTTP_CONNECT_TIMEOUT", 30.0),
+                },
+                {"messages": messages, "model": None, "max_tokens": max_tokens, "temperature": None},
+                api_key=api_key if api_key is not None else (os.getenv("LLMBASE_API_KEY") or os.getenv("OPENAI_API_KEY")),
+            )
+        except Exception:
+            _call_trace.set({"core": "rust", "operation": "model_complete", "status": "failed"})
+            raise
+        _call_trace.set(_native.last_trace())
+        return response["content"], response["finish_reason"], response["usage"]
+    _native.clear_trace()
+    _call_trace.set({"core": "python", "operation": "model_complete", "boundary": "client_override" if custom_client else "unbuilt_development_checkout"})
     client = get_client(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
@@ -293,6 +339,9 @@ def _call_llm(
     finish_reason = getattr(choice, "finish_reason", None)
     usage = _extract_usage(getattr(response, "usage", None))
     return content, finish_reason, usage
+
+
+_DEFAULT_CALL_LLM = _call_llm
 
 
 def _extract_usage(raw_usage) -> dict:
@@ -402,8 +451,8 @@ class LLMMeta:
     describe the *final* accepted call (not an intermediate failure).
     ``attempts`` is the only cross-attempt accumulator.
 
-    The field set is OpenAI-compatible by design (llmbase talks to
-    everything through the OpenAI SDK, including aggregators). If
+    The field set is OpenAI-compatible by design (the native HTTP
+    adapter and overridden SDK clients use that wire format). If
     llmbase ever grows a non-OpenAI-compat provider, the dataclass
     can gain aliases additively; no field is load-bearing for the
     driver in 议 D — downstream picks what it needs.
@@ -467,6 +516,8 @@ def chat_with_meta(
 
     *api_key*: per-call override (v0.7.4). None → module singleton.
     """
+    _native.clear_trace()
+    _call_trace.set(None)
     if model is None:
         model = get_default_model()
 
@@ -489,6 +540,9 @@ def chat_with_meta(
         for attempt in range(retries):
             attempts_total += 1
             try:
+                if _call_llm is not _DEFAULT_CALL_LLM:
+                    _native.clear_trace()
+                    _call_trace.set({"core": "python", "operation": "model_complete", "boundary": "callable_override"})
                 content, finish_reason, usage = _call_llm(
                     messages, current_model, max_tokens, api_key=api_key
                 )
@@ -532,7 +586,7 @@ def chat_with_meta(
                     break  # Try next model
                 # Last model — re-raise via a redacted wrapper so the
                 # key doesn't land in the caller's traceback / HTTP 500.
-                if api_key:
+                if api_key or err_msg != str(e):
                     raise RuntimeError(err_msg) from None
                 raise  # Last model, re-raise
 

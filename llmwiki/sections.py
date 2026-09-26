@@ -210,3 +210,93 @@ def extract_section_text(body: str, sections: list[Section], anchor: str) -> str
     if s is None:
         return None
     return body[s["start"] : s["end"]]
+
+
+# The native parser is shared with KnowledgeBase section reads. Live replacement
+# functions still execute through the established extension path.
+_legacy_normalize_title = normalize_title
+_legacy_make_anchor = make_anchor
+_legacy_hash_hex = _hash_hex
+_legacy_iter_headings = _iter_headings
+_legacy_parse_sections = parse_sections
+_legacy_find_section = find_section
+_legacy_extract_section_text = extract_section_text
+_DEFAULT_REGEXES = (_INVISIBLE_RE, _PUNCT_RE, _HEADING_RE, _FENCE_OPEN_RE, _FENCE_CLOSE_RE)
+
+
+def normalize_title(title: str) -> str:
+    from . import _native
+    if _native.available() and (_INVISIBLE_RE, _PUNCT_RE) == _DEFAULT_REGEXES[:2]:
+        return _native.utility_transform("normalize_title", {"text": title})
+    return _legacy_normalize_title(title)
+
+
+def _hash_hex(ancestor_titles: list[str]) -> str:
+    from . import _native
+    joined = ANCHOR_SEP.join(normalize_title(t) for t in ancestor_titles)
+    if _native.available():
+        return _native.utility_transform("sha1", {"text": joined})[:HASH_LEN]
+    return _legacy_hash_hex(ancestor_titles)
+
+
+def make_anchor(level: int, ancestor_titles: list[str]) -> str:
+    from . import _native
+    if (_native.available() and normalize_title is _DEFAULT_NORMALIZE_TITLE
+            and _hash_hex is _DEFAULT_HASH_HEX and _slug_short is _DEFAULT_SLUG_SHORT
+            and (_INVISIBLE_RE, _PUNCT_RE) == _DEFAULT_REGEXES[:2]
+            and SLUG_MAX_CHARS >= 0 and HASH_LEN >= 0):
+        return _native.utility_transform("make_anchor", {"level": level,
+            "titles": ancestor_titles, "slug_max": SLUG_MAX_CHARS,
+            "hash_len": HASH_LEN, "separator": ANCHOR_SEP, "fallback": EMPTY_SLUG_FALLBACK})
+    return _legacy_make_anchor(level, ancestor_titles)
+
+
+def _iter_headings(body: str) -> Iterator[tuple[int, int, str]]:
+    from . import _native
+    if _native.available() and (_HEADING_RE, _FENCE_OPEN_RE, _FENCE_CLOSE_RE) == _DEFAULT_REGEXES[2:]:
+        yield from (tuple(row) for row in _native.utility_transform("headings", {"body": body}))
+        return
+    yield from _legacy_iter_headings(body)
+
+
+def parse_sections(body: str) -> list[Section]:
+    from . import _native
+    if (_native.available() and _iter_headings is _DEFAULT_ITER_HEADINGS
+            and make_anchor is _DEFAULT_MAKE_ANCHOR and normalize_title is _DEFAULT_NORMALIZE_TITLE
+            and _hash_hex is _DEFAULT_HASH_HEX and _slug_short is _DEFAULT_SLUG_SHORT
+            and (SLUG_MAX_CHARS, HASH_LEN, ANCHOR_SEP, EMPTY_SLUG_FALLBACK) == (20, 6, "›", "_")
+            and (_INVISIBLE_RE, _PUNCT_RE, _HEADING_RE, _FENCE_OPEN_RE, _FENCE_CLOSE_RE) == _DEFAULT_REGEXES):
+        return _native.utility_transform("sections", {"body": body})
+    result = _legacy_parse_sections(body)
+    if _native.available():
+        _native.python_boundary("parse_sections", "live section helper override")
+    return result
+
+
+def find_section(sections: list[Section], anchor: str) -> Section | None:
+    from . import _native
+    if not _native.available():
+        return _legacy_find_section(sections, anchor)
+    path = _native.utility_transform("find_section_path", {"sections": sections, "anchor": anchor})
+    if path is None:
+        return None
+    nodes = sections
+    for index in path:
+        found = nodes[index]
+        nodes = found["children"]
+    return found  # Preserve object identity for callers mutating a found node.
+
+
+def extract_section_text(body: str, sections: list[Section], anchor: str) -> str | None:
+    from . import _native
+    if _native.available() and find_section is _DEFAULT_FIND_SECTION:
+        return _native.utility_transform("extract_section", {"body": body, "sections": sections, "anchor": anchor})
+    return _legacy_extract_section_text(body, sections, anchor)
+
+
+_DEFAULT_NORMALIZE_TITLE = normalize_title
+_DEFAULT_HASH_HEX = _hash_hex
+_DEFAULT_SLUG_SHORT = _slug_short
+_DEFAULT_MAKE_ANCHOR = make_anchor
+_DEFAULT_ITER_HEADINGS = _iter_headings
+_DEFAULT_FIND_SECTION = find_section

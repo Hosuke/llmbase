@@ -1,0 +1,26 @@
+[package]
+name = "llmbase-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+llmbase-core = { path = "../llmbase-core" }
+llmbase-model = { path = "../llmbase-model" }
+pyo3 = { version = "=0.27.2", features = ["abi3-py311"] }
+serde_json.workspace = true
+serde.workspace = true
+tokio = { version = "1", features = ["rt", "time", "net"] }
+
+[build-dependencies]
+pyo3-build-config = "=0.27.2"

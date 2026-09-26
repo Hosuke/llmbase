@@ -1,7 +1,7 @@
 ---
 name: llmwiki
 version: "0.9.0"
-description: "LLM-powered personal knowledge base. Raw documents in, an LLM compiles them into a structured interlinked wiki with configurable language profiles (trilingual by default, monolingual supported), emergent taxonomy, and self-healing. One operations contract serves CLI, HTTP, and MCP."
+description: "Use LLMBase to ingest sources, compile a linked knowledge library, retrieve evidence, and answer questions through CLI or MCP. Supports the native Rust runtime and the Python compatibility package with configurable language profiles."
 author: Hosuke
 homepage: https://github.com/Hosuke/llmbase
 source: https://github.com/Hosuke/llmbase
@@ -9,200 +9,136 @@ license: MIT
 keywords:
   - knowledge-base
   - wiki
-  - llm
-  - karpathy
   - research
   - mcp
-  - personal-wiki
   - multilingual
-  - self-healing
-  - agent-tools
-  - claude-code
-  - openclaw
 install: "pip install llmwiki"
 requires:
   credentials:
     - name: LLMBASE_API_KEY
-      description: "API key for any OpenAI-compatible LLM endpoint (user-supplied)"
-      required: true
+      description: "Credential for the configured generation endpoint; unnecessary for offline lexical search"
+      required: false
     - name: LLMBASE_BASE_URL
-      description: "LLM API base URL"
+      description: "HTTP-compatible generation endpoint"
       required: false
     - name: LLMBASE_MODEL
-      description: "Primary model name"
-      required: false
-    - name: LLMBASE_FALLBACK_MODELS
-      description: "Comma-separated fallback model chain (empty = no fallback)"
+      description: "Generation model"
       required: false
   permissions:
-    - network: "Fetches URLs during ingest (SSRF-protected), corpus plugins (CBETA/Wikisource/ctext), and scheduled fetches when the autonomous worker is enabled"
-    - filesystem: "Reads/writes markdown under local raw/ and wiki/"
-    - server: "Optional: web UI (:5555), agent API (:5556), MCP server (stdio)"
+    - network: "Requested URL/corpus ingestion and configured model calls"
+    - filesystem: "Library files, SQLite revision and job records, and configured migration destinations"
+    - server: "Optional HTTP services; MCP uses stdio"
   notes: |
-    Manages a local knowledge base. Network activity covers user-initiated
-    ingest (URLs, PDFs, corpus plugins) plus the autonomous worker when
-    explicitly enabled in config. Web server and worker are opt-in. No data
-    is sent anywhere except the configured LLM API.
+    Model requests transmit selected library context to the configured endpoint.
+    URL and corpus ingestion contact their source sites. Servers and scheduled
+    workers are opt-in. Public reads do not authorize writes or model calls.
 ---
 
-# llmwiki
+# LLMBase
 
-A personal knowledge base that an LLM _compiles_, not just stores. Raw documents go in, an LLM writes trilingual (EN / 中文 / 日本語) wiki articles with `[[wiki-links]]`, backlinks, and an emergent taxonomy. The MCP server dispatches every tool through `llmwiki/operations.py`; the CLI exposes the same registry via `llmbase ops call`; individual HTTP/CLI wrappers are being migrated onto the registry over time.
+> Migration candidate: this document is being updated alongside the Rust core.
+> Its version stays at the published package version until release acceptance.
+> Check the repository README and compatibility matrix before relying on a
+> candidate-only native command.
 
-- **PyPI**: `pip install llmwiki`
-- **CLI command**: `llmbase` (the package name and the command differ)
-- **GitHub**: https://github.com/Hosuke/llmbase
-- **Demo**: https://huazangge-production.up.railway.app
+LLMBase keeps original sources, accepted knowledge articles, revisions, aliases,
+and backlinks. The native executable runs without Python. The Python package
+retains `llmwiki.*`, live overrides, callbacks, Flask extensions, and corpus
+connectors. Both installations can provide `llmbase`; use an explicit executable
+path when the distinction matters.
 
-## Setup
+## Choose the interface
 
-```bash
-pip install llmwiki
+- Use native `ask` for evidence-first answers from raw sources, compiled articles,
+  or both. It is read-only by default; `--stream` emits provider-backed events.
+- Use `query` for the established compiled-wiki workflow. Its `--deep`,
+  `--tone`, `--format`, and `--file-back` flags retain their distinct meanings.
+- Use Python/Flask when a downstream project needs runtime callable overrides or
+  custom routes. Native profiles do not execute arbitrary Python callbacks.
+- MCP clients should discover tools and their current schemas. Missing model or
+  plugin capabilities are explicit errors; do not interpret them as empty results.
 
-mkdir my-kb && cd my-kb
+Native MCP configuration, using the installed binary's actual path:
 
-cat > .env << 'EOF'
-LLMBASE_API_KEY=sk-your-key
-LLMBASE_BASE_URL=https://your-endpoint/v1
-LLMBASE_MODEL=your-model
-# Optional: LLMBASE_FALLBACK_MODELS=backup-1,backup-2
-EOF
-
-cat > config.yaml << 'EOF'
-llm:
-  max_tokens: 16384
-paths:
-  raw: "./raw"
-  wiki: "./wiki"
-EOF
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `llmbase ingest url <url>` | Ingest a web article |
-| `llmbase ingest pdf <file>` | Ingest a PDF (auto-chunks) |
-| `llmbase ingest file <file>` | Ingest any local file |
-| `llmbase ingest dir <dir>` | Ingest all files from a directory |
-| `llmbase ingest cbeta-learn --batch 10` | Corpus plugin: Buddhist canon |
-| `llmbase ingest ctext-book 论语 /analects/zh` | Corpus plugin: Chinese classics |
-| `llmbase compile new` | Compile new raw docs incrementally (3-layer dedup) |
-| `llmbase compile all` | Full rebuild |
-| `llmbase compile index` | Rebuild index + aliases |
-| `llmbase query "<q>"` | Ask a question (single-pass; add `--deep` for multi-step research) |
-| `llmbase query "<q>" --tone wenyan` | 📜 classical Chinese voice |
-| `llmbase query "<q>" --tone scholar` | 🎓 academic voice |
-| `llmbase query "<q>" --tone eli5` | 👶 simple voice |
-| `llmbase query "<q>" --tone caveman` | 🦴 primitive voice |
-| `llmbase query "<q>" --file-back` | File answer back into the wiki |
-| `llmbase lint check` | 8-category structural health check |
-| `llmbase lint heal` | Check → fix → re-check → report |
-| `llmbase lint deep` | LLM deep quality analysis |
-| `llmbase web` | Web UI at :5555 |
-| `llmbase serve` | Agent HTTP API at :5556 |
-| `llmbase mcp` | Start MCP server (stdio) |
-| `llmbase stats` | KB statistics |
-
-## MCP Integration (for AI clients)
-
-```json
+~~~json
 {
   "mcpServers": {
-    "llmwiki": {
-      "command": "python",
-      "args": ["-m", "llmwiki", "--base-dir", "/path/to/my-kb"]
+    "llmbase": {
+      "command": "/path/to/native/llmbase",
+      "args": ["--base-dir", "/path/to/library", "--library-id", "example", "mcp"]
     }
   }
 }
-```
+~~~
 
-Tools exposed by the MCP server:
+For the Python compatibility host, use `python -m llmwiki --base-dir /path/to/library`
+with the intended virtual environment's interpreter.
 
-| Tool | Purpose |
-|------|---------|
-| `kb_search` | Full-text search over compiled concepts |
-| `kb_search_raw` | Verbatim full-text fallback over raw/ sources (v0.6.2+) |
-| `kb_ask` | Deep-research Q&A with tone modes |
-| `kb_get` | Get article by slug or alias (`空`, `kong`, `emptiness` all work) |
-| `kb_list` | List articles, filter by tag |
-| `kb_backlinks` | Find articles citing a given article |
-| `kb_taxonomy` | Multilingual category tree |
-| `kb_stats` | Article count, word count |
-| `kb_xici` | Guided reading (导读) |
-| `kb_ingest` | Ingest a URL |
-| `kb_compile` | Compile raw → wiki |
-| `kb_lint` | Health check / auto-fix |
-| `kb_export` / `kb_export_article` / `kb_export_tag` / `kb_export_graph` | Structured export for downstream projects |
+## Search, answer, and compile
 
-All tools are declared in `llmwiki/operations.py` — downstream projects register custom ops via `operations.register(...)` and they become available on CLI + MCP automatically.
+~~~bash
+llmbase --base-dir /path/to/library index
+llmbase --base-dir /path/to/library search raw "exact source phrase"
+llmbase --base-dir /path/to/library search query "compiled concept"
+llmbase --base-dir /path/to/library ask "What supports this claim?" --kind both
+llmbase --base-dir /path/to/library query "Explain this concept" --tone wenyan
+~~~
 
-Agents mounted on this server can answer from compiled concepts, fall back to raw sources with `kb_search_raw` when compile glossed a detail, ingest new material mid-session, and trigger healing.
+When answering, distinguish retrieved candidates, consulted articles, exact
+quoted evidence, and the generated inference. A resolvable quote does not alone
+prove the inference. Preserve the library and source revision in citations;
+report stale evidence rather than silently substituting current text.
 
-## Workflows
+Native `compile source SOURCE_ID` creates drafts. Inspect with
+`compile draft DRAFT_ID`; accept with `compile apply DRAFT_ID`, supplying
+`--expected-hash` for an existing target. Do not discard a hash conflict and
+overwrite a newer edit. `compile new` is the accepted batch workflow.
 
-### Build a KB from scratch
+Use `query --file-back` only when saving is intended. MCP `kb_ask` has its own
+schema defaults; do not assume the HTTP, CLI, and MCP legacy defaults match.
+Native `compile all` re-extracts all sources; the Python compatibility path
+retains its documented legacy source-receipt behavior.
 
-```
-llmbase ingest url https://example.com/topic
-llmbase ingest pdf ./paper.pdf
-llmbase compile new
-llmbase query "What are the key concepts?"
-llmbase lint heal
-```
+## Language and extensions
 
-### Autonomous mode (deploy once, server keeps learning)
+Native interfaces default to English. The Python factory default remains
+English / 中文 / 日本語. Respect configured profiles and downstream overrides.
+Classical Chinese bare-body content is supported through a single empty heading:
 
-```yaml
-# config.yaml
-worker:
-  enabled: true
-  learn_source: cbeta         # built-in: cbeta | wikisource | both; custom via register_learn_source()
-  learn_interval_hours: 6
-  compile_interval_hours: 1
-  health_check_interval_hours: 24
+~~~python
+import llmwiki.compile as compile_module
+compile_module.SECTION_HEADERS = [("文言", "")]
+~~~
 
-health:
-  auto_fix_broken_links: true
-  max_stubs_per_run: 10
-```
+Never reassign `DEFAULT_SECTION_HEADERS`; it is the identity anchor used to
+detect overrides. Supported callable patches run at their documented Python
+boundary. Process adapters are trusted operator-configured programs whose
+returned documents pass through native persistence.
 
-The worker starts under the production WSGI entrypoint (`wsgi.py` → `start_worker_thread`). Deploy with `gunicorn wsgi:app`; `llmbase web` alone does not self-start the worker.
+## Data and operation boundaries
 
-### Daily use as agent memory
+- Source bytes and accepted knowledge are authoritative. SQLite also contains
+  revision history, evidence, and job records; a Markdown export is not a backup.
+- Use copy-first migration, then verification and a restore rehearsal. Keep the
+  original until rollback is verified. Never infer a production switch from
+  authorization to build or test a candidate.
+- Supply model credentials through the environment or a secret manager, not a
+  file, frontend value, committed configuration, or persisted job payload.
+- HTTP callers need explicit authorization for writes and model calls. A visitor
+  cookie does not confer those capabilities.
+- Run long jobs on a server or supervised runner. Native `jobs run-one` performs
+  one durable claim and exits; inspect job status/events before retrying a
+  partial operation. Cancellation does not undo already accepted writes.
+- Genuine embedding quality and external provider checks are unverified unless
+  a report records actual runs. Synthetic fixtures establish engineering
+  behavior only.
 
-1. Agent receives a task → calls `kb_search` for relevant concepts
-2. If the compiled answer is too abstract → calls `kb_search_raw` for verbatim detail
-3. Learns something new → calls `kb_ingest` with the URL
-4. Optionally `kb_compile` to fold it into concepts for next session
-5. Periodically `kb_lint` heals the graph
+## References
 
-## Key Concepts
+Read the relevant document when selecting commands or managing a migration:
 
-- **Synthesis, not archiving** — LLM reads raw material and writes composed articles; storage is the cheap part
-- **Two-layer recall** — `kb_search` (concepts) + `kb_search_raw` (verbatim raw sources)
-- **Trilingual default** — every article has EN / 中文 / 日本語 sections
-- **叠加进化** — new data merges into existing concepts, never overwrites
-- **Domain-agnostic** — taxonomy emerges per-domain, nothing hardcoded
-- **Self-healing** — 7-step auto-fix pipeline repairs drift
-- **Alias resolution** — `[[参禅]]` → `can-chan.md` across scripts and simplified/traditional
-- **Registry-backed ops** — MCP dispatches every tool through `operations.py`; CLI exposes the same registry via `llmbase ops list` / `llmbase ops call`; direct HTTP/CLI wrappers are being migrated onto the registry
-
-## Tips
-
-- `--file-back` saves Q&A answers into the wiki so future queries benefit
-- `--tone wenyan` for Chinese users (classical Chinese responses)
-- Run `llmbase lint heal` after large ingestion batches
-- Web UI `/health` has buttons for every repair op
-- Knowledge graph at `/graph` — density slider for large KBs
-- Timeline at `/explore` — requires `entities: { enabled: true }` in config
-
-## Security & Privacy
-
-- **All data stays local** — wiki files are plain markdown on your filesystem
-- **LLM API key** — user-supplied, loaded from `.env`
-- **Network access** — user-initiated (URL ingest, SSRF-protected) plus corpus plugins (`cbeta-learn`, `wikisource-learn`, `ctext-book`) and the autonomous worker when enabled
-- **Web server** — optional; binds `0.0.0.0` so LAN-accessible by default — front with a reverse proxy or bind override for public exposure
-- **API secret** — cloud deployments (with `PORT` env) gate most mutating endpoints behind `LLMBASE_API_SECRET` (auto-generated if unset). Note: `/api/ask` is open by default and writes Q&A back via `file_back`; only promotion to concepts requires the secret
-- **Autonomous worker** — opt-in via config, disabled by default
-- **No telemetry** — nothing is sent anywhere except the configured LLM API
+- [README and installation](https://github.com/Hosuke/llmbase#readme)
+- [Native migration runbook](https://github.com/Hosuke/llmbase/blob/main/docs/rust-migration/runbook.md)
+- [Compatibility matrix](https://github.com/Hosuke/llmbase/blob/main/docs/rust-migration/parity.md)
+- [Customization contract](https://github.com/Hosuke/llmbase/blob/main/docs/customization.md)
+- [Jobs and recovery](https://github.com/Hosuke/llmbase/blob/main/docs/rust-migration/jobs.md)

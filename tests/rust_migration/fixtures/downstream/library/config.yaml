@@ -1,0 +1,25 @@
+llm:
+  max_tokens: 512
+paths:
+  raw: originals
+  wiki: knowledge
+  concepts: knowledge/entries
+  outputs: knowledge/answers
+  meta: knowledge/metadata
+compile:
+  batch_size: 2
+  backlinks: true
+entities:
+  enabled: false
+languages:
+  default: classical
+  profiles:
+    classical:
+      default_lang: zh
+      api_default_lang: zh
+      sections:
+        - code: zh
+          key: 文言
+          header: ""
+branding:
+  name: 契約試庫

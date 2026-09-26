@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LLMBase Search</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;background:#1a1a2e;color:#e0e0e0}
+h1,h2{color:#e94560}form{display:flex;gap:10px}input,button{font:inherit;padding:12px;border:0;border-radius:8px}input{flex:1;min-width:0;background:#16213e;color:inherit}button{background:#e94560;color:white;cursor:pointer}article{background:#16213e;padding:16px;margin:12px 0;border-radius:8px;border-left:3px solid #e94560}h2{font-size:1.1rem;margin:0 0 8px}.score,#status{color:#aaa}#status{margin-top:20px}
+</style>
+<h1>LLMBase Search</h1>
+<form id="search"><input id="q" aria-label="Search the knowledge base" placeholder="Search the knowledge base…" autofocus><button>Search</button></form>
+<p id="status" role="status"></p><div id="results"></div>
+<script>
+document.getElementById('search').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const q=document.getElementById('q').value;
+  const status=document.getElementById('status'),results=document.getElementById('results');
+  results.replaceChildren();
+  if(!q.trim()){status.textContent='Enter a query.';return;}
+  status.textContent='Searching…';
+  try{
+    const response=await fetch('/api/search?q='+encodeURIComponent(q));
+    if(!response.ok)throw new Error(response.status===401?'Authentication is required.':'Search failed ('+response.status+').');
+    const data=await response.json();
+    if(!Array.isArray(data.results))throw new Error('Invalid search response.');
+    status.textContent=data.results.length+' results found';
+    data.results.forEach((result,index)=>{
+      const article=document.createElement('article');
+      const add=(tag,value,className='')=>{const node=document.createElement(tag);node.textContent=value;node.className=className;article.appendChild(node);};
+      add('h2',(index+1)+'. '+result.title);
+      add('span','Score: '+result.score,'score');
+      if(result.summary)add('p',result.summary);
+      if(result.snippet)add('p',result.snippet);
+      results.appendChild(article);
+    });
+  }catch(error){status.textContent=error.message;}
+});
+</script>
+</html>

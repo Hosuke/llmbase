@@ -1,18 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { ArticleCard } from '../components/ArticleCard';
 import { Shimmer } from '../components/Loading';
 import { api, type Article, type Collection } from '../lib/api';
 
 export function Wiki() {
-  const navigate = useNavigate();
   const [articles, setArticles] = useState<Article[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [filter, setFilter] = useState('');
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'collections'>('grid');
 
   useEffect(() => {
     Promise.all([

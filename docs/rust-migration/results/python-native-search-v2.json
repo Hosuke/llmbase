@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-09-19T17:29:00.788035+00:00",
+  "scope": "real installed candidate search facade only; other Python core modules not claimed",
+  "python_executable": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/bin/python",
+  "python_version": "3.12.13 (main, Jun  2 2026, 22:42:28) [Clang 22.1.3 ]",
+  "cwd": "/private/tmp",
+  "package_path": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "distribution_version": "0.9.0",
+  "wheel_path": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/wheels-v2/llmwiki-0.9.0-cp311-abi3-macosx_11_0_arm64.whl",
+  "wheel_sha256": "83fbe489e472b7f1de71d981ccd6df286bd2bebe87cd15221462e90bed0b8d8b",
+  "backend": {
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "successful_dispatches": 4,
+    "native": true,
+    "extension_path": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/_core.abi3.so"
+  },
+  "extension_sha256": "264f972d4754215f7b11997bcfb51ed2f366badffd14a1856e53119c4e08c413",
+  "actual_dispatches_in_this_proof": 4,
+  "callback_calls": 3,
+  "default_top_slug": "alpha",
+  "callback_top_slug": "beta",
+  "raw_source_url_redacted": true,
+  "created_database_or_meta_directory": false,
+  "traces": [
+    {
+      "algorithm": "legacy-tfidf-v1",
+      "core": "rust",
+      "documents": 2,
+      "indexed": false,
+      "library_id": "default",
+      "operation": "compat_search",
+      "snapshot": "660c993ee542893d33e293a2c403e27cc39c9e682b47424ff35655b0fdf462cc",
+      "storage": "native_filesystem_snapshot",
+      "tokenizer": "rust_legacy"
+    },
+    {
+      "algorithm": "legacy-tfidf-v1",
+      "core": "rust",
+      "documents": 2,
+      "indexed": false,
+      "library_id": "default",
+      "operation": "compat_search",
+      "snapshot": "660c993ee542893d33e293a2c403e27cc39c9e682b47424ff35655b0fdf462cc",
+      "storage": "native_filesystem_snapshot",
+      "tokenizer": "python_callback"
+    },
+    {
+      "algorithm": "legacy-tfidf-v1",
+      "core": "rust",
+      "documents": 1,
+      "indexed": false,
+      "library_id": "default",
+      "operation": "compat_search",
+      "snapshot": "c163bf5557cdb96a62a5ced062d4010105e15f30b0e27179e1099216dec570ac",
+      "storage": "native_filesystem_snapshot",
+      "tokenizer": "rust_legacy"
+    }
+  ],
+  "tests": {
+    "python": {
+      "count": 33,
+      "result": "passed",
+      "elapsed_seconds": 4.01,
+      "native_required": true,
+      "import_mode": "importlib",
+      "log": ".rust-migration-runs/candidate-tests-v2.log"
+    },
+    "rust_compat_search": {
+      "count": 10,
+      "result": "passed",
+      "log": ".rust-migration-runs/compat-search-v2.log"
+    }
+  },
+  "packaging": {
+    "abi": "cp311-abi3",
+    "platform": "macosx_11_0_arm64",
+    "version_changed": false,
+    "published": false,
+    "source_archive_built": true,
+    "source_archive_wheel_rebuild_tested": false,
+    "warnings": [
+      "rust-objcopy debug-info stripping SIGABRT; build succeeded and extension imported/executed"
+    ]
+  }
+}

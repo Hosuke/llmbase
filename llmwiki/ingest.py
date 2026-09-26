@@ -3,72 +3,98 @@
 import hashlib
 import re
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import frontmatter
 import requests
+from requests import Response as _Response
+from requests.utils import get_encoding_from_headers as _response_encoding
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 
 from .config import load_config, ensure_dirs
 from .llm import strip_surrogates
 
+_DEFAULT_REQUESTS_GET = requests.get
+_PAGE_BYTES = 8 * 1024 * 1024
+_IMAGE_BYTES = 4 * 1024 * 1024
+_TOTAL_IMAGE_BYTES = 32 * 1024 * 1024
+
 
 def _validate_url(url: str):
-    """Block SSRF: reject private/internal network URLs."""
-    import ipaddress, socket
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-    hostname = parsed.hostname or ""
-    if not hostname:
-        raise ValueError("No hostname in URL")
-    # Block obvious internal hostnames
-    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "[::]", "[::1]"):
-        raise ValueError(f"Blocked internal hostname: {hostname}")
-    # Resolve and check for dangerous private IP ranges
-    try:
-        for info in socket.getaddrinfo(hostname, None):
-            addr = ipaddress.ip_address(info[4][0])
-            if addr.is_loopback or addr.is_link_local:
-                raise ValueError(f"Blocked loopback/link-local IP: {addr}")
-            # Block common internal ranges (cloud metadata, RFC1918)
-            blocked_nets = [
-                ipaddress.ip_network("10.0.0.0/8"),
-                ipaddress.ip_network("172.16.0.0/12"),
-                ipaddress.ip_network("192.168.0.0/16"),
-                ipaddress.ip_network("169.254.0.0/16"),  # AWS/GCP metadata
-            ]
-            for net in blocked_nets:
-                if addr in net:
-                    raise ValueError(f"Blocked internal IP: {addr}")
-    except socket.gaierror:
-        pass  # DNS resolution failed — let requests handle it
+    """Inspect a public URL in Rust. The fetcher independently validates/pins DNS."""
+    from . import _native
+    _native.validate_fetch_url(url)
 
 
-def ingest_url(url: str, base_dir: Path | None = None) -> Path:
+_DEFAULT_VALIDATE_URL = _validate_url
+
+
+def _fetch_response(url: str, *, timeout: float, max_bytes: int, cancellation=None):
+    """Default native transport, or an explicitly installed live Python hook."""
+    from . import _native
+    if requests.get is _DEFAULT_REQUESTS_GET:
+        result = _native.fetch_url(url, options={"timeout_ms": max(1, int(timeout * 1000)),
+            "connect_timeout_ms": max(1, min(10000, int(timeout * 1000))), "max_bytes": max_bytes},
+            cancellation=cancellation)
+        response = _Response()
+        response.status_code = result["status"]
+        response.url = result["url"]
+        response.headers["content-type"] = result["content_type"]
+        response.encoding = _response_encoding(response.headers)
+        response._content = result["content"]
+        return response
+
+    # Arbitrary plugin code is a trusted callback boundary, not a Rust fetch.
+    # Preserve its actual return value/exception; never reuse a native receipt.
+    for hop in range(6):
+        _validate_url(url)
+        _native.python_boundary("fetch_url", "requests.get")
+        response = requests.get(url, timeout=timeout, headers={"User-Agent": "LLMBase/1.0"},
+                                allow_redirects=False)
+        if response.status_code in (301, 302, 303, 307, 308):
+            if hop == 5 or not response.headers.get("location"):
+                raise ValueError("fetch redirect limit or invalid redirect")
+            url = urljoin(url, response.headers["location"])
+            continue
+        response.raise_for_status()
+        if len(response.content) > max_bytes:
+            raise ValueError("fetch body size limit exceeded")
+        return response
+    raise ValueError("fetch redirect limit exceeded")
+
+
+def ingest_url(url: str, base_dir: Path | None = None, *, cancellation=None) -> Path:
     """Fetch a web article and save as markdown with images downloaded locally."""
-    _validate_url(url)
+    from . import _native
+    deadline = time.monotonic() + 120
+    # The live validation helper remains observable to downstream callers. Default
+    # native fetching rechecks every actual connection even if this hook changes.
+    if cancellation is not None and cancellation.is_cancelled():
+        raise ValueError("fetch cancelled")
+    if _validate_url is not _DEFAULT_VALIDATE_URL:
+        _validate_url(url)
     cfg = load_config(base_dir)
     ensure_dirs(cfg)
     raw_dir = Path(cfg["paths"]["raw"])
 
     # Fetch page
-    resp = requests.get(url, timeout=30, headers={"User-Agent": "LLMBase/1.0"}, allow_redirects=False)
-    resp.raise_for_status()
+    resp = _fetch_response(url, timeout=30, max_bytes=_PAGE_BYTES, cancellation=cancellation)
     soup = BeautifulSoup(resp.text, "html.parser")
 
     # Extract title
     title = soup.title.string.strip() if soup.title and soup.title.string else urlparse(url).netloc
     slug = _slugify(title)
 
-    # Create directory for this document
+    # Keep conversion/network work outside the writer lease. Rust creates paths
+    # only when the complete accepted article and its assets are ready to persist.
     doc_dir = raw_dir / slug
-    doc_dir.mkdir(parents=True, exist_ok=True)
     images_dir = doc_dir / "images"
-    images_dir.mkdir(exist_ok=True)
+    assets = [(doc_dir / "source.original", resp.content)]
+    asset_bytes = 0
 
     # Extract main content (try article tag, then body)
     article = soup.find("article") or soup.find("main") or soup.body
@@ -76,23 +102,25 @@ def ingest_url(url: str, base_dir: Path | None = None) -> Path:
         article = soup
 
     # Download images and rewrite URLs
-    for img in article.find_all("img"):
+    for img in article.find_all("img")[:32]:
         src = img.get("src")
         if not src:
             continue
+        if cancellation is not None and cancellation.is_cancelled():
+            raise ValueError("fetch cancelled")
         try:
-            if src.startswith("//"):
-                src = "https:" + src
-            elif src.startswith("/"):
-                parsed = urlparse(url)
-                src = f"{parsed.scheme}://{parsed.netloc}{src}"
-            img_resp = requests.get(src, timeout=15)
-            img_resp.raise_for_status()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or asset_bytes >= _TOTAL_IMAGE_BYTES:
+                break
+            src = urljoin(getattr(resp, "url", None) or url, src)
+            img_resp = _fetch_response(src, timeout=min(15, remaining),
+                max_bytes=min(_IMAGE_BYTES, _TOTAL_IMAGE_BYTES - asset_bytes), cancellation=cancellation)
             ext = _guess_ext(src, img_resp.headers.get("content-type", ""))
             img_hash = hashlib.md5(src.encode()).hexdigest()[:8]
             img_name = f"{img_hash}{ext}"
             img_path = images_dir / img_name
-            img_path.write_bytes(img_resp.content)
+            assets.append((img_path, img_resp.content))
+            asset_bytes += len(img_resp.content)
             img["src"] = f"images/{img_name}"
         except Exception:
             pass  # Skip failed image downloads
@@ -122,9 +150,36 @@ def ingest_url(url: str, base_dir: Path | None = None) -> Path:
     post.metadata["ingested_at"] = datetime.now(timezone.utc).isoformat()
     post.metadata["type"] = "web_article"
     post.metadata["compiled"] = False
+    post.metadata["original_file"] = "source.original"
+    post.metadata["original_sha256"] = hashlib.sha256(resp.content).hexdigest()
+    if resp.headers.get("content-type"):
+        post.metadata["original_media_type"] = resp.headers["content-type"]
 
     doc_path = doc_dir / "index.md"
-    doc_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    serialized = frontmatter.dumps(post)
+    if cancellation is not None and cancellation.is_cancelled():
+        raise ValueError("fetch cancelled")
+    def persist():
+        if _native.available():
+            for path, content_bytes in assets:
+                relative = str(path.relative_to(raw_dir))
+                if path.name == "source.original":
+                    previous = _native.dispatch("compat_kb_raw_hash", {"path": relative}, base_dir, paths=cfg["paths"])["result"]
+                    _native.dispatch("ingest_asset", {"path": relative, "content_bytes": list(content_bytes),
+                        "expected_hash": previous["content_hash"]}, base_dir, paths=cfg["paths"])
+                else:
+                    _native.dispatch("compat_kb_raw_write", {"path": relative,
+                        "content_bytes": list(content_bytes), "parse_markdown": False}, base_dir, paths=cfg["paths"])
+            _native.dispatch("compat_kb_raw_write", {"path": str(doc_path.relative_to(raw_dir)),
+                "content": serialized}, base_dir, paths=cfg["paths"])
+        else:
+            # Explicit unbuilt-checkout path: only a supplied Python fetch hook can
+            # reach here, because the default HTTP transport requires native code.
+            images_dir.mkdir(parents=True, exist_ok=True)
+            for path, content_bytes in assets:
+                path.write_bytes(content_bytes)
+            doc_path.write_text(serialized, encoding="utf-8")
+    _native.with_writer(base_dir, persist, paths=cfg["paths"])
 
     from .hooks import emit
     emit("ingested", source="web", url=url, title=title, path=str(doc_path))
@@ -147,11 +202,17 @@ def ingest_file(file_path: str, base_dir: Path | None = None) -> Path:
     doc_dir.mkdir(parents=True, exist_ok=True)
 
     dest = doc_dir / src.name
-    shutil.copy2(src, dest)
+    from . import _native
+    native_text = _native.available() and src.suffix.lower() in (".md", ".markdown", ".txt", ".py", ".json", ".csv")
+    if native_text and src.resolve() == dest.resolve():
+        raise shutil.SameFileError(f"{src!r} and {dest!r} are the same file")
+    if not native_text:
+        shutil.copy2(src, dest)
 
     # If it's already a markdown file, add frontmatter if missing
     if src.suffix.lower() in (".md", ".markdown"):
-        post = frontmatter.load(str(dest))
+        # External-file parsing is an ingest adapter; accepted raw persistence is native.
+        post = frontmatter.load(str(src if native_text else dest))
         if "title" not in post.metadata:
             post.metadata["title"] = src.stem
         if "ingested_at" not in post.metadata:
@@ -162,7 +223,12 @@ def ingest_file(file_path: str, base_dir: Path | None = None) -> Path:
         post.content = strip_surrogates(post.content)
         if isinstance(post.metadata.get("title"), str):
             post.metadata["title"] = strip_surrogates(post.metadata["title"])
-        dest.write_text(frontmatter.dumps(post), encoding="utf-8")
+        if native_text:
+            _native.dispatch("compat_kb_raw_write", {"path": str(dest.relative_to(raw_dir)),
+                "content": frontmatter.dumps(post), "permissions": src.stat().st_mode & 0o7777},
+                base_dir, paths=cfg["paths"])
+        else:
+            dest.write_text(frontmatter.dumps(post), encoding="utf-8")
     else:
         # Create a companion metadata file
         meta = frontmatter.Post("")
@@ -173,7 +239,14 @@ def ingest_file(file_path: str, base_dir: Path | None = None) -> Path:
         meta.metadata["file"] = src.name
         meta.metadata["compiled"] = False
         meta_path = doc_dir / "index.md"
-        meta_path.write_text(frontmatter.dumps(meta), encoding="utf-8")
+        if native_text:
+            _native.dispatch("compat_kb_raw_write", {"path": str(dest.relative_to(raw_dir)),
+                "content_bytes": list(src.read_bytes()), "parse_markdown": False,
+                "permissions": src.stat().st_mode & 0o7777}, base_dir, paths=cfg["paths"])
+            _native.dispatch("compat_kb_raw_write", {"path": str(meta_path.relative_to(raw_dir)),
+                "content": frontmatter.dumps(meta)}, base_dir, paths=cfg["paths"])
+        else:
+            meta_path.write_text(frontmatter.dumps(meta), encoding="utf-8")
 
     from .hooks import emit
     emit("ingested", source="file", title=src.stem, path=str(dest))
@@ -255,6 +328,9 @@ def _is_local_path(v: str) -> bool:
 
 def list_raw(base_dir: Path | None = None) -> list[dict]:
     """List all raw documents with their metadata."""
+    from . import _native
+    if _native.available():
+        return _native.dispatch("compat_kb_raw_list", {}, base_dir)["result"]
     cfg = load_config(base_dir)
     raw_dir = Path(cfg["paths"]["raw"])
     if not raw_dir.exists():

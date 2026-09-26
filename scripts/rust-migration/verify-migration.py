@@ -1,0 +1,521 @@
+#!/usr/bin/env python3
+"""B10 copy-first migration proof with an actual legacy (baseline Python) reader.
+
+The controller (this script) and the separate legacy-reader subprocess use
+Python; the native release CLI under test never does. The legacy reader runs
+only against the pristine baseline source snapshot supplied by primary
+(commit a7c4d9da764462e09c0769ecd8ba548a46d27e83) and is NOT interpreter-free
+runtime evidence. All libraries, documents, jobs and metadata are synthetic,
+created inside the fresh run root. No real documents, providers, credentials,
+production paths, or downstream trees are touched.
+
+Proof stages:
+  1. synthetic legacy library on custom paths + bare-body Classical Chinese
+     profile, built on the frozen downstream fixtures; full original inventory
+     (every file hash) recorded before any invocation;
+  2. actual baseline reader: config.load_config / export.export_article /
+     search.search_raw from the pristine archive, with module origin + hash
+     assertions and llmwiki._core absence;
+  3. native `migration dry-run` read-only assertions, then `migration copy`
+     + `migration verify` with exact byte/mapping assertions;
+  4. `migration restore` of the immutable first copy into a working library,
+     verified before writes; scratch source write/evidence/update/delete and a
+     finite index job; IDs retained;
+  5. `migration backup` of working into a second immutable snapshot, restore
+     into a fresh target, verified before any access; content/asset/metadata/
+     job/deleted-source survival and evidence identity checks;
+  6. real `migration rollback` on the immutable first copy, then the actual
+     baseline reader again on the preserved original, compared with baseline;
+  7. deterministic resume contract: simulated v1 `copying` receipt (as
+     produced before the copy loop in migration.rs) plus one correct and one
+     conflicting seeded file; copy must fail without overwriting either;
+     repair only the deliberate fixture conflict; retry; verify. This is NOT
+     a measured SIGKILL/crash experiment;
+  8. negative verify on a tampered throwaway restore.
+
+Every child argv/exit/stdout/stderr is recorded; no wrapper turns a failure
+into exit 0. Any failed assertion aborts with a nonzero exit for primary
+diagnosis.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import yaml
+
+BIN_SHA256 = "f1b2bdd98971fe3be42774ee3349fb9bb73af9d4ee89072ee7c804a14c8753d8"
+ARCHIVE_SHA256 = "fda78e50bcb93aa0992aeabe9cd45ae1e39b9600fa24b8814ea240e792e1e222"
+LEGACY_COMMIT = "a7c4d9da764462e09c0769ecd8ba548a46d27e83"
+LIB = "b10migration"
+TOKEN = "b10zxqwvscratchtoken"
+SCRATCH1 = f"---\ntitle: B10 scratch source\n---\nSynthetic scratch document {TOKEN} for migration proof.\n"
+SCRATCH2 = SCRATCH1 + "Updated scratch revision, still synthetic.\n"
+
+REQUESTS = []
+
+
+class Provider(BaseHTTPRequestHandler):
+    """Deterministic offline fixture; the proof asserts it is never called."""
+
+    def log_message(self, *_args):
+        pass
+
+    def do_POST(self):
+        request = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        REQUESTS.append({"path": self.path, "stream": request.get("stream", False)})
+        if self.path.endswith("/embeddings"):
+            data = [{"index": i, "embedding": [1.0, 0.0, 0.0]} for i, _ in enumerate(request["input"])]
+            body = {"model": "fixture-embedding", "data": data,
+                    "usage": {"prompt_tokens": 8, "total_tokens": 8}}
+        else:
+            body = {"model": "fixture-generation",
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": "fixture"},
+                                 "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}}
+        payload = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+OLD_READER = r'''
+import hashlib, json, sys
+from pathlib import Path
+legacy = Path(sys.argv[1]).resolve()
+base = Path(sys.argv[2])
+sys.path.insert(0, str(legacy))
+import llmwiki
+import llmwiki.config as lconfig
+import llmwiki.export as lexport
+import llmwiki.search as lsearch
+cfg = lconfig.load_config(base)
+article = lexport.export_article("xue", base)
+via_alias = lexport.export_article("時習", base)
+raw_hits = lsearch.search_raw("學而時習之", base_dir=base)
+# Collect after the real calls, including any modules imported lazily by them.
+mods = {}
+for name, mod in sorted(sys.modules.items()):
+    if name == "llmwiki" or name.startswith("llmwiki."):
+        f = getattr(mod, "__file__", None)
+        assert f, "llmwiki module has no verifiable source: %s" % name
+        p = Path(f).resolve()
+        mods[name] = {"file": str(p),
+                      "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                      "under_legacy": p.is_relative_to(legacy)}
+assert "llmwiki._core" not in sys.modules, "native core leaked into legacy reader"
+bad = [n for n, m in mods.items() if not m["under_legacy"]]
+assert not bad, "llmwiki modules not from pristine snapshot: %s" % bad
+print("READER-RESULT " + json.dumps({
+    "modules": mods,
+    "config_paths": cfg["paths"],
+    "languages": cfg.get("languages"),
+    "branding": cfg.get("branding"),
+    "article": article,
+    "via_alias_slug": (via_alias or {}).get("slug"),
+    "raw_hits": raw_hits,
+}, ensure_ascii=False, sort_keys=True))
+'''
+
+
+def sha256_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path):
+    return sha256_bytes(Path(path).read_bytes())
+
+
+def inventory(root):
+    """Every file (sha256+bytes) and directory below root, relative."""
+    root = Path(root)
+    out = {}
+    for p in sorted(root.rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if p.is_symlink():
+            out[rel] = {"symlink": True}
+        elif p.is_dir():
+            out[rel] = {"dir": True}
+        elif p.is_file():
+            out[rel] = {"sha256": sha256_file(p), "bytes": p.stat().st_size}
+    return out
+
+
+class Proof:
+    def __init__(self, args):
+        self.binary = args.binary.resolve(strict=True)
+        self.run = args.run_root.absolute()
+        if self.run.exists():
+            raise SystemExit("run-root must be a new isolated directory")
+        self.run.mkdir(parents=True)
+        self.python = args.python
+        self.legacy_source = args.legacy_source.resolve(strict=True)
+        self.fixtures = args.fixtures.resolve(strict=True)
+        self.manifest = json.loads(args.legacy_hashes.read_text())
+        self.steps = []
+        assert sha256_file(self.binary) == BIN_SHA256, "release binary hash mismatch"
+        assert sha256_file(args.legacy_archive) == ARCHIVE_SHA256, "legacy archive hash mismatch"
+        for rel, expected in self.manifest.items():
+            source = (self.legacy_source / rel).resolve(strict=True)
+            assert source.is_relative_to(self.legacy_source), "legacy manifest path escapes snapshot"
+            assert sha256_file(source) == expected, f"legacy source hash mismatch: {rel}"
+        self.env = {k: v for k, v in os.environ.items()
+                    if not any(t in k.upper() for t in ("API_KEY", "TOKEN", "SECRET", "CREDENTIAL"))}
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+        self.server.daemon_threads = True
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        endpoint = f"http://127.0.0.1:{self.server.server_port}/v1"
+        self.env.update({"LLMBASE_BASE_URL": endpoint, "LLMBASE_MODEL": "fixture-generation",
+                         "LLMBASE_EMBEDDING_BASE_URL": endpoint,
+                         "LLMBASE_EMBEDDING_MODEL": "fixture-embedding",
+                         "LLMBASE_PRIMARY_RETRIES": "1"})
+
+    def run_cmd(self, argv, *, expect=0, note="", timeout=90, env=None):
+        started = time.monotonic()
+        try:
+            result = subprocess.run(argv, capture_output=True, text=True,
+                                    timeout=timeout, env=env or self.env)
+        except subprocess.TimeoutExpired as error:
+            def decoded(value):
+                return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+            self.steps.append({"note": note, "argv": [str(a) for a in argv],
+                               "exit": None, "timed_out": True,
+                               "stdout": decoded(error.stdout), "stderr": decoded(error.stderr),
+                               "wall_ms": round((time.monotonic() - started) * 1000, 3)})
+            raise
+        self.steps.append({"note": note, "argv": [str(a) for a in argv],
+                           "exit": result.returncode, "stdout": result.stdout,
+                           "stderr": result.stderr,
+                           "wall_ms": round((time.monotonic() - started) * 1000, 3)})
+        if expect is not None and result.returncode != expect:
+            raise RuntimeError(
+                f"{note or argv[0]}: exit {result.returncode}: {result.stderr or result.stdout}")
+        return result
+
+    def cli(self, base, *command, expect=0, note="", timeout=90):
+        argv = [str(self.binary), "--base-dir", str(base), "--library-id", LIB,
+                "--json", *[str(c) for c in command]]
+        result = self.run_cmd(argv, expect=expect, note=note or " ".join(str(c) for c in command[:2]),
+                              timeout=timeout)
+        if expect == 0:
+            return json.loads(result.stdout)
+        return result
+
+    def op(self, base, name, payload, **kw):
+        return self.cli(base, "op", name, "--args",
+                        json.dumps(payload, ensure_ascii=False), note=f"op {name}", **kw)
+
+    def old_reader(self, base, note):
+        helper = self.run / "old_reader.py"
+        if not helper.exists():
+            helper.write_text(OLD_READER)
+        result = self.run_cmd([self.python, str(helper), str(self.legacy_source), str(base)],
+                              note=note, timeout=120)
+        line = next(l for l in result.stdout.splitlines() if l.startswith("READER-RESULT "))
+        report = json.loads(line[len("READER-RESULT "):])
+        # Provenance: every loaded llmwiki module file matches the recorded
+        # pristine-archive hash from legacy-source-sha256.json.
+        for name, meta in report["modules"].items():
+            rel = Path(meta["file"]).relative_to(self.legacy_source).as_posix()
+            assert rel in self.manifest, f"{name}: {rel} not in pristine manifest"
+            assert self.manifest[rel] == meta["sha256"], f"{name}: hash differs from pristine archive"
+        return report
+
+    def build_legacy_library(self, root):
+        """Synthetic legacy library on custom paths, from the frozen fixtures."""
+        root = Path(root)
+        frozen = {
+            "config.yaml": self.fixtures / "config.yaml",
+            "originals/lunyu/index.md": self.fixtures / "originals/lunyu/index.md",
+            "knowledge/entries/xue.md": self.fixtures / "knowledge/entries/xue.md",
+        }
+        for rel, src in frozen.items():
+            dst = root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+        raw_hash = sha256_file(root / "originals/lunyu/index.md")
+        (root / "knowledge/answers").mkdir(parents=True)
+        (root / "knowledge/answers/xue-yi.md").write_text(
+            "---\ntitle: 學而時習義\ntype: answer\ncompiled: true\n"
+            "sources:\n  - plugin: fixture\n    url: https://example.invalid/classics/lunyu/1\n"
+            "    work_id: fixture-lunyu\nreview_state: accepted\n"
+            "created: '2026-09-20T00:00:00+00:00'\nupdated: '2026-09-20T00:00:00+00:00'\n---\n"
+            "問：學而時習之，不亦說乎？\n\n答曰：學者，習而行之也。[[學]]之義詳焉。\n")
+        meta = root / "knowledge/metadata"
+        meta.mkdir(parents=True)
+        (meta / "aliases.json").write_text(json.dumps(
+            {"時習": "xue", "學而": "xue", "xue": "xue"}, ensure_ascii=False, indent=1))
+        (meta / "taxonomy.json").write_text(json.dumps(
+            {"version": 1, "manual": True,
+             "locked": {"paths": [["經", "論語"]], "note": "人工鎖定，合成資料"},
+             "tree": {"經": {"論語": {"articles": ["xue"]}}}},
+            ensure_ascii=False, indent=1))
+        (meta / "backlinks.json").write_text(json.dumps(
+            {"xue": {"outgoing": ["時習"], "incoming": ["xue-yi"]}},
+            ensure_ascii=False, indent=1))
+        assets = root / "knowledge/assets"
+        assets.mkdir(parents=True)
+        (assets / "rubbing.png").write_bytes(
+            b"\x89PNG\r\n\x1a\n" + bytes(range(64)) + "𠮷合成資產".encode())
+        pipeline = root / ".pipeline"
+        pipeline.mkdir()
+        (pipeline / "history.jsonl").write_text(
+            '{"ts":"2026-09-20T00:00:00+00:00","op":"ingest","path":"originals/lunyu/index.md"}\n'
+            '{"ts":"2026-09-20T00:01:00+00:00","op":"compile","slug":"xue","accepted":true}\n')
+        cache = root / ".chunk_cache"
+        cache.mkdir()
+        (cache / "lunyu-index.json").write_text(json.dumps(
+            {"source_path": "originals/lunyu/index.md", "source_sha256": raw_hash,
+             "chunks": [{"start": 0, "end": 8, "text": "序𠮷"}]}, ensure_ascii=False, indent=1))
+        return root
+
+    def check_mapping(self, scan, target):
+        """Every scanned source file exists at its mapped target path, byte-exact."""
+        target = Path(target)
+        for record in scan["files"]:
+            copied = target / record["path"]
+            assert copied.is_file(), f"missing copied file {record['path']}"
+            data = copied.read_bytes()
+            assert len(data) == record["bytes"] and sha256_bytes(data) == record["sha256"], \
+                f"copied bytes differ for {record['path']}"
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--run-root", type=Path, required=True)
+    parser.add_argument("--python", required=True)
+    parser.add_argument("--legacy-source", type=Path, required=True)
+    parser.add_argument("--legacy-archive", type=Path, required=True)
+    parser.add_argument("--legacy-hashes", type=Path, required=True)
+    parser.add_argument("--source-manifest", type=Path, required=True)
+    parser.add_argument("--fixtures", type=Path, required=True)
+    args = parser.parse_args()
+    proof = Proof(args)
+    summary = {"passed": False, "library_id": LIB, "labels": {
+        "stage2": "separate baseline-Python reader proof; NOT interpreter-free runtime evidence",
+        "stage7": "simulated incomplete receipt and conflict recovery; NOT a measured "
+                  "SIGKILL/crash experiment (native recovery tests cover process crashes)"}}
+    try:
+        run = proof.run
+        # ---- Stage 1: synthetic legacy library + pre-invocation inventory.
+        original = proof.build_legacy_library(run / "legacy-original")
+        before = inventory(original)
+        summary["original_inventory_before"] = before
+        summary["binary_sha256"] = sha256_file(proof.binary)
+        summary["script_sha256"] = sha256_file(Path(__file__).resolve())
+        summary["legacy_archive_sha256"] = sha256_file(args.legacy_archive)
+        summary["legacy_source_manifest_sha256"] = sha256_file(args.legacy_hashes)
+        summary["native_source_manifest_sha256"] = sha256_file(args.source_manifest)
+        summary["legacy_commit"] = LEGACY_COMMIT
+        summary["fixture_hashes"] = {
+            p.relative_to(args.fixtures).as_posix(): sha256_file(p)
+            for p in sorted(args.fixtures.rglob("*")) if p.is_file()}
+
+        # ---- Stage 2: actual baseline Python reader on the original.
+        baseline = proof.old_reader(original, "legacy reader baseline")
+        assert baseline["via_alias_slug"] == "xue", "alias resolution failed in baseline reader"
+        assert baseline["article"] and baseline["article"]["content"], "empty baseline export"
+        assert baseline["raw_hits"], "baseline raw search found nothing"
+        summary["legacy_reader_baseline"] = baseline
+
+        # ---- Stage 3: dry-run read-only proof, copy, verify.
+        scan = proof.cli(original, "migration", "dry-run", note="migration dry-run")
+        assert scan["library_id"] == LIB
+        assert scan["native_database"] is False and scan["database_files"] == []
+        assert scan["parse_errors"] == [] and scan["identity_conflicts"] == []
+        assert {"canon", "chapter", "editorial_extension", "review_state"} <= \
+            set(scan["unknown_metadata_keys"]), scan["unknown_metadata_keys"]
+        for record in scan["files"]:
+            # Scan paths are target-layout mappings of the custom source roots.
+            mapped = record["path"]
+            for prefix, source_root in [
+                ("raw/", "originals/"), ("wiki/concepts/", "knowledge/entries/"),
+                ("wiki/outputs/", "knowledge/answers/"), ("wiki/_meta/", "knowledge/metadata/"),
+                (".pipeline/", ".pipeline/"), (".chunk_cache/", ".chunk_cache/"),
+                ("wiki/", "knowledge/"),
+            ]:
+                if mapped.startswith(prefix):
+                    source_file = original / source_root / mapped[len(prefix):]
+                    break
+            else:
+                assert mapped == "migration-original-config.yaml", f"unmapped scan path {mapped}"
+                source_file = original / "config.yaml"
+            assert source_file.is_file(), f"scan maps unknown file {mapped}"
+            assert source_file.stat().st_size == record["bytes"]
+            assert sha256_file(source_file) == record["sha256"]
+        assert inventory(original) == before, "dry-run mutated the original library"
+        copy1 = run / "copy-immutable"
+        receipt1 = proof.cli(original, "migration", "copy", copy1, note="migration copy")
+        assert receipt1["state"] == "complete" and receipt1["library_id"] == LIB
+        assert receipt1["source"] == str(original.resolve())
+        assert receipt1["source_manifest"] == scan
+        proof.cli(original, "migration", "verify", copy1, note="migration verify copy")
+        assert inventory(original) == before, "copy mutated the original library"
+        proof.check_mapping(scan, copy1)
+        assert (copy1 / "migration-original-config.yaml").read_bytes() == \
+            (original / "config.yaml").read_bytes()
+        original_settings = yaml.safe_load((original / "config.yaml").read_text())
+        copied_settings = yaml.safe_load((copy1 / "config.yaml").read_text())
+        assert {k: v for k, v in copied_settings.items() if k != "paths"} == \
+            {k: v for k, v in original_settings.items() if k != "paths"}, \
+            "migration changed non-path configuration/profile"
+        assert (copy1 / "wiki/_meta/llmbase.sqlite3").is_file(), "copied library not indexed"
+        copy1_inventory = inventory(copy1)
+
+        # ---- Stage 4: restore into working, verify, then exercise writes/jobs.
+        working = run / "working"
+        proof.cli(original, "migration", "restore", copy1, working, note="migration restore working")
+        proof.cli(original, "migration", "verify", working, note="verify working before writes")
+        retained = {}
+        retained["write1"] = proof.op(working, "source_write",
+                                      {"kind": "raw", "path": "b10-scratch.md", "content": SCRATCH1})
+        queued = proof.op(working, "job_enqueue", {"operation": "index", "args": {}})
+        finished = proof.op(working, "job_run_one", {"worker_id": "b10-worker"})
+        assert finished["id"] == queued["id"] and finished["status"] == "succeeded"
+        job = proof.op(working, "job_get", {"job_id": queued["id"]})
+        assert job["status"] == "succeeded" and job["attempts"] == 1
+        found = proof.op(working, "search", {"query": TOKEN, "kind": "raw"})
+        evidence = found["results"][0]["evidence"]
+        assert not proof.op(working, "evidence", {"evidence": evidence})["stale"]
+        proof.op(working, "source_write", {"kind": "raw", "path": "b10-scratch.md",
+                                           "content": SCRATCH2,
+                                           "expected_hash": evidence["content_hash"]})
+        assert proof.op(working, "evidence", {"evidence": evidence})["stale"]
+        current = proof.op(working, "get", {"source_id": evidence["source_id"]})
+        proof.op(working, "source_delete", {"source_id": current["source_id"],
+                                            "expected_hash": current["content_hash"]})
+        assert not proof.op(working, "search", {"query": TOKEN, "kind": "raw"})["results"]
+        assert proof.op(working, "evidence", {"evidence": evidence})["deleted"]
+        retained.update({"source_id": evidence["source_id"], "evidence": evidence,
+                         "revision_after_update": current, "job_id": queued["id"], "job": job})
+        summary["retained"] = retained
+
+        # ---- Stage 5: backup working, restore fresh, survival checks.
+        snap2 = run / "snapshot-immutable"
+        proof.cli(working, "migration", "backup", snap2, note="migration backup working")
+        proof.cli(working, "migration", "verify", snap2, note="verify backup snapshot")
+        snap2_inventory = inventory(snap2)
+        restored2 = run / "restored-fresh"
+        proof.cli(working, "migration", "restore", snap2, restored2, note="restore fresh target")
+        proof.cli(working, "migration", "verify", restored2, note="verify fresh target")
+        for rel, origin in [
+            ("raw/lunyu/index.md", original / "originals/lunyu/index.md"),
+            ("wiki/concepts/xue.md", original / "knowledge/entries/xue.md"),
+            ("wiki/outputs/xue-yi.md", original / "knowledge/answers/xue-yi.md"),
+            ("wiki/assets/rubbing.png", original / "knowledge/assets/rubbing.png"),
+            ("wiki/_meta/aliases.json", original / "knowledge/metadata/aliases.json"),
+            ("wiki/_meta/taxonomy.json", original / "knowledge/metadata/taxonomy.json"),
+            ("wiki/_meta/backlinks.json", original / "knowledge/metadata/backlinks.json"),
+            (".pipeline/history.jsonl", original / ".pipeline/history.jsonl"),
+            (".chunk_cache/lunyu-index.json", original / ".chunk_cache/lunyu-index.json"),
+        ]:
+            assert (restored2 / rel).read_bytes() == Path(origin).read_bytes(), f"{rel} differs"
+        job2 = proof.op(restored2, "job_get", {"job_id": retained["job_id"]})
+        assert job2 == retained["job"], "completed job state/identity lost in restore"
+        restored_settings = yaml.safe_load((restored2 / "config.yaml").read_text())
+        assert restored_settings == copied_settings, "restore changed configuration/profile"
+        assert not proof.op(restored2, "search", {"query": TOKEN, "kind": "raw"})["results"], \
+            "deleted raw passage still searchable after restore"
+        resolution = proof.op(restored2, "evidence", {"evidence": retained["evidence"]})
+        assert resolution["deleted"] and resolution["stale"], "deleted/stale status lost"
+        assert resolution["evidence"]["source_id"] == retained["source_id"]
+        assert resolution["evidence"]["content_hash"] == retained["evidence"]["content_hash"]
+        assert resolution["evidence"]["exact_quote"] == retained["evidence"]["exact_quote"], \
+            "historical quote lost"
+        assert resolution["evidence"] == retained["evidence"], "historical evidence identity changed"
+        deleted = proof.op(restored2, "get", {"source_id": retained["source_id"]})
+        expected_deleted = dict(retained["revision_after_update"], deleted=True)
+        assert deleted == expected_deleted, "deleted source content/revision/identity changed"
+        summary["get_deleted_source"] = deleted
+
+        # ---- Stage 6: rollback on the immutable copy + legacy reader again.
+        rolled = proof.cli(original, "migration", "rollback", copy1, note="migration rollback")
+        assert rolled == scan, "rollback scan differs from the original dry-run"
+        assert inventory(copy1) == copy1_inventory, "immutable copy changed"
+        again = proof.old_reader(original, "legacy reader after rollback")
+        assert again == baseline, "baseline reader results changed after migration cycle"
+        assert inventory(original) == before, "original library changed across the whole proof"
+        summary["legacy_reader_after_rollback"] = again
+        summary["original_inventory_after"] = inventory(original)
+        summary["configuration_preserved"] = True
+
+        # ---- Stage 7: deterministic resume contract (simulated, not a crash test).
+        src2 = proof.build_legacy_library(run / "resume-source")
+        scan2 = proof.cli(src2, "migration", "dry-run", note="resume-source dry-run")
+        target2 = run / "resume-target"
+        target2.mkdir()
+        (target2 / "migration-receipt.json").write_text(json.dumps({
+            "version": 1, "library_id": scan2["library_id"],
+            "source": str(src2.resolve()), "source_manifest": scan2,
+            "state": "copying", "destination_files": []}, ensure_ascii=False, indent=1))
+        good = target2 / "raw/lunyu/index.md"
+        good.parent.mkdir(parents=True)
+        shutil.copyfile(src2 / "originals/lunyu/index.md", good)
+        conflict = target2 / "wiki/concepts/xue.md"
+        conflict.parent.mkdir(parents=True)
+        conflict.write_bytes(b"deliberate fixture conflict bytes")
+        failed = proof.cli(src2, "migration", "copy", target2, expect=None,
+                           note="resume copy must fail on conflict")
+        assert failed.returncode != 0, "conflicting seeded file was silently overwritten"
+        assert good.read_bytes() == (src2 / "originals/lunyu/index.md").read_bytes()
+        assert conflict.read_bytes() == b"deliberate fixture conflict bytes"
+        assert json.loads((target2 / "migration-receipt.json").read_text())["state"] == "copying"
+        conflict.write_bytes((src2 / "knowledge/entries/xue.md").read_bytes())
+        resumed = proof.cli(src2, "migration", "copy", target2, note="resume copy after repair")
+        assert resumed["state"] == "complete"
+        proof.cli(src2, "migration", "verify", target2, note="verify resumed copy")
+        proof.check_mapping(scan2, target2)
+        summary["resume_contract"] = {"first_exit": failed.returncode,
+                                      "conflict_repaired": "wiki/concepts/xue.md only",
+                                      "final_state": resumed["state"]}
+
+        # ---- Stage 8: negative verify on a tampered throwaway restore.
+        throwaway = run / "throwaway"
+        proof.cli(working, "migration", "restore", snap2, throwaway, note="restore throwaway")
+        victim = throwaway / "wiki/concepts/xue.md"
+        victim.write_bytes(victim.read_bytes() + b"tampered")
+        negative = proof.cli(working, "migration", "verify", throwaway, expect=None,
+                             note="negative verify must fail")
+        assert negative.returncode != 0 and negative.stdout == "", \
+            "verify accepted tampered bytes"
+        assert inventory(snap2) == snap2_inventory, "immutable snapshot changed"
+        summary["negative_verify_exit"] = negative.returncode
+
+        assert REQUESTS == [], f"provider fixture received requests: {REQUESTS}"
+        summary["passed"] = True
+        return 0
+    except Exception as error:
+        summary["error"] = f"{type(error).__name__}: {error}"
+        print(f"PROOF FAILED: {error}", file=sys.stderr)
+        return 1
+    finally:
+        summary["steps"] = proof.steps
+        summary["provider_fixture_requests"] = REQUESTS
+        original_path = proof.run / "legacy-original"
+        if original_path.exists():
+            summary["original_inventory_after"] = inventory(original_path)
+        (proof.run / "summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=1))
+        proof.close()
+        print(json.dumps({"passed": summary["passed"], "steps": len(proof.steps),
+                          "summary": str(proof.run / "summary.json")}))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

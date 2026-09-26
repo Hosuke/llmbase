@@ -1,0 +1,145 @@
+{
+  "version": "0.9.0",
+  "python": "3.12.13 (main, Jun  2 2026, 22:42:28) [Clang 22.1.3 ]",
+  "prefix": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv",
+  "package": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "wheel": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/wheels-v9/llmwiki-0.9.0-cp311-abi3-macosx_11_0_arm64.whl",
+  "wheel_sha256": "9d97f0edf6bb6e338f49c636f6a5108cff1be6d22851166f4b26cbc16b4eb6f1",
+  "extension": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "a80386c9940076e3ef022e35b2cf4a57a2c1cf8cd7d01eed99fdd2a30e426579",
+  "extension_record_entries": [
+    "llmwiki/_core.abi3.so"
+  ],
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/_core.abi3.so"
+  },
+  "modules": {
+    "_native": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/_native.py",
+      "installed_sha256": "c383256b53557f53c91e8e73c0d916a869092059a2de1f0cf6979c56cb143045",
+      "source_sha256_at_receipt": "c383256b53557f53c91e8e73c0d916a869092059a2de1f0cf6979c56cb143045"
+    },
+    "search": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/search.py",
+      "installed_sha256": "fc58abfd096d467362f255dd51f5d6df75715bb305fd6355168961d4d577ed9f",
+      "source_sha256_at_receipt": "fc58abfd096d467362f255dd51f5d6df75715bb305fd6355168961d4d577ed9f"
+    },
+    "compile": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/compile.py",
+      "installed_sha256": "8d157adc36b7f449bdd9a4d423a0ced9f46c3f330c5c3ae3f460ab188fa083a2",
+      "source_sha256_at_receipt": "8d157adc36b7f449bdd9a4d423a0ced9f46c3f330c5c3ae3f460ab188fa083a2"
+    },
+    "query": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/query.py",
+      "installed_sha256": "689ba48ff041085287836ce9ac09e041b3cab03a81ff32570f0c8bd983761080",
+      "source_sha256_at_receipt": "689ba48ff041085287836ce9ac09e041b3cab03a81ff32570f0c8bd983761080"
+    },
+    "llm": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/llm.py",
+      "installed_sha256": "867564b0f7c848dd88170149c00830e76e71a8bd5812513da5f9e016894401f1",
+      "source_sha256_at_receipt": "867564b0f7c848dd88170149c00830e76e71a8bd5812513da5f9e016894401f1"
+    },
+    "agent_api": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/agent_api.py",
+      "installed_sha256": "ee070f8ce500e728a15672989821f3cd1c62379ac49b7078e025e89f479c54bd",
+      "source_sha256_at_receipt": "ee070f8ce500e728a15672989821f3cd1c62379ac49b7078e025e89f479c54bd"
+    },
+    "ingest": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/ingest.py",
+      "installed_sha256": "962e435b6eb4f893c75b4563797efbce908ce3a5f5123602b772740b1e88e356",
+      "source_sha256_at_receipt": "962e435b6eb4f893c75b4563797efbce908ce3a5f5123602b772740b1e88e356"
+    },
+    "operations": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/operations.py",
+      "installed_sha256": "62bec42a04dfb474f634d0afa240e60973d073e6ae4b79b37c5320509ff3da88",
+      "source_sha256_at_receipt": "62bec42a04dfb474f634d0afa240e60973d073e6ae4b79b37c5320509ff3da88"
+    },
+    "pipeline.log": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/pipeline/log.py",
+      "installed_sha256": "0106415d708d8d74f9c94e09397f55e808906e8fc7315adf9bb0d140a69ca664",
+      "source_sha256_at_receipt": "0106415d708d8d74f9c94e09397f55e808906e8fc7315adf9bb0d140a69ca664"
+    },
+    "pipeline.state": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/pipeline/state.py",
+      "installed_sha256": "624dddbb32b3a875c979938386e1b0e10dd08be164a6735540b086abb3e28380",
+      "source_sha256_at_receipt": "624dddbb32b3a875c979938386e1b0e10dd08be164a6735540b086abb3e28380"
+    },
+    "pipeline.lock": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/pipeline/lock.py",
+      "installed_sha256": "d6deceec1c6db3920a50779376785e9f0919c6988fb562d4c6b642f6dce470d0",
+      "source_sha256_at_receipt": "d6deceec1c6db3920a50779376785e9f0919c6988fb562d4c6b642f6dce470d0"
+    },
+    "chunk_cache": {
+      "installed": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-venv/lib/python3.12/site-packages/llmwiki/chunk_cache.py",
+      "installed_sha256": "af43237470149ab2f727448ac0e1c15db6b70d1f6501f9a3dd2d1d4526c6cc59",
+      "source_sha256_at_receipt": "af43237470149ab2f727448ac0e1c15db6b70d1f6501f9a3dd2d1d4526c6cc59"
+    }
+  },
+  "actual_native_receipts": [
+    {
+      "core": "rust",
+      "operation": "compat_pipeline_append",
+      "library_id": "default",
+      "storage": "native_pipeline_files",
+      "sequence": 1
+    },
+    {
+      "core": "rust",
+      "operation": "compat_pipeline_state",
+      "library_id": "default",
+      "storage": "native_pipeline_files",
+      "sequence": 3
+    },
+    {
+      "core": "rust",
+      "operation": "compat_pipeline_cache_put",
+      "library_id": "default",
+      "storage": "native_pipeline_files",
+      "sequence": 4
+    },
+    {
+      "core": "rust",
+      "operation": "compat_pipeline_cache_get",
+      "library_id": "default",
+      "storage": "native_pipeline_files",
+      "sequence": 6
+    },
+    {
+      "core": "rust",
+      "operation": "stage_lease",
+      "storage": "kernel_flock",
+      "held": true
+    },
+    {
+      "core": "rust",
+      "operation": "compat_query",
+      "orchestrator": "rust",
+      "model_boundary": "host_callback",
+      "stages": [
+        "gather",
+        "answer"
+      ],
+      "host_overrides": [],
+      "default_retrieval_public_only": true,
+      "writes": false
+    }
+  ],
+  "pipeline_creates_no_database": true,
+  "extended_json_plain_storage_roundtrip": true,
+  "query_model_boundary": "explicit offline Python callback; query sequencing/storage Rust",
+  "full_test_result": {
+    "passed": 552,
+    "failed": 0,
+    "seconds": 7.71,
+    "log": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/.rust-migration-runs/candidate-full-v9.log",
+    "log_sha256": "ff0c21a61668beaa999f4670707a4ddfb7cf321d319eefab45749f780f36469f"
+  }
+}

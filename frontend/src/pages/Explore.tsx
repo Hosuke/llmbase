@@ -271,7 +271,7 @@ export function Explore() {
     // ─── Hover interaction ─────────────────────────────────
     let currentTransform = d3.zoomIdentity;
 
-    items.on('mouseenter', function (event, d) {
+    items.on('mouseenter', function (_event, d) {
       const cx = currentTransform.rescaleX(x)(d.year);
       setHovered({ name: zh ? d.localName : d.name, dates: d.dates, role: d.role || d.description, x: cx, y: 10 });
       d3.select(this).select('.dot').transition().duration(200).attr('r', DOT_R + 4).attr('stroke-width', 3);

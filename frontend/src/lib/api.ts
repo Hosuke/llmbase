@@ -68,6 +68,11 @@ export interface LintResults {
   total_issues: number;
 }
 
+/** The Web factory starts a background job; local adapters may return fixes. */
+export type LintFixResult =
+  | { fixes: string[]; fix_count: number; status?: 'completed'; message?: never }
+  | { status: 'started'; message: string; fixes?: never; fix_count?: never };
+
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(BASE + url);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -149,7 +154,7 @@ export const api = {
   compile: () => post<{ status: string; articles_created: number }>('/api/compile', {}),
   getWorkerStatus: () => get<{ busy: boolean }>('/api/worker/status'),
   lint: (deep = false) => post<{ results?: LintResults; report?: string }>('/api/lint', { deep }),
-  lintFix: () => post<{ fixes: string[]; fix_count: number }>('/api/lint/fix', {}),
+  lintFix: () => post<LintFixResult>('/api/lint/fix', {}),
   cleanWiki: () => post<{ removed: number; slugs: string[] }>('/api/wiki/clean', {}),
   getHealth: () => get<{ report: { checked_at: string; results: LintResults; fixes_applied: string[] } | null }>('/api/health'),
   rebuildIndex: () => post<{ article_count: number }>('/api/index/rebuild', {}),

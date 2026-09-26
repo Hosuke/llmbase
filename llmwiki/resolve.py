@@ -187,3 +187,104 @@ def _register_cjk_variants(aliases: dict[str, str]):
             new_entries[traditional] = slug
 
     aliases.update(new_entries)
+
+
+# The installed candidate delegates default alias work to Rust. The original
+# functions remain solely for an explicitly unbuilt source checkout.
+_legacy_build_aliases = build_aliases
+_legacy_load_aliases = load_aliases
+_legacy_resolve_link = resolve_link
+_legacy_normalize = _normalize
+_legacy_fuzzy_normalize = _fuzzy_normalize
+_legacy_register = _register
+_legacy_register_cjk_variants = _register_cjk_variants
+_legacy_get_converters = _get_converters
+
+
+class _NativeConverter:
+    def __init__(self, traditional):
+        self.traditional = traditional
+
+    def convert(self, text):
+        from . import _native
+        return _native.resolve_transform("convert", {"text": text, "traditional": self.traditional})
+
+
+def _get_converters():
+    from . import _native
+    if not _native.available():
+        return _legacy_get_converters()
+    global _t2s, _s2t
+    if _t2s is None:
+        _t2s, _s2t = _NativeConverter(False), _NativeConverter(True)
+    return _t2s, _s2t
+
+
+def _normalize(text: str) -> str:
+    from . import _native
+    if not _native.available():
+        return _legacy_normalize(text)
+    return _native.resolve_transform("normalize", {"text": text})
+
+
+def _fuzzy_normalize(text: str) -> str:
+    from . import _native
+    if not _native.available():
+        return _legacy_fuzzy_normalize(text)
+    return _native.resolve_transform("fuzzy", {"text": text})
+
+
+def _register(aliases: dict[str, str], name: str, slug: str):
+    from . import _native
+    if not _native.available():
+        return _legacy_register(aliases, name, slug)
+    pairs = _native.resolve_transform("register", {"aliases": list(aliases.items()), "name": name, "slug": slug})
+    aliases.update(pairs)
+
+
+def _register_cjk_variants(aliases: dict[str, str]):
+    from . import _native
+    if not _native.available():
+        return _legacy_register_cjk_variants(aliases)
+    t2s, s2t = _get_converters()
+    if not t2s:
+        return
+    if not isinstance(t2s, _NativeConverter) or not isinstance(s2t, _NativeConverter):
+        # Explicitly replaced external converters are trusted live callbacks.
+        value = _legacy_register_cjk_variants(aliases)
+        _native.python_boundary("resolve_variants", "configured CJK converters")
+        return value
+    aliases.update(_native.resolve_transform("variants", {"aliases": list(aliases.items())}))
+
+
+def build_aliases(concepts_dir: Path) -> dict[str, str]:
+    from . import _native
+    if not _native.available():
+        return _legacy_build_aliases(concepts_dir)
+    aliases = dict(_native.resolve_transform("build", {"concepts_dir": str(concepts_dir), "cjk": False}))
+    _register_cjk_variants(aliases)
+    return aliases
+
+
+def load_aliases(meta_dir: Path) -> dict[str, str]:
+    from . import _native
+    if not _native.available():
+        return _legacy_load_aliases(meta_dir)
+    return dict(_native.resolve_transform("load", {"meta_dir": str(meta_dir)}))
+
+
+def resolve_link(target: str, aliases: dict[str, str]) -> str | None:
+    from . import _native
+    if not _native.available():
+        return _legacy_resolve_link(target, aliases)
+    args = {"target": target, "aliases": list(aliases.items())}
+    initial = _native.resolve_transform("resolve_initial", args)
+    if initial["found"]:
+        return initial["value"]
+    conversions = []
+    if target:
+        t2s, s2t = _get_converters()
+        if t2s:
+            conversions = [t2s.convert(target), s2t.convert(target)]
+    args["conversions"] = conversions
+    return _native.resolve_transform("resolve", args)

@@ -160,7 +160,7 @@ export function Graph() {
 
     // Nodes
     const node = g.append('g')
-      .selectAll('circle')
+      .selectAll<SVGCircleElement, Node>('circle')
       .data(visibleNodes)
       .join('circle')
       .attr('r', d => d.size)

@@ -133,6 +133,7 @@ def _client(tmp_kb):
     from llmwiki.web import create_web_app
     app = create_web_app(tmp_kb)
     app.config["TESTING"] = True
+    app.config["llmbase"]["allow_unauthenticated_local"] = True
     return app.test_client()
 
 
@@ -310,10 +311,7 @@ def test_api_ask_model_override_allowed_when_authed(tmp_kb, monkeypatch):
 def test_api_ask_model_override_rejects_spa_cookie(tmp_kb, monkeypatch):
     """SPA-minted session cookie must NOT unlock model override (codex finding).
 
-    /api/ask promote=True still accepts the cookie for SPA convenience, but
-    the model-override path — which has cost implications — requires the
-    raw API secret in an Authorization header so a drive-by browser visitor
-    cannot pin an expensive model just by loading `/`.
+    Neither promotion nor model access is authorized by a visitor cookie.
     """
     monkeypatch.setenv("LLMBASE_API_SECRET", "secret-abc")
     from llmwiki.web import derive_session_token
@@ -325,21 +323,21 @@ def test_api_ask_model_override_rejects_spa_cookie(tmp_kb, monkeypatch):
     assert "Authorization" in r.get_json()["message"]
 
 
-def test_api_ask_promote_still_accepts_cookie(tmp_kb, monkeypatch):
-    """Regression guard: promote=True must still accept SPA cookie auth."""
+def test_api_ask_promote_rejects_visitor_cookie(tmp_kb, monkeypatch):
+    """Security contract correction: loading the SPA must not grant write/model scopes."""
     monkeypatch.setenv("LLMBASE_API_SECRET", "secret-abc")
     from llmwiki.web import derive_session_token
     session = derive_session_token("secret-abc")
 
     def fake_dispatch(name, base, args):
-        return {"answer": "x", "consulted": []}
+        raise AssertionError("visitor cookie reached model/write dispatch")
 
     from llmwiki import operations as _ops
     with patch.object(_ops, "dispatch", side_effect=fake_dispatch):
         c = _client(tmp_kb)
         c.set_cookie(domain="localhost", key="llmbase_auth", value=session)
         r = c.post("/api/ask", json={"question": "hi", "deep": True, "promote": True})
-    assert r.status_code == 200
+    assert r.status_code == 401
 
 
 def test_api_ask_model_allowlist_rejects_unlisted(tmp_kb, monkeypatch):

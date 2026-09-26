@@ -26,14 +26,16 @@ import json
 import re as _slug_re
 from datetime import datetime, timezone
 from pathlib import Path
+from contextvars import ContextVar
 
 import frontmatter
 
-from .config import load_config, ensure_dirs, get_section_headers
+from .config import load_config, ensure_dirs, get_section_headers, _read_config
 from .llm import chat
+from . import _native
 
 
-def sanitize_slug(slug: str) -> str:
+def _legacy_sanitize_slug(slug: str) -> str:
     """Normalize a concept slug to a safe filename stem.
 
     LLMs occasionally emit URLs verbatim as slugs (issue #5), and the
@@ -171,7 +173,7 @@ append: |
 Focus on extracting knowledge, not just summarizing. Each language section should be substantive, not a mere translation."""
 
 
-def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> list[str]:
+def _legacy_compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> list[str]:
     """Compile unprocessed raw documents into wiki articles."""
     cfg = load_config(base_dir)
     ensure_dirs(cfg)
@@ -311,7 +313,7 @@ def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> 
     return compiled_articles
 
 
-def compile_all(base_dir: Path | None = None) -> list[str]:
+def _legacy_compile_all(base_dir: Path | None = None) -> list[str]:
     """Recompile everything - reset compiled flags and run."""
     cfg = load_config(base_dir)
     raw_dir = Path(cfg["paths"]["raw"])
@@ -334,7 +336,7 @@ def compile_all(base_dir: Path | None = None) -> list[str]:
     return compile_new(base_dir, batch_size=999)
 
 
-def rebuild_index(base_dir: Path | None = None):
+def _legacy_rebuild_index(base_dir: Path | None = None):
     """Rebuild the master index file from all wiki articles."""
     cfg = load_config(base_dir)
     concepts_dir = Path(cfg["paths"]["concepts"])
@@ -394,7 +396,7 @@ def rebuild_index(base_dir: Path | None = None):
     return index_entries
 
 
-def _find_uncompiled(raw_dir: Path) -> list[Path]:
+def _legacy_find_uncompiled(raw_dir: Path) -> list[Path]:
     """Find raw documents that haven't been compiled yet."""
     uncompiled = []
     if not raw_dir.exists():
@@ -417,7 +419,7 @@ def _find_uncompiled(raw_dir: Path) -> list[Path]:
     return uncompiled
 
 
-def _load_index(meta_dir: Path) -> list[dict]:
+def _legacy_load_index(meta_dir: Path) -> list[dict]:
     """Load existing index."""
     index_path = meta_dir / "index.json"
     if index_path.exists():
@@ -425,7 +427,7 @@ def _load_index(meta_dir: Path) -> list[dict]:
     return []
 
 
-def _list_existing_concepts(concepts_dir: Path) -> list[str]:
+def _legacy_list_existing_concepts(concepts_dir: Path) -> list[str]:
     """List existing concepts as 'slug (title)' for LLM disambiguation."""
     if not concepts_dir.exists():
         return []
@@ -437,7 +439,7 @@ def _list_existing_concepts(concepts_dir: Path) -> list[str]:
     return results
 
 
-def _parse_compile_response(response: str) -> list[dict]:
+def _legacy_parse_compile_response(response: str) -> list[dict]:
     """Parse LLM response into article dicts."""
     articles = []
 
@@ -472,7 +474,7 @@ def _parse_compile_response(response: str) -> list[dict]:
     return articles
 
 
-def _parse_article_block(block: str) -> dict | None:
+def _legacy_parse_article_block(block: str) -> dict | None:
     """Parse a single article block."""
     lines = block.strip().split("\n")
     meta = {}
@@ -499,7 +501,7 @@ def _parse_article_block(block: str) -> dict | None:
     return meta
 
 
-def _parse_update_block(block: str) -> dict | None:
+def _legacy_parse_update_block(block: str) -> dict | None:
     """Parse an update block."""
     lines = block.strip().split("\n")
     slug = None
@@ -523,7 +525,7 @@ def _parse_update_block(block: str) -> dict | None:
     return {"slug": slug, "content": "\n".join(append_content).strip()}
 
 
-def _write_article(
+def _legacy_write_article(
     article: dict,
     concepts_dir: Path,
     headers: list[tuple[str, str]] | None = None,
@@ -595,7 +597,7 @@ def _write_article(
     return article_path
 
 
-def _merge_into(
+def _legacy_merge_into(
     existing_path: Path,
     article: dict,
     headers: list[tuple[str, str]] | None = None,
@@ -667,7 +669,7 @@ def _merge_into(
     return None
 
 
-def _split_sections(
+def _legacy_split_sections(
     content: str,
     headers: list[tuple[str, str]] | None = None,
 ) -> dict[str, str]:
@@ -713,7 +715,7 @@ def _split_sections(
     return sections
 
 
-def _assemble_sections(
+def _legacy_assemble_sections(
     sections: dict[str, str],
     headers: list[tuple[str, str]] | None = None,
 ) -> str:
@@ -735,7 +737,7 @@ def _assemble_sections(
     return "\n\n".join(parts)
 
 
-def _build_backlinks(concepts_dir: Path, meta_dir: Path):
+def _legacy_build_backlinks(concepts_dir: Path, meta_dir: Path):
     """Build a backlinks map from wiki-link references.
 
     Uses alias resolution so that [[参禅]] correctly maps to the
@@ -763,3 +765,216 @@ def _build_backlinks(concepts_dir: Path, meta_dir: Path):
     backlinks_path = meta_dir / "backlinks.json"
     from .atomic import atomic_write_json
     atomic_write_json(backlinks_path, backlinks)
+
+
+# These functions retain the imported public/private names and resolve effective
+# module settings at invocation time. The default native path performs actual
+# parsing, reads, merge decisions, and journaled writes in the shared Rust core.
+_active_compile_config: ContextVar[dict | None] = ContextVar("llmwiki_compile_config", default=None)
+_active_raw_source: ContextVar[dict | None] = ContextVar("llmwiki_compile_raw_source", default=None)
+_DEFAULT_CHAT = chat
+
+
+def _native_compile(operation: str, args: dict | None = None, *, cfg=None, **roots):
+    cfg = cfg or _active_compile_config.get()
+    if cfg is None:
+        # Private helpers accept a standalone configured directory. Derive a
+        # local metadata root when no compile invocation supplies full config.
+        # This call context is transient: reading config here must not publish
+        # an inferred library identity to the native registry.
+        selected = next(iter(roots.values()), Path.cwd())
+        selected = Path(selected).resolve()
+        cfg = _read_config(selected.parent)
+        if "concepts" in roots:
+            cfg["paths"]["meta"] = str(selected.parent / "_meta")
+    paths = dict(cfg["paths"])
+    paths.update({key: str(Path(path).resolve()) for key, path in roots.items()})
+    return _native.dispatch("compat_compile_" + operation, args or {}, cfg.get("base_dir"), paths=paths)["value"]
+
+
+def sanitize_slug(slug: str) -> str:
+    if not _native.available():
+        return _legacy_sanitize_slug(slug)
+    if not slug:
+        return ""
+    return _native.compile_transform("sanitize_slug", {"slug": slug})
+
+
+def _split_sections(content: str, headers: list[tuple[str, str]] | None = None) -> dict[str, str]:
+    if not _native.available():
+        return _legacy_split_sections(content, headers)
+    return _native.compile_transform("split", {"content": content, "headers": SECTION_HEADERS if headers is None else headers})
+
+
+def _assemble_sections(sections: dict[str, str], headers: list[tuple[str, str]] | None = None) -> str:
+    if not _native.available():
+        return _legacy_assemble_sections(sections, headers)
+    return _native.compile_transform("assemble", {"sections": sections, "headers": SECTION_HEADERS if headers is None else headers})
+
+
+def _parse_article_block(block: str) -> dict | None:
+    if not _native.available():
+        return _legacy_parse_article_block(block)
+    return _native.compile_transform("parse_article", {"block": block})
+
+
+def _parse_update_block(block: str) -> dict | None:
+    if not _native.available():
+        return _legacy_parse_update_block(block)
+    return _native.compile_transform("parse_update", {"block": block})
+
+
+def _parse_compile_response(response: str) -> list[dict]:
+    if not _native.available():
+        return _legacy_parse_compile_response(response)
+    return _native.compile_transform("parse_response", {"response": response})
+
+
+def _find_uncompiled(raw_dir: Path) -> list[Path]:
+    if not _native.available():
+        return _legacy_find_uncompiled(raw_dir)
+    raw_dir = Path(raw_dir)
+    paths = [Path(path) for path in _native_compile("find", raw=raw_dir)]
+    return paths if raw_dir.is_absolute() else [raw_dir / path.relative_to(raw_dir.resolve()) for path in paths]
+
+
+def _load_index(meta_dir: Path) -> list[dict]:
+    if not _native.available():
+        return _legacy_load_index(meta_dir)
+    return _native_compile("load_index", meta=meta_dir)
+
+
+def _list_existing_concepts(concepts_dir: Path) -> list[str]:
+    if not _native.available():
+        return _legacy_list_existing_concepts(concepts_dir)
+    return _native_compile("existing", concepts=concepts_dir)
+
+
+def _write_article(article: dict, concepts_dir: Path, headers: list[tuple[str, str]] | None = None) -> Path | None:
+    if not _native.available():
+        return _legacy_write_article(article, concepts_dir, headers)
+    result = _native_compile("write", {"article": article, "headers": SECTION_HEADERS if headers is None else headers,
+                                     "raw_source": _active_raw_source.get()}, concepts=concepts_dir)
+    article["slug"] = result["slug"]
+    return Path(result["path"]) if result["path"] is not None else None
+
+
+def _merge_into(existing_path: Path, article: dict, headers: list[tuple[str, str]] | None = None):
+    if not _native.available():
+        return _legacy_merge_into(existing_path, article, headers)
+    existing_path = Path(existing_path)
+    _native_compile("write", {"relative": existing_path.name, "article": article,
+                              "headers": SECTION_HEADERS if headers is None else headers,
+                              "raw_source": _active_raw_source.get()}, concepts=existing_path.parent)
+    return None
+
+
+def rebuild_index(base_dir: Path | None = None):
+    if not _native.available():
+        return _legacy_rebuild_index(base_dir)
+    entries = _native_compile("rebuild", cfg=load_config(base_dir))
+    from .hooks import emit
+    emit("index_rebuilt", article_count=len(entries))
+    return entries
+
+
+def _build_backlinks(concepts_dir: Path, meta_dir: Path):
+    if not _native.available():
+        return _legacy_build_backlinks(concepts_dir, meta_dir)
+    _native_compile("backlinks", concepts=concepts_dir, meta=meta_dir)
+    return None
+
+
+def compile_all(base_dir: Path | None = None) -> list[str]:
+    if not _native.available():
+        return _legacy_compile_all(base_dir)
+    _native_compile("reset", cfg=load_config(base_dir))
+    return compile_new(base_dir, batch_size=999)
+
+
+def compile_new(base_dir: Path | None = None, batch_size: int | None = None) -> list[str]:
+    if not _native.available():
+        return _legacy_compile_new(base_dir, batch_size)
+    cfg = load_config(base_dir)
+    ensure_dirs(cfg)
+    token = _active_compile_config.set(cfg)
+    try:
+        return _compile_new_native(cfg, base_dir, batch_size)
+    finally:
+        _active_compile_config.reset(token)
+
+
+def _compile_new_native(cfg: dict, base_dir: Path | None, batch_size: int | None) -> list[str]:
+    from .hooks import emit
+    raw_dir = Path(cfg["paths"]["raw"]).resolve()
+    concepts_dir = Path(cfg["paths"]["concepts"]).resolve()
+    meta_dir = Path(cfg["paths"]["meta"]).resolve()
+    section_headers = get_section_headers(cfg)
+    if batch_size is None:
+        batch_size = cfg.get("compile", {}).get("batch_size", 10)
+    batch = _find_uncompiled(raw_dir)[:batch_size]
+    if not batch:
+        return []
+    def snapshot(path, attachments=False):
+        return _native_compile("read_raw", {"relative": str(path.relative_to(raw_dir)), "attachments": attachments})
+    preview = [snapshot(path)["metadata"].get("title", path.parent.name) for path in batch[:5]]
+    emit("before_compile", batch_size=len(batch), titles=preview)
+    _load_index(meta_dir)
+    existing_concepts = _list_existing_concepts(concepts_dir)
+    compiled_sources = set(_native_compile("sources"))
+    compiled_articles = []
+    for doc_path in batch:
+        saved = snapshot(doc_path, attachments=True)
+        metadata, content = saved["metadata"], saved["content"]
+        title = metadata.get("title", doc_path.parent.name)
+        source_key = metadata.get("source", "") or title
+        guard = {"relative": str(doc_path.relative_to(raw_dir)), "content_hash": saved["content_hash"]}
+        if source_key in compiled_sources:
+            _native_compile("mark", {**guard, "compiled": True, "with_timestamp": False})
+            continue
+        prompt = COMPILE_USER_PROMPT.format(title=title, content=content[:15000],
+            existing="\n".join("  - " + concept for concept in existing_concepts) if existing_concepts else "  (none yet)",
+            article_format=COMPILE_ARTICLE_FORMAT)
+        if chat is _DEFAULT_CHAT:
+            from .llm import chat_with_meta
+            response, model_meta = chat_with_meta(prompt, system=SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
+            if model_meta.truncated:
+                raise ValueError("compile response was truncated; source remains uncompiled")
+        else:
+            response = chat(prompt, system=SYSTEM_PROMPT, max_tokens=cfg["llm"]["max_tokens"])
+        raw_type = metadata.get("type", "unknown")
+        source_id = _RAW_TYPE_TO_PLUGIN.get(raw_type, raw_type)
+        source_ref = {"plugin": source_id, "url": metadata.get("source", ""), "title": title}
+        for key in ("work_id", "canon", "work", "chapter", "book"):
+            if key in metadata:
+                source_ref[key] = metadata[key]
+        articles = _parse_compile_response(response)
+        if not articles or not any(article.get("content", "").strip() for article in articles):
+            raise ValueError("compile response contains no usable article; source remains uncompiled")
+        applied = []
+        source_token = _active_raw_source.set(guard)
+        try:
+            for article in articles:
+                article["sources"] = [source_ref]
+                article_path = _write_article(article, concepts_dir, headers=section_headers)
+                if article_path:
+                    applied.append(str(article_path))
+                    existing_concepts.append(article["slug"])
+        finally:
+            _active_raw_source.reset(source_token)
+        if not applied:
+            raise ValueError("compile response produced no article; source remains uncompiled")
+        compiled_articles.extend(applied)
+        marked = _native_compile("mark", {**guard, "compiled": True, "with_timestamp": True, "source_key": source_key})
+        compiled_sources.add(source_key)
+        emit("compiled", source=source_id, work_id=metadata.get("work_id") or metadata.get("work") or metadata.get("book"),
+             raw_type=raw_type, title=title, metadata=marked["metadata"])
+    rebuild_index(base_dir)
+    if compiled_articles:
+        try:
+            from .taxonomy import assign_new_articles
+            assign_new_articles(base_dir)
+        except Exception:
+            pass
+        emit("after_compile_batch", count=len(compiled_articles), articles=compiled_articles[:10])
+    return compiled_articles

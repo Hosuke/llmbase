@@ -9,6 +9,50 @@ import yaml
 
 def load_config(base_dir: Path | None = None) -> dict:
     """Load config.yaml from the project root."""
+    cfg = _read_config(base_dir)
+    from . import _native
+    _native.register_config(cfg, base_dir)
+    return cfg
+
+
+def _read_config(base_dir: Path | None = None) -> dict:
+    """Load config.yaml without publishing the root to the native registry.
+
+    Internal helper for callers that only need effective configuration values:
+    registering an inferred root would pollute the library registry.
+    """
+    from . import _native
+    _native.clear_trace()
+    try:
+        if _native.available():
+            base = Path.cwd() if base_dir is None else base_dir
+            # Retain the Path-only public contract before crossing the ABI.
+            base / "config.yaml"
+            return _native.config_read_run(base, _decode_yaml,
+                                           lambda: _defaults(base), _path_value)
+        return _read_config_python(base_dir)
+    except BaseException:
+        _native.clear_trace()
+        raise
+
+
+def _decode_yaml(data: bytes):
+    # Explicit format plugin. Keep YAML types, alias identity and live safe_load;
+    # Rust owns reading/branching/path resolution, not this parser's semantics.
+    text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    return yaml.safe_load(text)
+
+
+def _path_value(value):
+    """Path coercion only; no filesystem operation or early batch validation."""
+    path = os.fspath(Path(value))
+    if "\0" in path:
+        raise ValueError("embedded null byte")
+    return path
+
+
+def _read_config_python(base_dir: Path | None = None) -> dict:
+    """Unbuilt checkout fallback; installed candidates fail closed."""
     if base_dir is None:
         base_dir = Path.cwd()
     config_path = base_dir / "config.yaml"
@@ -28,16 +72,33 @@ def load_config(base_dir: Path | None = None) -> dict:
 
 
 def _defaults(base_dir: Path | None = None) -> dict:
-    base = Path(base_dir) if base_dir else Path.cwd()
+    # Effective roots cross the native ABI as absolute paths. Keeping a relative
+    # base prefix here would make the native host join that prefix a second time.
+    from . import _native
+    _native.clear_trace()
+    try:
+        base = Path(base_dir) if base_dir else Path.cwd()
+        if _native.available():
+            paths = _native.config_default_paths(base)
+        else:
+            base = base.resolve()
+            paths = {
+                "raw": str(base / "raw"), "wiki": str(base / "wiki"),
+                "outputs": str(base / "wiki" / "outputs"),
+                "meta": str(base / "wiki" / "_meta"),
+                "concepts": str(base / "wiki" / "concepts"),
+            }
+        return _default_policy(paths)
+    except BaseException:
+        _native.clear_trace()
+        raise
+
+
+def _default_policy(paths: dict) -> dict:
+    """Live Python profile policy; filesystem work belongs to the native core."""
     return {
         "llm": {"model": "claude-sonnet-4-6", "max_tokens": 16384},
-        "paths": {
-            "raw": str(base / "raw"),
-            "wiki": str(base / "wiki"),
-            "outputs": str(base / "wiki" / "outputs"),
-            "meta": str(base / "wiki" / "_meta"),
-            "concepts": str(base / "wiki" / "concepts"),
-        },
+        "paths": paths,
         "compile": {"batch_size": 10, "backlinks": True},
         "search": {"port": 5555},
         "lint": {"web_search": False},
@@ -64,6 +125,19 @@ def _defaults(base_dir: Path | None = None) -> dict:
 
 def ensure_dirs(cfg: dict):
     """Create all configured directories if they don't exist."""
+    from . import _native
+    _native.clear_trace()
+    try:
+        if _native.available():
+            return _native.config_ensure_dirs(cfg, _path_value)
+        return _ensure_dirs_python(cfg)
+    except BaseException:
+        _native.clear_trace()
+        raise
+
+
+def _ensure_dirs_python(cfg: dict):
+    """Unbuilt checkout fallback."""
     for key in ("raw", "wiki", "outputs", "meta", "concepts"):
         Path(cfg["paths"][key]).mkdir(parents=True, exist_ok=True)
 

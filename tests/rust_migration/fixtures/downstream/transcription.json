@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "transcription_id": "fixture-handwriting-001",
+  "library_id": "siwen-fixture",
+  "session_id": "fixture-device-session-001",
+  "input_kind": "synthetic_transcription",
+  "text": "學而時習之，出於何篇？",
+  "answer_preferences": {
+    "short_answer": true,
+    "max_sentences": 2
+  },
+  "expected_question": {
+    "question": "學而時習之，出於何篇？",
+    "library_id": "siwen-fixture",
+    "session_id": "fixture-device-session-001",
+    "short_answer": true,
+    "max_sentences": 2,
+    "write_policy": "none"
+  },
+  "expected_evidence": {
+    "source_relative_path": "originals/lunyu/index.md",
+    "exact_quote": "子曰：「學而時習之，不亦說乎？」",
+    "source_url": "https://example.invalid/classics/lunyu/1",
+    "chapter": "學而第一"
+  }
+}

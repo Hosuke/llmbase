@@ -1,0 +1,31 @@
+[package]
+name = "llmbase-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true
+sha2.workspace = true
+sha1 = "0.10"
+uuid.workspace = true
+serde_yaml.workspace = true
+fs2.workspace = true
+walkdir.workspace = true
+unicode-normalization.workspace = true
+ferrous-opencc.workspace = true
+regex = "1"
+unicode-case-mapping = "=1.0.0"
+llmbase-model = { path = "../llmbase-model" }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream"] }
+yaml-rust2 = { version = "0.13", default-features = false }
+num-bigint = "0.4"
+
+[dev-dependencies]
+tempfile.workspace = true

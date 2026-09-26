@@ -1,7 +1,9 @@
 """Lint checks — detect issues in the knowledge base."""
 
+import inspect
 import json
 import re
+import sys
 from pathlib import Path
 
 import frontmatter
@@ -34,8 +36,17 @@ def _load_articles(concepts_dir: Path) -> list[dict]:
     """Parse every article's frontmatter + content exactly once.
 
     Returned dicts are shared by all lint checks, so each file is read and
-    parsed a single time per lint() pass instead of once per check.
+    parsed a single time per lint() pass instead of once per check. The native
+    branch runs the same parse in Rust; each article ``path`` is restored to a
+    Path value at this Python boundary. The legacy branch remains only for
+    unbuilt source checkouts under the ``_native.available()`` policy.
     """
+    from .. import _native
+    if _native.available():
+        loaded = _native.maintenance_transform("load", {"concepts_dir": str(concepts_dir)})
+        for article in loaded:
+            article["path"] = Path(article["path"])
+        return loaded
     articles = []
     if not concepts_dir.exists():
         return articles
@@ -54,37 +65,155 @@ def _load_articles(concepts_dir: Path) -> list[dict]:
 
 
 def lint(base_dir: Path | None = None) -> dict:
-    """Run all lint checks on the wiki."""
-    from ..resolve import load_aliases
+    """Run all lint checks on the wiki.
+
+    With the native extension, Rust owns the snapshot sequencing, the eight
+    checks, the total and the emit stage (maintenance_run). Module-level check
+    callables are resolved live at every Rust callback stage: defaults return
+    null so Rust executes the check, while a genuinely replaced callable runs
+    once as an explicit Python callback with only the arguments its signature
+    accepts.
+    """
+    from .. import _native
 
     cfg = load_config(base_dir)
     ensure_dirs(cfg)
 
     concepts_dir = Path(cfg["paths"]["concepts"])
     meta_dir = Path(cfg["paths"]["meta"])
+
+    if not _native.available():
+        # Unbuilt source checkout only; installed candidates fail closed above.
+        from ..resolve import load_aliases
+
+        articles = _load_articles(concepts_dir)
+        existing_slugs = {a["slug"].lower() for a in articles}
+        aliases = load_aliases(meta_dir)
+
+        results = {
+            "structural": check_structural(cfg, articles=articles),
+            "broken_links": check_broken_links(cfg, articles=articles, existing_slugs=existing_slugs, aliases=aliases),
+            "orphans": check_orphans(cfg, articles=articles),
+            "missing_metadata": check_missing_metadata(cfg, articles=articles),
+            "dirty_tags": check_dirty_tags(cfg, articles=articles),
+            "duplicates": check_duplicates(cfg, articles=articles),
+            "stubs": check_stubs(cfg, articles=articles),
+            "uncategorized": check_uncategorized(cfg, base_dir),
+        }
+
+        # Count total issues
+        total = sum(len(v) for v in results.values())
+        results["total_issues"] = total
+
+        from ..hooks import emit
+        emit("after_lint_check", total_issues=total, results=results)
+
+        return results
+
+    from .. import hooks
+
     articles = _load_articles(concepts_dir)
     existing_slugs = {a["slug"].lower() for a in articles}
-    aliases = load_aliases(meta_dir)
+    # JSON DTO: only the article path field is converted explicitly; arbitrary
+    # metadata is never stringified, so unsupported value types fail loudly.
+    snapshot = []
+    for article in articles:
+        row = dict(article)
+        if "path" in row:
+            row["path"] = str(row["path"])
+        snapshot.append(row)
+    prepared = _native.maintenance_transform("prepare", {
+        "concepts_dir": str(concepts_dir),
+        "meta_dir": str(meta_dir),
+        "articles": snapshot,
+        "allow_cjk_slugs": ALLOW_CJK_SLUGS,
+    })
+    aliases = dict(prepared["aliases"])
 
-    results = {
-        "structural": check_structural(cfg, articles=articles),
-        "broken_links": check_broken_links(cfg, articles=articles, existing_slugs=existing_slugs, aliases=aliases),
-        "orphans": check_orphans(cfg, articles=articles),
-        "missing_metadata": check_missing_metadata(cfg, articles=articles),
-        "dirty_tags": check_dirty_tags(cfg, articles=articles),
-        "duplicates": check_duplicates(cfg, articles=articles),
-        "stubs": check_stubs(cfg, articles=articles),
-        "uncategorized": check_uncategorized(cfg, base_dir),
-    }
+    def host(stage: str, payload: dict):
+        if stage == "emit":
+            # The single actual hook dispatch with the original event/kwargs.
+            hooks.emit(payload["event"], total_issues=payload["total_issues"],
+                       results=payload["results"])
+            return None
+        live = getattr(sys.modules[__name__], "check_" + stage)
+        if live is _DEFAULT_CHECKS[stage]:
+            if stage != "uncategorized":
+                return None  # Null: Rust executes the default check.
+            # The taxonomy boundary stays lazy and explicit: categories are
+            # built only when no replacement handles this stage, then Rust
+            # executes the uncategorized check on the prepared snapshot.
+            from .. import taxonomy
+            categories = taxonomy.build_taxonomy(base_dir, lang="en")
+            _native.python_boundary("maintenance_run", "taxonomy.build_taxonomy")
+            value = _native.maintenance_transform(
+                "check", dict(payload, name="uncategorized", categories=categories))
+            return {"override": True, "value": value}
+        candidates = {"cfg": cfg}
+        if stage == "uncategorized":
+            candidates["base_dir"] = base_dir
+        if stage != "uncategorized":
+            # One shared Path-valued article snapshot for the Python callbacks.
+            candidates["articles"] = articles
+        if stage == "broken_links":
+            candidates["existing_slugs"] = existing_slugs
+            candidates["aliases"] = aliases
+        result = _invoke_check(live, candidates)
+        _native.python_boundary("maintenance_run", "check_" + stage)
+        return {"override": True, "value": result}
 
-    # Count total issues
-    total = sum(len(v) for v in results.values())
-    results["total_issues"] = total
+    return _native.run_maintenance("lint", prepared, host)
 
-    from ..hooks import emit
-    emit("after_lint_check", total_issues=total, results=results)
 
-    return results
+def _invoke_check(check, candidates: dict):
+    """Invoke a replaced check with exactly the arguments its signature accepts.
+
+    Arguments are bound before invocation: only supported optional kwargs are
+    retained unless the callable accepts **kwargs, required parameters must be
+    satisfiable, and positional-only parameters stay positional. A binding
+    failure raises before the body runs; a TypeError raised inside the body
+    propagates unchanged and is never retried with fewer arguments. If
+    introspection is unavailable, the historical positional/keyword shape is invoked
+    exactly once and its error propagates.
+    """
+    positional_names = ("cfg", "base_dir") if "base_dir" in candidates else ("cfg",)
+    original_args = tuple(candidates[name] for name in positional_names)
+    optional = {name: value for name, value in candidates.items() if name not in positional_names}
+    try:
+        signature = inspect.signature(check)
+    except (TypeError, ValueError):
+        return check(*original_args, **optional)
+    parameters = signature.parameters
+    positional_count = sum(p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                                     inspect.Parameter.POSITIONAL_OR_KEYWORD)
+                           for p in parameters.values())
+    accepts_args = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in parameters.values())
+    selected_args = original_args if accepts_args else original_args[:positional_count]
+    bound = signature.bind_partial(*selected_args)
+    # Preserve old positional meaning even if a callback calls its first
+    # argument "config" instead of "cfg". Keyword-only equivalents may still
+    # request the semantic names of any positional inputs they did not consume.
+    for name in positional_names[len(selected_args):]:
+        optional[name] = candidates[name]
+    extra_name = next((p.name for p in parameters.values()
+                       if p.kind is inspect.Parameter.VAR_KEYWORD), None)
+    extras = {}
+    for name, value in optional.items():
+        parameter = parameters.get(name)
+        if name in bound.arguments:
+            continue
+        if parameter is not None and parameter.kind not in (
+                inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            bound.arguments[name] = value
+        elif extra_name is not None:
+            extras[name] = value
+    if extra_name is not None:
+        bound.arguments[extra_name] = extras
+    # Fill optional gaps before reconstructing positional-only arguments;
+    # missing required arguments remain errors and never reach the callback.
+    bound.apply_defaults()
+    bound = signature.bind(*bound.args, **bound.kwargs)
+    return check(*bound.args, **bound.kwargs)
 
 
 
@@ -371,4 +500,19 @@ def check_duplicates(cfg: dict, articles: list[dict] | None = None) -> list[str]
 
     return issues
 
+
+# Default check identities, captured once after the definitions above and
+# before any downstream patching. lint() resolves the live module attribute at
+# every Rust callback stage; only a genuinely replaced callable is invoked as
+# a Python callback, everything else executes as a native Rust check.
+_DEFAULT_CHECKS = {
+    "structural": check_structural,
+    "broken_links": check_broken_links,
+    "orphans": check_orphans,
+    "missing_metadata": check_missing_metadata,
+    "dirty_tags": check_dirty_tags,
+    "duplicates": check_duplicates,
+    "stubs": check_stubs,
+    "uncategorized": check_uncategorized,
+}
 

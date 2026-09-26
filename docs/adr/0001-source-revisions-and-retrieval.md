@@ -1,0 +1,5 @@
+# Preserve source bytes and durable revision history
+
+Original files and accepted knowledge remain authoritative editable content; SQLite holds immutable captured revisions, tombstones, jobs, receipts and write journals which must be backed up, while passages and retrieval representations are rebuildable. A citation identifies a captured revision with UTF-8 byte offsets into the entire original file, so frontmatter, normalization and later edits cannot silently move its target. This costs revision storage, but a file-only backup cannot preserve deleted or superseded evidence.
+
+Cooperative writers will share an OS advisory lock per configured metadata root. File changes will use durable staged intents and idempotent recovery; derived index updates publish in one SQLite transaction, so readers retain the previous complete snapshot until commit. An original old Python process that does not acquire this lock is not a supported concurrent writer; candidate facade paths must participate before parity is claimed.

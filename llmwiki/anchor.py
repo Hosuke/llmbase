@@ -189,3 +189,43 @@ def locate_span(
                 return Anchor(start_orig, tail_end_orig, "exact")
 
     return Anchor(start_orig, len(content), "head_only")
+
+
+_legacy_normalize_text = normalize_text
+_legacy_normalize_with_map = _normalize_with_map
+_legacy_locate_span = locate_span
+_DEFAULT_REGEXES = (_PUNCT_RE, _PUNCT_SPACES_RE)
+
+
+def normalize_text(s: str, level: NormalizeLevel = "punct_spaces") -> str:
+    from . import _native
+    if _native.available() and (_PUNCT_RE, _PUNCT_SPACES_RE) == _DEFAULT_REGEXES:
+        return _native.utility_transform("normalize_span", {"text": s, "level": level})
+    return _legacy_normalize_text(s, level)
+
+
+def _normalize_with_map(content: str, level: NormalizeLevel) -> tuple[str, list[int]]:
+    from . import _native
+    if _native.available() and (_PUNCT_RE, _PUNCT_SPACES_RE) == _DEFAULT_REGEXES:
+        text, mapping = _native.utility_transform("normalize_span_map", {"text": content, "level": level})
+        return text, mapping
+    return _legacy_normalize_with_map(content, level)
+
+
+def locate_span(content: str, head: str, tail: str = "", *,
+                normalize: NormalizeLevel = "punct_spaces") -> Anchor | None:
+    from . import _native
+    if (_native.available() and normalize_text is _DEFAULT_NORMALIZE_TEXT
+            and _normalize_with_map is _DEFAULT_NORMALIZE_WITH_MAP
+            and (_PUNCT_RE, _PUNCT_SPACES_RE) == _DEFAULT_REGEXES):
+        value = _native.utility_transform("locate_span", {
+            "content": content, "head": head, "tail": tail, "normalize": normalize})
+        return None if value is None else Anchor(**value)
+    result = _legacy_locate_span(content, head, tail, normalize=normalize)
+    if _native.available():
+        _native.python_boundary("locate_span", "live normalization override")
+    return result
+
+
+_DEFAULT_NORMALIZE_TEXT = normalize_text
+_DEFAULT_NORMALIZE_WITH_MAP = _normalize_with_map

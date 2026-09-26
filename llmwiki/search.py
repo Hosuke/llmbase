@@ -4,6 +4,8 @@ import json
 import math
 import re
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +15,21 @@ from .config import load_config
 
 
 SEARCH_TOKENIZER: Callable[[str], list[str]] | None = None
+_PUBLIC_ONLY = ContextVar("llmwiki_search_public_only", default=False)
+
+
+@contextmanager
+def search_visibility(*, public_only: bool):
+    """Constrain real default retrieval before tokenizer callbacks and scoring."""
+    token = _PUBLIC_ONLY.set(_PUBLIC_ONLY.get() or public_only)
+    try:
+        yield
+    finally:
+        _PUBLIC_ONLY.reset(token)
+
+
+def _hidden_from_public(metadata):
+    return metadata.get("private") is True or metadata.get("visibility", "public") != "public"
 STOPWORDS: set[str] = {
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
     "have", "has", "had", "do", "does", "did", "will", "would", "could",
@@ -46,6 +63,17 @@ _CJK_LIKE_RUN_RE = re.compile(f"[{_CJK_LIKE_RANGE}]+")
 
 def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[dict]:
     """Search the wiki using TF-IDF-like scoring."""
+    from . import _native
+    if _native.available():
+        # Preserve Python slicing: None means all, negatives omit the tail, bool is an index.
+        import operator
+        limit = None if top_k is None else operator.index(top_k)
+        return _native_search(query, limit, base_dir, "compiled")
+    return _legacy_search(query, top_k=top_k, base_dir=base_dir)
+
+
+def _legacy_search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[dict]:
+    """Unbuilt development checkout only; installed native candidates cannot enter here."""
     cfg = load_config(base_dir)
     concepts_dir = Path(cfg["paths"]["concepts"])
     outputs_dir = Path(cfg["paths"]["outputs"])
@@ -61,6 +89,8 @@ def search(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[di
     docs = []
     for md_file in list(concepts_dir.glob("*.md")) + list(outputs_dir.glob("*.md")):
         post = frontmatter.load(str(md_file))
+        if _PUBLIC_ONLY.get() and _hidden_from_public(post.metadata):
+            continue
         title = post.metadata.get("title", md_file.stem)
         summary = post.metadata.get("summary", "")
         tags = " ".join(post.metadata.get("tags", []))
@@ -128,6 +158,38 @@ def search_raw(query: str, top_k: int = 10, base_dir: Path | None = None) -> lis
     URLs — local filesystem paths from local-file ingest are scrubbed to
     avoid leaking usernames/home dirs to MCP/HTTP clients).
     """
+    from . import _native
+    if _native.available():
+        return _native_search(query, max(0, int(top_k)), base_dir, "raw")
+    return _legacy_search_raw(query, top_k=top_k, base_dir=base_dir)
+
+
+def _native_search(query: str, top_k: int | None, base_dir: Path | None, kind: str) -> list[dict]:
+    from . import _native
+
+    arguments = {"query": query, "kind": kind, "top_k": top_k,
+                 "public_only": _PUBLIC_ONLY.get(),
+                 "stopwords": list(STOPWORDS), "cjk_stopwords": list(CJK_STOPWORDS)}
+    if SEARCH_TOKENIZER is not None and not (kind == "raw" and top_k == 0):
+        # Only the explicitly registered Python tokenizer executes in Python. The text is
+        # read by the native snapshot operation; scoring and corpus validation remain native.
+        terms = _tokenize(query)
+        if not terms:
+            arguments["tokenized"] = {"snapshot": "", "query_terms": [], "documents": []}
+            return _native.dispatch("compat_search", arguments, base_dir)["results"]
+        snapshot = _native.dispatch("compat_search_documents", {"kind": kind, "public_only": _PUBLIC_ONLY.get()}, base_dir)
+        documents = []
+        for document in snapshot["documents"]:
+            documents.append({"source_id": document["source_id"],
+                              "content_hash": document["content_hash"],
+                              "tokens": _tokenize(document["text"])})
+        arguments["tokenized"] = {"snapshot": snapshot["snapshot"],
+                                  "query_terms": terms, "documents": documents}
+    return _native.dispatch("compat_search", arguments, base_dir)["results"]
+
+
+def _legacy_search_raw(query: str, top_k: int = 10, base_dir: Path | None = None) -> list[dict]:
+    """Unbuilt development checkout only; native runtime errors never fall back here."""
     cfg = load_config(base_dir)
     raw_dir = Path(cfg["paths"]["raw"])
 
@@ -145,9 +207,13 @@ def search_raw(query: str, top_k: int = 10, base_dir: Path | None = None) -> lis
 
     docs = []
     for md_file in raw_dir.rglob("*.md"):
+        if _PUBLIC_ONLY.get() and ".original" in md_file.relative_to(raw_dir).parts:
+            continue
         try:
             post = frontmatter.load(str(md_file))
         except Exception:
+            continue
+        if _PUBLIC_ONLY.get() and _hidden_from_public(post.metadata):
             continue
         title = post.metadata.get("title") or md_file.stem
         raw_source = post.metadata.get("source", "") or ""
@@ -230,6 +296,12 @@ def create_search_app(base_dir: Path | None = None):
 
     app = Flask(__name__)
     app.config["BASE_DIR"] = base_dir
+    import os
+    from .http_auth import can_read_private, private_response_headers, runtime_config
+    actual_base = Path(base_dir).resolve() if base_dir is not None else Path.cwd()
+    app.config["llmbase"] = runtime_config(actual_base, load_config(actual_base),
+        api_secret=os.getenv("LLMBASE_API_SECRET", ""))
+    app.after_request(private_response_headers)
 
     HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -277,14 +349,22 @@ def create_search_app(base_dir: Path | None = None):
             const stats = document.getElementById('stats');
             const results = document.getElementById('results');
             stats.textContent = data.results.length + ' results found';
-            results.innerHTML = data.results.map((r, i) =>
-                '<div class="result">' +
-                '<h3>' + (i+1) + '. ' + r.title + '</h3>' +
-                '<span class="score">Score: ' + r.score + '</span>' +
-                (r.summary ? '<p class="summary">' + r.summary + '</p>' : '') +
-                (r.snippet ? '<p class="snippet">...' + r.snippet + '...</p>' : '') +
-                '</div>'
-            ).join('');
+            results.replaceChildren();
+            data.results.forEach((r, i) => {
+                const item = document.createElement('div');
+                item.className = 'result';
+                const text = (tag, className, value) => {
+                    const node = document.createElement(tag);
+                    node.className = className;
+                    node.textContent = value;
+                    item.appendChild(node);
+                };
+                text('h3', '', (i + 1) + '. ' + r.title);
+                text('span', 'score', 'Score: ' + r.score);
+                if (r.summary) text('p', 'summary', r.summary);
+                if (r.snippet) text('p', 'snippet', '...' + r.snippet + '...');
+                results.appendChild(item);
+            });
         }
     </script>
 </body>
@@ -298,7 +378,8 @@ def create_search_app(base_dir: Path | None = None):
     def api_search():
         q = request.args.get("q", "")
         top_k = int(request.args.get("top_k", 10))
-        results = search(q, top_k=top_k, base_dir=app.config["BASE_DIR"])
+        with search_visibility(public_only=not can_read_private()):
+            results = search(q, top_k=top_k, base_dir=app.config["BASE_DIR"])
         return jsonify({"query": q, "results": results})
 
     return app

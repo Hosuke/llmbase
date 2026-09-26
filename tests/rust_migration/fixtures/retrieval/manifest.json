@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "frozen_on": "2026-09-20",
+  "freeze_stage": "人工文獻與relevance寫定之後，任何檢索評分執行之前",
+  "files": {
+    "corpus.json": "ee720478670f57133ef30d858c9e88ac872b85e34b4c5531c5e959661b0ea6e2",
+    "queries.json": "9c5978f3abe73be4057c89db4b8428fc5795e8b762041370a44182a6c8ae4f06"
+  },
+  "legacy_module_sha256": {
+    "llmwiki/search.py": "b51e41ed30e92e3a9dadc23f26be80b535da603b5beb822a4f22d9390ad814db",
+    "llmwiki/config.py": "5fb59b498dd049f80e4da476a94053c6bb850d807f2c55587cf0a7c6431359ce"
+  },
+  "document_count": 30,
+  "materialized_file_count": 60,
+  "held_out_query_count": 30,
+  "tuning_query_count": 6,
+  "ranking_unit": "document",
+  "retrieval_limit": 10,
+  "metrics": ["Recall@5", "MRR@10"],
+  "relevance_policy": "binary；bank 歧義題有2相關文獻，其餘各1。預期 quote 不作模型輸入。",
+  "mutation_policy": "評測後不得為迎合排名改題或改relevance；確證錯誤須另版、列原因，並保留此版基線。"
+}

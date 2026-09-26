@@ -1,11 +1,18 @@
-"""File-based per-stage lock with strict TTL semantics (议 D, v0.7.7).
+"""Per-stage kernel lease with compatible PID metadata and TTL semantics.
 
 ``StageLock`` provides mutual exclusion for a long-running stage such
 as ``wenguan`` (siwen's flagship: 62 太虛 books × hours-long LLM pass),
 where a double-run would burn an LLM quota, corrupt a chunk cache, and
 serialize back into the sync stage as two conflicting partial writes.
 
-Design (v4, post-review):
+Native candidate: a stable ``.lock.kernel`` inode holds an exclusive Rust flock
+for the whole StageLock lifetime. A kernel-v1 pidfile with an available lease is
+stale even if its former PID has been reused. Removing a live holder's pidfile
+does not grant a second lease. Different stage/key pairs remain independent.
+Unbuilt source checkouts and unmarked pre-migration pidfiles retain the legacy
+protocol below; PID reuse cannot be resolved from an unmarked pidfile alone.
+
+Legacy metadata/recovery protocol:
 
 - **O_EXCL creation** — acquire is atomic. If two processes race on
   an empty lock slot, only one creates the pidfile; the other sees
@@ -71,6 +78,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import log as _log
+from .. import _native
 
 
 def _parse_holder(raw: str) -> dict | None:
@@ -137,12 +145,34 @@ class StageLock:
         self._key = key
         self._path = _log.log_path(base_dir, stage, key).with_suffix(".lock")
         self._acquired = False
+        self._native_lease = None
 
     @property
     def path(self) -> Path:
         return self._path
 
     def acquire(self, ttl: int = 3600) -> bool:
+        """Acquire the per-stage lease and publish compatible holder metadata."""
+        if _native.available():
+            if self._native_lease is not None:
+                return False
+            lease = _native.stage_lease_acquire(self._base_dir, self._stage, self._key)
+            if lease is None:
+                return False
+            self._native_lease = lease
+            try:
+                if self._acquire_pidfile(ttl):
+                    return True
+            except BaseException:
+                lease.release()
+                self._native_lease = None
+                raise
+            lease.release()
+            self._native_lease = None
+            return False
+        return self._acquire_pidfile(ttl)
+
+    def _acquire_pidfile(self, ttl: int = 3600) -> bool:
         """Attempt to take the lock.
 
         Returns ``True`` on success. Returns ``False`` only when a
@@ -169,6 +199,7 @@ class StageLock:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "ttl": ttl,
             "key": self._key,
+            **({"lock_protocol": "kernel-v1"} if self._native_lease is not None else {}),
         })
         candidate = self._path.with_name(
             f"{self._path.name}.cand-{os.getpid()}-{time.monotonic_ns()}"
@@ -230,6 +261,23 @@ class StageLock:
                 pass
 
     def release(self) -> None:
+        """Release holder metadata and the kernel lease; safe when never acquired."""
+        lease = self._native_lease
+        if lease is not None and not lease.owned_here():
+            # A forked child must not unlink its parent's pidfile or explicitly
+            # unlock the shared open file description.
+            lease.release()
+            self._native_lease = None
+            self._acquired = False
+            return
+        try:
+            self._release_pidfile()
+        finally:
+            if lease is not None:
+                lease.release()
+                self._native_lease = None
+
+    def _release_pidfile(self) -> None:
         """Release the lock if we hold it. Idempotent: safe to call
         after a failed ``acquire`` (no-op when not held)."""
         if not self._acquired:
@@ -250,6 +298,9 @@ class StageLock:
         """Operator escape hatch: remove the pidfile regardless of
         liveness. Use only after confirming (``ps -fp <pid>``) that
         the holder is truly dead or intentionally being preempted.
+
+        For native holders this removes only the metadata; it cannot release
+        another live process's kernel lease or permit overlapping stage work.
 
         Does **not** log an ``interrupted`` event — forced breaks are
         operator actions outside the normal recovery protocol. If you
@@ -279,6 +330,10 @@ class StageLock:
 
     def _is_stale(self, holder: dict | None) -> bool:
         if holder is None:
+            return True
+        if holder.get("lock_protocol") == "kernel-v1" and self._native_lease is not None:
+            # We already hold the exclusive kernel lease. A former native
+            # holder is gone even if its PID was reused by an unrelated process.
             return True
         if holder.get("host") != socket.gethostname():
             return True  # can't verify PID across hosts

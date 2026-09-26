@@ -1,0 +1,20 @@
+[package]
+name = "llmbase-model"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+description = "Native, bounded HTTP model generation and embeddings for LLMBase"
+
+[dependencies]
+futures-util = "0.3"
+httpdate = "1.0"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }

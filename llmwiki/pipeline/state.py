@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from . import log as _log
+from .. import _native
 
 
 # Events written by the driver / lock. ``ctx.log()`` refuses these
@@ -111,6 +112,13 @@ def rebuild_state(base_dir: Path | str, stage: str, key: str) -> StageState:
     This contract is part of llmwiki's stable API. Changes to rebuild
     semantics require a major version bump.
     """
+    if _native.available():
+        args = {"stage": stage, "key": key}
+        if _log.iter_events is not _log._DEFAULT_ITER_EVENTS:
+            _native.clear_trace()
+            args["events"] = list(_log.iter_events(Path(base_dir), stage, key))
+        values = _native.pipeline_dispatch("compat_pipeline_state", args, base_dir)
+        return StageState(**values)
     events = list(_log.iter_events(Path(base_dir), stage, key))
     state = StageState(stage=stage, key=key)
     if not events:

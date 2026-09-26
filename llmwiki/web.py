@@ -1,14 +1,13 @@
 """Web UI server — serves React frontend + API endpoints."""
 
 import hashlib
-import hmac
 import json
 from email.utils import formatdate
 from functools import wraps
 from pathlib import Path
 
 import frontmatter
-from flask import Flask, current_app, request, jsonify, send_from_directory
+from flask import Flask, current_app, g, request, jsonify, send_from_directory
 
 
 def _kb_etag(meta_dir: Path, extra: str = "") -> tuple[str | None, str | None]:
@@ -119,7 +118,7 @@ from .lint import lint
 
 
 def derive_session_token(secret: str) -> str:
-    """Derive a session cookie token from the API secret.
+    """Derive a visitor/UI cookie token; this is not an authorization credential.
 
     This is a public interface so downstream projects that customise
     serve_spa or add their own auth middleware can generate the same
@@ -188,14 +187,13 @@ def _parse_bearer(raw: str) -> str:
     return raw[len("Bearer "):].strip()
 
 
-def require_auth(f):
-    """Decorator: protect a route when LLMBASE_API_SECRET is set.
+def require_auth(f=None, *, scopes=("write",)):
+    """Protect a route with explicit bearer scopes; visitor cookies never suffice.
 
     Module-level so EXTRA_ROUTES handlers and downstream blueprints can
     wrap their own views with the same auth as built-in write endpoints.
-    Reads the secret/session-token from ``current_app.config["llmbase"]``
-    populated by :func:`create_web_app`; when the secret is empty the
-    decorator is a no-op (local/dev mode).
+    Reads runtime credentials from ``current_app.config["llmbase"]``. Empty
+    secrets fail closed unless the host explicitly enables local development.
 
     Usage::
 
@@ -205,19 +203,13 @@ def require_auth(f):
         def my_handler():
             ...
     """
+    if f is None:
+        return lambda handler: require_auth(handler, scopes=scopes)
     @wraps(f)
     def decorated(*args, **kwargs):
-        llm_cfg = current_app.config.get("llmbase", {})
-        api_secret = llm_cfg.get("api_secret", "")
-        session_token = llm_cfg.get("session_token", "")
-        if not api_secret:
-            return f(*args, **kwargs)
-        auth = _parse_bearer(request.headers.get("Authorization", ""))
-        cookie = request.cookies.get("llmbase_auth", "")
-        if (auth and hmac.compare_digest(auth, api_secret)) or \
-                hmac.compare_digest(cookie, session_token):
-            return f(*args, **kwargs)
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        from .http_auth import authorize
+        denial = authorize(*scopes)
+        return denial if denial is not None else f(*args, **kwargs)
     return decorated
 
 
@@ -257,7 +249,7 @@ def create_web_app(base_dir: Path | None = None):
         API_SECRET = secrets.token_urlsafe(32)
         os.environ["LLMBASE_API_SECRET"] = API_SECRET
         import logging
-        logging.getLogger("llmbase.auth").info(f"Auto-generated API secret: {API_SECRET[:8]}...")
+        logging.getLogger("llmbase.auth").info("Generated an API secret; explicit operator credentials are required")
 
     # Generate a session token derived from the secret (never expose the secret itself)
     SESSION_TOKEN = derive_session_token(API_SECRET)
@@ -265,12 +257,52 @@ def create_web_app(base_dir: Path | None = None):
     # Publish runtime state for extension handlers (EXTRA_ROUTES, blueprints,
     # middleware) and for the module-level ``require_auth`` decorator. Reach
     # these via ``flask.current_app.config["llmbase"]``.
-    app.config["llmbase"] = {
-        "base_dir": base,
-        "cfg": cfg,
-        "api_secret": API_SECRET,
-        "session_token": SESSION_TOKEN,
-    }
+    from .http_auth import (authorize, can_read_private, private_metadata, private_response_headers,
+                            runtime_config, visibility_snapshot)
+    app.config["llmbase"] = runtime_config(base, cfg, api_secret=API_SECRET, session_token=SESSION_TOKEN)
+    app.after_request(private_response_headers)
+
+    def _visibility():
+        if not hasattr(g, "llmbase_visibility"):
+            g.llmbase_visibility = visibility_snapshot(base, load_config(base))
+        return g.llmbase_visibility
+
+    def _visible_slug(kind, slug):
+        return can_read_private() or _visibility()[kind].get(slug, {}).get("public", False)
+
+    def _visible_post(post):
+        return can_read_private() or not private_metadata(post.metadata)
+
+    @app.before_request
+    def _builtin_scope_gate():
+        # Named built-ins only: downstream replacement factories and their own
+        # route policies remain explicit extension boundaries.
+        if request.endpoint not in builtin_endpoints or not request.path.startswith("/api/"):
+            return None
+        scopes = ()
+        if request.endpoint in {"api_extract_entities", "api_xici_generate", "api_compile", "api_lint_fix"}:
+            scopes = ("model", "write")
+        elif request.endpoint == "api_ingest" and not str((request.get_json(silent=True) or {}).get("source", "")).startswith(("http://", "https://")):
+            scopes = ("operator", "write")
+        elif request.endpoint == "api_lint" and (request.get_json(silent=True) or {}).get("deep"):
+            scopes = ("model",)
+        if scopes:
+            denied = authorize(*scopes)
+            if denied is not None:
+                return denied
+        if can_read_private() or request.endpoint in {"api_healthz", "api_branding", "api_languages", "api_tones", "api_ref_plugins"}:
+            return None
+        try:
+            has_private = _visibility()["has_nonpublic"]
+        except (OSError, ValueError, RuntimeError):
+            return jsonify({"status": "error", "message": "public visibility snapshot unavailable"}), 503
+        # Legacy aggregate artifacts lack per-field provenance. Mixed visibility
+        # requires a private principal rather than guessing which prose is public.
+        opaque = {"api_taxonomy", "api_entities", "api_xici", "api_export_article", "api_export_tag",
+                  "api_export_graph", "api_health", "api_stats", "api_lint"}
+        if has_private and (request.endpoint in opaque or request.method not in {"GET", "HEAD", "OPTIONS"}):
+            return authorize("private")
+        return None
 
     def _invalid_languages_response(e: ValueError):
         return jsonify({"error": f"invalid languages config: {e}"}), 500
@@ -411,6 +443,8 @@ def create_web_app(base_dir: Path | None = None):
         if concepts_dir.exists():
             for md_file in sorted(concepts_dir.glob("*.md")):
                 post = frontmatter.load(str(md_file))
+                if not _visible_post(post):
+                    continue
                 tags = post.metadata.get("tags", [])
                 entry = {
                     "slug": md_file.stem,
@@ -466,6 +500,7 @@ def create_web_app(base_dir: Path | None = None):
         # renames and same-size edits that share an mtime profile. stat() is
         # microseconds; for 12k files this is well under 100ms.
         all_md = sorted(concepts_dir.glob("*.md")) if concepts_dir.exists() else []
+        all_md = [p for p in all_md if _visible_slug("compiled", p.stem)]
         total = len(all_md)
         max_mtime = 0.0
         sig_hash = hashlib.md5()
@@ -492,6 +527,8 @@ def create_web_app(base_dir: Path | None = None):
             arts = []
             for md_file in all_md:
                 post = frontmatter.load(str(md_file))
+                if not _visible_post(post):
+                    continue
                 arts.append({
                     "slug": md_file.stem,
                     "title": post.metadata.get("title", md_file.stem),
@@ -512,6 +549,8 @@ def create_web_app(base_dir: Path | None = None):
         collected: list[tuple[Path, frontmatter.Post]] = []
         for p in candidates:
             post = frontmatter.load(str(p))
+            if not _visible_post(post):
+                continue
             if tag:
                 if tag not in _normalize_tags(post.metadata.get("tags")):
                     continue
@@ -574,7 +613,8 @@ def create_web_app(base_dir: Path | None = None):
         idx_path = meta_dir / "index.json"
 
         tag = request.args.get("tag")
-        etag, last_mod = _kb_etag(meta_dir, f"lite:tag={tag or ''}")
+        visibility_key = "private" if can_read_private() else json.dumps(_visibility()["compiled"], sort_keys=True)
+        etag, last_mod = _kb_etag(meta_dir, f"lite:tag={tag or ''}:{visibility_key}")
         max_age = _lite_cache_max_age()
 
         if etag and _if_none_match_hits(request.headers.get("If-None-Match"), etag):
@@ -590,7 +630,7 @@ def create_web_app(base_dir: Path | None = None):
         if not isinstance(idx, list):
             return jsonify({"articles": [], "total": 0}), 500
 
-        entries = [e for e in idx if isinstance(e, dict)]
+        entries = [e for e in idx if isinstance(e, dict) and _visible_slug("compiled", e.get("slug", ""))]
         if tag:
             entries = [e for e in entries if tag in _normalize_tags(e.get("tags"))]
         lite = [
@@ -631,6 +671,8 @@ def create_web_app(base_dir: Path | None = None):
         if article_path is None or not article_path.exists():
             return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
         post = frontmatter.load(str(article_path))
+        if not _visible_post(post):
+            return jsonify({"status": "error", "message": "Article not found"}), 404
         return jsonify({
             "status": "ok",
             "slug": slug,
@@ -658,6 +700,8 @@ def create_web_app(base_dir: Path | None = None):
         if article_path is None or not article_path.exists():
             return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
         post = frontmatter.load(str(article_path))
+        if not _visible_post(post):
+            return jsonify({"status": "error", "message": "Article not found"}), 404
         # Sanitize source URLs (only allow http/https)
         sources = post.metadata.get("sources", [])
         safe_sources = []
@@ -698,6 +742,8 @@ def create_web_app(base_dir: Path | None = None):
                 continue  # Path traversal guard
             if p.exists():
                 post = frontmatter.load(str(p))
+                if not _visible_post(post):
+                    continue
                 result.append({"slug": s, "title": post.metadata.get("title", s)})
         return result
 
@@ -706,6 +752,7 @@ def create_web_app(base_dir: Path | None = None):
         from .resolve import load_aliases
         cfg = load_config(base)
         aliases = load_aliases(Path(cfg["paths"]["meta"]))
+        aliases = {key: slug for key, slug in aliases.items() if _visible_slug("compiled", slug)}
         return jsonify({"aliases": aliases})
 
     # ─── Structured Export ─────────────────────────────────
@@ -771,9 +818,25 @@ def create_web_app(base_dir: Path | None = None):
         atomic_write_json(path, data)
 
     @app.route("/api/trails")
-    @require_auth
     def api_trails():
-        """List all research trails."""
+        """Empty libraries have a public empty list; populated legacy trails are private."""
+        from . import _native
+        if _native.available():
+            try:
+                return jsonify(_native.dispatch("compat_kb_trails", {
+                    "public_only": not can_read_private()}, base,
+                    paths=load_config(base)["paths"])["result"])
+            except PermissionError:
+                return authorize("private")
+        if not can_read_private():
+            cfg = load_config(base)
+            path = Path(cfg["paths"]["meta"]) / "trails.json"
+            if not path.exists():
+                return jsonify({"trails": []})
+            data = json.loads(path.read_text())
+            if data.get("trails") == []:
+                return jsonify({"trails": []})
+            return authorize("private")
         return jsonify(_load_trails())
 
     import threading as _threading
@@ -867,7 +930,12 @@ def create_web_app(base_dir: Path | None = None):
     def api_search():
         q = request.args.get("q", "")
         top_k = int(request.args.get("top_k", 10))
-        results = search(q, top_k=top_k, base_dir=base)
+        from .search import search_visibility
+        with search_visibility(public_only=not can_read_private()):
+            results = search(q, top_k=top_k, base_dir=base)
+        if not can_read_private():
+            from .http_auth import public_search_hit
+            results = [row for row in results if public_search_hit(_visibility(), load_config(base), row)]
         return jsonify({"query": q, "results": results})
 
     # Body-field name fragments that signal an LLM API key. Request
@@ -971,44 +1039,10 @@ def create_web_app(base_dir: Path | None = None):
                         "status": "error",
                         "message": f"model '{model}' not in LLMBASE_MODEL_ALLOWLIST",
                     }), 400
-        auth_header = _parse_bearer(request.headers.get("Authorization", ""))
-        auth_cookie = request.cookies.get("llmbase_auth", "")
-        # Two auth levels: the SPA-convenience cookie (minted for anyone who
-        # loads `/`) is accepted for promote — the existing UI relies on it.
-        # Model override, which is a cost lever on public deployments, demands
-        # the raw API secret via the Authorization header so a drive-by
-        # browser visitor cannot pin an expensive model. See CHANGELOG.
-        # ``auth_header`` is "" when the Authorization header was missing
-        # or used a non-Bearer scheme — guard the compare so we never
-        # compute ``compare_digest("", API_SECRET)`` as an auth decision
-        # (``hmac.compare_digest`` returns False there, but being
-        # explicit makes the intent scan-greppable).
-        authed_cookie = bool(API_SECRET) and (
-            (bool(auth_header) and hmac.compare_digest(auth_header, API_SECRET))
-            or hmac.compare_digest(auth_cookie, SESSION_TOKEN)
-        )
-        authed_strong = bool(API_SECRET) and bool(auth_header) and hmac.compare_digest(auth_header, API_SECRET)
-        if promote and API_SECRET and not authed_cookie:
-            return jsonify({
-                "status": "error",
-                "message": "promote=true requires authentication",
-            }), 401
-        if model is not None and API_SECRET and not authed_strong:
-            return jsonify({
-                "status": "error",
-                "message": "model override requires Authorization: Bearer <API_SECRET>",
-            }), 401
-        # X-LLM-Key is a cost + identity lever (caller-funded LLM bills,
-        # potential per-tenant personas). On public deployments
-        # (LLMBASE_API_SECRET set) require the raw API secret via
-        # Authorization — same gate as model override. In local dev
-        # (no API_SECRET) the header is honoured without auth, matching
-        # /api/ingest's policy.
-        if api_key is not None and API_SECRET and not authed_strong:
-            return jsonify({
-                "status": "error",
-                "message": "X-LLM-Key requires Authorization: Bearer <API_SECRET>",
-            }), 401
+        denied = authorize("model", *(('write',) if file_back or promote else ()),
+                           context="X-LLM-Key" if api_key is not None else None)
+        if denied is not None:
+            return denied
         if deep:
             # Route through operations.dispatch so promote=True acquires the
             # shared job_lock (same behavior as MCP / CLI / agent-HTTP).
@@ -1068,18 +1102,28 @@ def create_web_app(base_dir: Path | None = None):
     @app.route("/api/sources")
     def api_sources():
         docs = list_raw(base)
+        docs = [doc for doc in docs if ".original" not in Path(doc.get("path", "")).parts
+                and (can_read_private() or not private_metadata(doc))]
         return jsonify({"documents": docs})
 
     @app.route("/api/sources/<path:slug>")
     def api_source_detail(slug):
         """Read raw document content for preview."""
+        if ".original" in Path(slug).parts:
+            return jsonify({"status": "error", "message": "Not found"}), 404
         cfg = load_config(base)
         raw_dir = Path(cfg["paths"]["raw"])
-        doc_dir = raw_dir / slug
-        idx = doc_dir / "index.md"
+        doc_dir = (raw_dir / slug).resolve()
+        if not doc_dir.is_relative_to(raw_dir.resolve()):
+            return jsonify({"status": "error", "message": "Invalid source path"}), 400
+        idx = (doc_dir / "index.md").resolve()
+        if not idx.is_relative_to(raw_dir.resolve()):
+            return jsonify({"status": "error", "message": "Invalid source path"}), 400
         if not idx.exists():
             return jsonify({"status": "error", "message": "Not found"})
         post = frontmatter.load(str(idx))
+        if not _visible_post(post):
+            return jsonify({"status": "error", "message": "Not found"}), 404
         # Configurable content cap: sources.max_content_chars (default 50000)
         # null → use hard ceiling (500K); explicit int → clamped to [0, 500K]
         _HARD_CEILING = 500_000
@@ -1197,7 +1241,7 @@ def create_web_app(base_dir: Path | None = None):
         return jsonify({"status": "ok", "categories": len(data["categories"]), "locked": True})
 
     @app.route("/api/worker/status")
-    @require_auth
+    @require_auth(scopes=("private",))
     def api_worker_status():
         """Report whether the shared job_lock is held.
 
@@ -1289,6 +1333,8 @@ def create_web_app(base_dir: Path | None = None):
         if concepts_dir.exists():
             for md_file in sorted(concepts_dir.glob("*.md")):
                 post = frontmatter.load(str(md_file))
+                if not _visible_post(post):
+                    continue
                 articles[md_file.stem] = {
                     "metadata": dict(post.metadata),
                     "content": post.content,
@@ -1322,15 +1368,17 @@ def create_web_app(base_dir: Path | None = None):
         file_path = static_dir / path
         if path and file_path.exists():
             return send_from_directory(str(static_dir), path)
-        # Set auth cookie with derived session token (never expose the raw secret)
+        # Kept only as a visitor/UI cookie for downstream compatibility. It is
+        # never accepted by the authorization gate.
         from flask import make_response
         resp = make_response(send_from_directory(str(static_dir), "index.html"))
         if SESSION_TOKEN:
             resp.set_cookie("llmbase_auth", SESSION_TOKEN,
-                            httponly=True, samesite="Strict", secure=False)
+                            httponly=True, samesite="Strict", secure=request.is_secure)
         return resp
 
     # ─── Extension points ────────────────────────────────────────
+    builtin_endpoints = frozenset(rule.endpoint for rule in app.url_map.iter_rules())
     # Register extra routes from EXTRA_ROUTES
     for route_entry in EXTRA_ROUTES:
         rule, view_func = route_entry[0], route_entry[1]

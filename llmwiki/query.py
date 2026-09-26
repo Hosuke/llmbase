@@ -74,7 +74,7 @@ TONE_INSTRUCTIONS = {
 }
 
 
-def query(
+def _legacy_query(
     question: str,
     output_format: str = "markdown",
     file_back: bool = False,
@@ -134,7 +134,7 @@ def query(
     return answer
 
 
-def query_with_search(
+def _legacy_query_with_search(
     question: str,
     base_dir: Path | None = None,
     tone: str = "default",
@@ -329,13 +329,13 @@ def _derive_promote_examples(cfg: dict | None = None) -> tuple[str, str]:
     return content_example, title_example
 
 
-def promote_to_concept(
+def _promotion_prompt(
     question: str,
     answer: str,
     consulted: list[dict],
     index: list[dict],
     base_dir: Path | None = None,
-) -> dict:
+) -> str:
     """LLM judges whether a Q&A should become a wiki concept, and if yes, writes it.
 
     Returns a dict describing the outcome:
@@ -348,8 +348,6 @@ def promote_to_concept(
     judge mistakenly re-proposes an existing concept, the writer will merge
     rather than create a duplicate.
     """
-    from .compile import _write_article, rebuild_index
-
     cfg = load_config(base_dir)
 
     # Build a compact index summary for the judge (cap at ~80 entries)
@@ -414,6 +412,14 @@ Reply with EXACTLY this JSON schema (all fields required):
 If rejecting, reply with:
 {{"promote": false, "reason": "one-line explanation"}}"""
 
+    return prompt
+
+
+def _legacy_promote_to_concept(question, answer, consulted, index, base_dir=None):
+    from .compile import _write_article, rebuild_index
+    cfg = load_config(base_dir)
+    section_headers = get_section_headers(cfg)
+    prompt = _promotion_prompt(question, answer, consulted, index, base_dir)
     raw = chat(
         prompt,
         system=PROMOTE_SYSTEM_PROMPT,
@@ -512,7 +518,7 @@ If rejecting, reply with:
     }
 
 
-def _gather_context(question: str, cfg: dict) -> list[dict]:
+def _legacy_gather_context(question: str, cfg: dict) -> list[dict]:
     """Gather relevant wiki articles as context for a query."""
     concepts_dir = Path(cfg["paths"]["concepts"])
     meta_dir = Path(cfg["paths"]["meta"])
@@ -594,7 +600,7 @@ that will be provided. Use plt.savefig() at the end.""",
     return instructions.get(output_format, instructions["markdown"])
 
 
-def _file_output(question: str, answer: str, output_format: str, cfg: dict) -> str:
+def _legacy_file_output(question: str, answer: str, output_format: str, cfg: dict) -> str:
     """File a query output back into the wiki.
 
     Returns a *sanitized* path of the written file, relative to the project
@@ -628,14 +634,14 @@ def _file_output(question: str, answer: str, output_format: str, cfg: dict) -> s
         return filename
 
 
-def _load_index(meta_dir: Path) -> list[dict]:
+def _legacy_load_index(meta_dir: Path) -> list[dict]:
     index_path = meta_dir / "index.json"
     if index_path.exists():
         return json.loads(index_path.read_text())
     return []
 
 
-def _bm25_prefilter(question: str, index: list[dict], top_k: int) -> list[dict]:
+def _legacy_bm25_prefilter(question: str, index: list[dict], top_k: int) -> list[dict]:
     """Rank index entries by TF-IDF over (title + summary + tags) vs question.
 
     (Name retained for historical reasons; the scoring is TF-IDF, the same
@@ -700,3 +706,199 @@ def _bm25_prefilter(question: str, index: list[dict], top_k: int) -> list[dict]:
     selected = [e for _, e in scored[:top_k]]
 
     return selected or index[:top_k]
+
+
+# Default orchestration lives in Rust. These callbacks keep executable, per-call
+# Python customizations explicit; credentials exist only in this closure.
+from . import _native
+from . import search as _query_search_module
+
+_DEFAULT_QUERY_CHAT = chat
+_DEFAULT_QUERY_TOKENIZER = _query_search_module._tokenize
+
+
+def _query_config(cfg: dict) -> tuple[Path, dict]:
+    base = Path(cfg.get("base_dir") or ".").resolve()
+    paths = {key: str(Path(value).resolve()) for key, value in cfg["paths"].items()
+             if key in {"raw", "concepts", "outputs", "meta"}}
+    return base, paths
+
+
+def _native_query(request: dict, cfg: dict, *, model=None, api_key=None):
+    base, paths = _query_config(cfg)
+
+    def callback(stage, payload):
+        if stage == "index":
+            if _load_index is not _DEFAULT_LOAD_INDEX:
+                return _load_index(Path(cfg["paths"]["meta"])) or []
+            if _gather_context is not _DEFAULT_GATHER_CONTEXT:
+                # A caller-supplied retrieval fixture is an explicit Python
+                # boundary, including its legacy selector index.
+                return _legacy_load_index(Path(cfg["paths"]["meta"]))
+            return None
+        if stage == "gather":
+            return ((_gather_context(payload["question"], cfg) or [])
+                    if _gather_context is not _DEFAULT_GATHER_CONTEXT else None)
+        if stage == "prefilter":
+            return _bm25_prefilter(payload["question"], payload["index"], payload["top_k"])
+        if stage == "selector":
+            from .llm import strip_surrogates
+            summary = "\n".join(
+                f"- {strip_surrogates(str(row.get('title', '')))}: "
+                f"{strip_surrogates(str(row.get('summary', '')))}"
+                for row in payload["index"])
+            prompt = (f"Given this wiki index:\n{summary}\n\n"
+                      f"And this question: {strip_surrogates(payload['question'])}\n\n"
+                      "Which articles (by title) are most relevant? List up to 10, one per line, just the titles.")
+            return chat(prompt, model=model, max_tokens=1024, api_key=api_key)
+        if stage == "answer":
+            system = SYSTEM_PROMPT
+            if not payload["deep"]:
+                system += f"\n\n{_format_instruction(payload['output_format'])}"
+            tone = TONE_INSTRUCTIONS.get(payload["tone"], "")
+            if tone:
+                system += f"\n\n{tone}"
+            return chat_with_context(payload["question"], payload["context"],
+                                     system=system, model=model,
+                                     max_tokens=cfg["llm"]["max_tokens"], api_key=api_key)
+        if stage == "file_output":
+            return ({"override": True, "value": _file_output(payload["question"], payload["answer"],
+                                 payload["output_format"], cfg)}
+                    if _file_output is not _DEFAULT_FILE_OUTPUT else None)
+        if stage == "promotion_override":
+            if promote_to_concept is not _DEFAULT_PROMOTE:
+                try:
+                    return {"override": True, "value": promote_to_concept(**payload, base_dir=base)}
+                except Exception as error:
+                    from .llm import _redact_key
+                    message = _redact_key(str(error), api_key)
+                    logger.warning("Promotion callback failed: %s", message)
+                    return {"promoted": False, "reason": f"error: {message}"}
+            return None
+        if stage == "judge":
+            prompt = _promotion_prompt(payload["question"], payload["answer"],
+                                       payload["consulted"], payload["index"], base)
+            truncated = False
+            if chat is _DEFAULT_QUERY_CHAT:
+                from . import llm
+                raw, meta = llm.chat_with_meta(prompt, system=PROMOTE_SYSTEM_PROMPT,
+                                              max_tokens=cfg["llm"]["max_tokens"])
+                truncated = meta.truncated
+            else:
+                raw = chat(prompt, system=PROMOTE_SYSTEM_PROMPT,
+                           max_tokens=cfg["llm"]["max_tokens"])
+            try:
+                decision = json.loads(extract_json(raw))
+            except (json.JSONDecodeError, ValueError) as error:
+                return {"error": f"judge returned invalid JSON: {error}"}
+            return {"decision": decision, "headers": get_section_headers(cfg),
+                    "truncated": truncated, "created": datetime.now(timezone.utc).isoformat()}
+        raise _native.NativeCapabilityError(f"unsupported native query callback: {stage}")
+
+    from .llm import strip_surrogates
+    def clean(value):
+        if isinstance(value, str):
+            return strip_surrogates(value)
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        return value
+    return _native.run_query(clean(request), callback, base, paths=paths)
+
+
+def query(question: str, output_format: str = "markdown", file_back: bool = False,
+          base_dir: Path | None = None, tone: str = "default", return_path: bool = False,
+          model: str | None = None, api_key: str | None = None) -> str | dict:
+    if not _native.available():
+        return _legacy_query(question, output_format, file_back, base_dir, tone,
+                             return_path, model, api_key)
+    cfg = load_config(base_dir)
+    ensure_dirs(cfg)
+    return _native_query({"mode": "basic", "question": question,
+                          "output_format": output_format, "file_back": file_back,
+                          "tone": tone, "return_path": return_path}, cfg,
+                         model=model, api_key=api_key)
+
+
+def query_with_search(question: str, base_dir: Path | None = None, tone: str = "default",
+                      file_back: bool = False, return_context: bool = False,
+                      promote: bool = False, model: str | None = None,
+                      api_key: str | None = None) -> str | dict:
+    if not _native.available():
+        return _legacy_query_with_search(question, base_dir, tone, file_back,
+                                         return_context, promote, model, api_key)
+    cfg = load_config(base_dir)
+    ensure_dirs(cfg)
+    settings = cfg.get("query") if isinstance(cfg.get("query"), dict) else {}
+    def integer(key, default):
+        try:
+            value = settings.get(key, default)
+            return int(value) if value is not None else default
+        except (TypeError, ValueError):
+            return default
+    return _native_query({"mode": "deep", "question": question, "tone": tone,
+                          "file_back": file_back, "return_context": return_context,
+                          "promote": promote, "prefilter_threshold": integer("prefilter_threshold", 500),
+                          "prefilter_top_k": integer("prefilter_top_k", 200)}, cfg,
+                         model=model, api_key=api_key)
+
+
+def promote_to_concept(question: str, answer: str, consulted: list[dict], index: list[dict],
+                       base_dir: Path | None = None) -> dict:
+    if not _native.available():
+        return _legacy_promote_to_concept(question, answer, consulted, index, base_dir)
+    cfg = load_config(base_dir)
+    return _native_query({"mode": "promote", "question": question, "answer": answer,
+                          "consulted": consulted, "index": index}, cfg)
+
+
+def _gather_context(question: str, cfg: dict) -> list[dict]:
+    if not _native.available():
+        return _legacy_gather_context(question, cfg)
+    return _native_query({"mode": "gather", "question": question}, cfg)
+
+
+def _file_output(question: str, answer: str, output_format: str, cfg: dict) -> str:
+    if not _native.available():
+        return _legacy_file_output(question, answer, output_format, cfg)
+    return _native_query({"mode": "file_output", "question": question,
+                          "answer": answer, "output_format": output_format}, cfg)
+
+
+def _load_index(meta_dir: Path) -> list[dict]:
+    if not _native.available():
+        return _legacy_load_index(meta_dir)
+    # Pure legacy helper has only a metadata root. Infer its sibling article root;
+    # complete query calls pass the effective configuration directly to Rust.
+    meta_dir = Path(meta_dir).resolve()
+    cfg = {"base_dir": meta_dir.parent.parent,
+           "paths": {"meta": meta_dir, "concepts": meta_dir.parent / "concepts",
+                     "outputs": meta_dir.parent / "outputs", "raw": meta_dir.parent.parent / "raw"}}
+    return _native_query({"mode": "load_index"}, cfg)
+
+
+def _bm25_prefilter(question: str, index: list[dict], top_k: int) -> list[dict]:
+    if not _native.available():
+        return _legacy_bm25_prefilter(question, index, top_k)
+    args = {"question": question, "index": index, "top_k": top_k,
+            "stopwords": list(_query_search_module.STOPWORDS),
+            "cjk_stopwords": list(_query_search_module.CJK_STOPWORDS)}
+    if (_query_search_module.SEARCH_TOKENIZER is not None or
+            _query_search_module._tokenize is not _DEFAULT_QUERY_TOKENIZER):
+        tokenizer = _query_search_module._tokenize
+        args["tokenized"] = {"query": tokenizer(question), "documents": [
+            tokenizer(" ".join([str(row.get("title", "")), str(row.get("summary", "")),
+                                 " ".join(str(tag) for tag in (row.get("tags") or []))]))
+            for row in index]}
+    return _native.query_transform("prefilter", args)
+
+
+_DEFAULT_GATHER_CONTEXT = _gather_context
+_DEFAULT_LOAD_INDEX = _load_index
+_DEFAULT_FILE_OUTPUT = _file_output
+_DEFAULT_PROMOTE = promote_to_concept
+
+query.__doc__ = _legacy_query.__doc__
+query_with_search.__doc__ = _legacy_query_with_search.__doc__
+promote_to_concept.__doc__ = _promotion_prompt.__doc__

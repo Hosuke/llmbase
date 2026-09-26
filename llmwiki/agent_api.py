@@ -95,6 +95,9 @@ class KnowledgeBase:
 
     def health_report(self) -> dict:
         """Return the last persisted health report."""
+        from . import _native
+        if _native.available():
+            return _native.dispatch("compat_kb_health", {}, self.base_dir, paths=self.cfg["paths"])["result"]
         meta_dir = Path(self.cfg["paths"]["meta"])
         health_path = meta_dir / "health.json"
         if not health_path.exists():
@@ -125,6 +128,13 @@ class KnowledgeBase:
 
     def get_article(self, slug: str) -> dict:
         """Read a specific wiki article by slug."""
+        from . import _native
+        if _native.available():
+            result = _native.dispatch("compat_kb_get", {"slug": slug, "no_alias": True},
+                                      self.base_dir, paths=self.cfg["paths"])["result"]
+            if not result["found"]:
+                return {"status": "error", "message": f"Article not found: {slug}"}
+            return {"status": "ok", **{key: result[key] for key in ("slug", "title", "summary", "tags", "content")}}
         import frontmatter as fm
         concepts_dir = Path(self.cfg["paths"]["concepts"])
         article_path = concepts_dir / f"{slug}.md"
@@ -157,6 +167,10 @@ class KnowledgeBase:
 
     def list_articles(self) -> dict:
         """List all wiki articles with metadata."""
+        from . import _native
+        if _native.available():
+            result = _native.dispatch("compat_kb_list", {}, self.base_dir, paths=self.cfg["paths"])["result"]
+            return {"status": "ok", **result}
         import frontmatter as fm
         concepts_dir = Path(self.cfg["paths"]["concepts"])
         articles = []
@@ -176,6 +190,77 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
     """Create an HTTP API server for agent access."""
     app = Flask(__name__)
     kb = KnowledgeBase(base_dir)
+    import os
+    from flask import g
+    from .http_auth import (authorize, can_read_private, operation_scopes, private_metadata,
+                            private_response_headers, runtime_config, visibility_snapshot)
+    app.config["llmbase"] = runtime_config(kb.base_dir, kb.cfg,
+        api_secret=os.getenv("LLMBASE_API_SECRET", ""))
+    app.after_request(private_response_headers)
+
+    @app.before_request
+    def authorize_operation():
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({"status": "error", "message": "arguments must be an object"}), 400
+        legacy_names = {"api_ingest": "kb_ingest", "api_compile": "kb_compile", "api_ask": "kb_ask",
+                        "api_lint": "kb_lint", "api_lint_fix": "kb_lint_fix", "api_rebuild_index": "kb_rebuild_index"}
+        name = (request.view_args or {}).get("name") if request.endpoint == "api_op" else legacy_names.get(request.endpoint)
+        if request.endpoint == "api_ask":
+            data = {**data, "file_back": data.get("file_back", True)}
+        op = ops.get(name) if name else None
+        scopes = operation_scopes(op, data) if op is not None else ("read",)
+        denied = authorize(*scopes)
+        if denied is not None:
+            return denied
+        if can_read_private():
+            return None
+        try:
+            snapshot = visibility_snapshot(kb.base_dir, kb.cfg)
+        except (OSError, ValueError, RuntimeError):
+            return jsonify({"status": "error", "message": "public visibility snapshot unavailable"}), 503
+        g.llmbase_visibility = snapshot
+        opaque = {"kb_lint", "kb_health", "kb_stats", "kb_taxonomy", "kb_backlinks", "kb_export", "kb_export_article",
+                  "kb_export_tag", "kb_export_graph", "kb_xici"}
+        if snapshot["has_nonpublic"] and (set(scopes) & {"model", "write", "operator"}
+                or name in opaque or request.endpoint in {"api_lint", "api_health"}):
+            return authorize("private")
+        if request.endpoint == "api_article":
+            if not snapshot["compiled"].get((request.view_args or {}).get("slug"), {}).get("public", False):
+                return jsonify({"status": "error", "message": "Article not found"}), 404
+        return None
+
+    @app.after_request
+    def filter_public_rows(response):
+        if can_read_private() or not response.is_json or response.status_code != 200:
+            return response
+        snapshot = getattr(g, "llmbase_visibility", None)
+        if snapshot is None:
+            return response
+        data = response.get_json()
+        if not isinstance(data, dict):
+            return response
+        value = data.get("result", data)
+        if not isinstance(value, dict):
+            return response
+        public = lambda slug: snapshot["compiled"].get(slug, {}).get("public", False)
+        for key in ("articles",):
+            if isinstance(value.get(key), list):
+                value[key] = [row for row in value[key] if isinstance(row, dict) and public(row.get("slug", ""))]
+        if isinstance(value.get("results"), list) and (request.endpoint == "api_search"
+                or (request.view_args or {}).get("name") in {"kb_search", "kb_search_raw"}):
+            from .http_auth import public_search_hit
+            raw = (request.view_args or {}).get("name") == "kb_search_raw"
+            value["results"] = [row for row in value["results"] if public_search_hit(snapshot, kb.cfg, row, raw=raw)]
+        if isinstance(value.get("documents"), list):
+            value["documents"] = [row for row in value["documents"]
+                                  if ".original" not in Path(row.get("path", "")).parts
+                                  and not private_metadata(row)]
+        if request.endpoint == "api_op" and (request.view_args or {}).get("name") in {"kb_get", "kb_get_sections"}:
+            if value.get("found") and not public(value.get("slug", "")):
+                data["result"] = {"found": False, "slug": (request.get_json(silent=True) or {}).get("slug", "")}
+        response.set_data(app.json.dumps(data))
+        return response
 
     def _legacy_dispatch(op_name: str, args: dict):
         try:
@@ -215,7 +300,9 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
     def api_search():
         q = request.args.get("q", "")
         top_k = int(request.args.get("top_k", 10))
-        return jsonify(kb.search(q, top_k=top_k))
+        from .search import search_visibility
+        with search_visibility(public_only=not can_read_private()):
+            return jsonify(kb.search(q, top_k=top_k))
 
     @app.route("/api/lint", methods=["POST"])
     def api_lint():
@@ -254,7 +341,9 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
             return jsonify({"status": "error", "error": f"unknown operation: {name}"}), 404
         args = request.get_json(silent=True) or {}
         try:
-            result = ops.dispatch(name, kb.base_dir, args)
+            from .search import search_visibility
+            with search_visibility(public_only=not can_read_private()):
+                result = ops.dispatch(name, kb.base_dir, args)
             return jsonify({"status": "ok", "result": result})
         except RuntimeError as e:
             return jsonify({"status": "busy", "error": str(e)}), 409
@@ -274,6 +363,7 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
                     "params": op.params,
                     "writes": op.writes,
                     "category": op.category,
+                    "required_scopes": list(operation_scopes(op, {})),
                 }
                 for op in ops.all_operations()
             ],

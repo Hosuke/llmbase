@@ -2,6 +2,56 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
+## Unreleased — Rust migration candidate
+
+This candidate is still completing acceptance. No new package version or release
+is implied by the entries below. Full coverage and receipts are tracked in
+[the migration status](docs/rust-migration/status.md).
+
+### Added
+
+- Native Rust storage and application services, CLI, HTTP and MCP stdio; SQLite
+  revision history, transactional lexical indexes, exact original-byte evidence,
+  scoped libraries, and recoverable accepted writes.
+- Configurable HTTP generation and embeddings, actual provider-delta streaming,
+  lexical/vector fusion, resumable embedding generations, explicit answer saving,
+  reviewed compilation and promotion drafts, and finite durable job execution.
+- Copy-first migration, verification, backup, restore, and rollback rehearsal
+  commands. Original and accepted knowledge remain authoritative; database
+  revision and job state is included in backup scope.
+- PyO3 compatibility paths for existing Python storage, retrieval, query and
+  compile orchestration, pipeline events, locks, and chunk caches. Live prompt,
+  language and callable overrides are explicit compatibility boundaries.
+
+### Changed
+
+- English-first README with concise Chinese guidance, native/Python installation
+  distinctions, actual write defaults, migration instructions, and verification
+  limits. ClawHub skill content is updated alongside it, pending publication.
+- Native `ask` provides evidence-first, read-only answers and streaming. `query`
+  retains the established compiled-wiki flags for tone, format, deep retrieval,
+  and explicit write-back. Python factory language defaults remain trilingual;
+  native profiles default to English and support CJK/Classical Chinese.
+- Native `compile all` genuinely re-extracts sources despite an old accepted-source
+  receipt. The Python facade retains its existing receipt behavior; this native
+  correction is intentional and covered by a regression test.
+
+### Fixed
+
+- Public compilation excludes restricted article descriptions and checks the
+  consulted revisions before accepting generated output.
+- Durable workers preserve failed, partial, and cancelled workflow results
+  rather than treating any returned JSON object as success.
+- Existing frontend TypeScript diagnostics were independently reproduced against
+  the original commit and fixed without a UI redesign.
+
+### Verification limits
+
+Offline HTTP fixtures exercise real adapters and streaming. Synthetic embeddings
+are not a semantic-quality benchmark. Actual paid-provider checks and real-model
+semantic quality remain unverified; no Rust speedup is claimed. Production
+deployment is separate from this release task.
+
 ## [0.9.0] — 2026-06-11
 
 ### Added

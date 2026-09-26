@@ -50,6 +50,10 @@ import shutil
 from pathlib import Path
 
 from .atomic import atomic_write_text
+from . import _native
+
+_DEFAULT_ATOMIC_WRITE = atomic_write_text
+_DEFAULT_RMTREE = shutil.rmtree
 
 
 class ChunkCache:
@@ -97,6 +101,16 @@ class ChunkCache:
         ``None`` if either the cid has never been written or the
         content hash does not match (i.e. the content has changed at
         that slot — boundary moved or input re-ingested)."""
+        if _native.available():
+            value = _native.pipeline_dispatch("compat_pipeline_cache_get", {
+                "subdir": ".", "cid": cid, "content_hash": content_hash,
+            }, self._root)
+            if "invalid_utf8" in value:
+                data = bytes(value["invalid_utf8"])
+                start = value["start"]
+                end = len(data) if value["length"] is None else start + value["length"]
+                raise UnicodeDecodeError("utf-8", data, start, end, "invalid UTF-8 cache content")
+            return value["text"] if value["hit"] else None
         p = self._key_path(cid, content_hash)
         try:
             return p.read_text(encoding="utf-8")
@@ -116,6 +130,12 @@ class ChunkCache:
             raise TypeError(
                 f"ChunkCache.put: output must be str, got {type(output).__name__}"
             )
+        if _native.available() and atomic_write_text is _DEFAULT_ATOMIC_WRITE:
+            _native.pipeline_dispatch("compat_pipeline_cache_put", {
+                "subdir": ".", "cid": cid, "content_hash": content_hash, "output": output,
+            }, self._root)
+            return
+        _native.clear_trace()  # An explicitly replaced writer is a live Python boundary.
         atomic_write_text(self._key_path(cid, content_hash), output)
 
     def clear(self, cid: str) -> None:
@@ -130,6 +150,12 @@ class ChunkCache:
         invalidates previously cached outputs. For a full reset,
         remove the cache root externally; this method is intentionally
         scoped to one cid to avoid accidental wipe."""
+        if _native.available() and shutil.rmtree is _DEFAULT_RMTREE:
+            _native.pipeline_dispatch("compat_pipeline_cache_clear", {
+                "subdir": ".", "cid": cid,
+            }, self._root)
+            return
+        _native.clear_trace()
         d = self._cid_dir(cid)
         try:
             shutil.rmtree(d)

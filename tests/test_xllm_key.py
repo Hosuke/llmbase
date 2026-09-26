@@ -181,6 +181,7 @@ def _client(tmp_kb):
     from llmwiki.web import create_web_app
     app = create_web_app(tmp_kb)
     app.config["TESTING"] = True
+    app.config["llmbase"]["allow_unauthenticated_local"] = True
     return app.test_client()
 
 
