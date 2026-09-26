@@ -1,0 +1,5 @@
+source-before exit=0
+fmt exit=0
+clippy exit=0
+core-maintenance exit=0
+build-venv exit=1

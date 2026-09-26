@@ -1,0 +1,13 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b11-native-lint/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.68s
+     Running tests/compat_maintenance.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_maintenance-a2d1b0423b8427c7)
+
+running 5 tests
+test deterministic_checks_preserve_legacy_exact_messages_and_scalar_counts ... ok
+test native_sequence_reads_snapshot_once_and_honors_live_custom_checks_and_emit ... ok
+test public_only_load_fails_closed_on_malformed_private_and_non_public_visibility ... ok
+test duplicate_candidates_use_cjk_conversion_and_preserve_unrelated_single_character_topics ... ok
+test legacy_alias_cascade_and_cached_backlink_key_semantics_are_preserved ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

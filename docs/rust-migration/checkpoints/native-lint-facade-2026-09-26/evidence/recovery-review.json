@@ -1,0 +1,7 @@
+{
+  "exact_patch_replay": true,
+  "files": 5,
+  "outside_git_worktree": true,
+  "remote_runner_exit": 0,
+  "remote_tmux_ended": true
+}

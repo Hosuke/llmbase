@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "results": {
+    "renamed": [
+      "CFG",
+      [
+        "A"
+      ]
+    ],
+    "positional_kwargs": [
+      "CFG",
+      {
+        "articles": [
+          "A"
+        ]
+      }
+    ],
+    "optional_gap": [
+      "CFG",
+      "default",
+      [
+        "A"
+      ]
+    ]
+  }
+}

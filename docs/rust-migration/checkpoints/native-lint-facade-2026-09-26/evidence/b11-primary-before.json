@@ -1,0 +1,11 @@
+{
+  "status": "confirmed_before_fix",
+  "failure": "_check_stubs_siwen() got an unexpected keyword argument 'articles'",
+  "callback_body_calls": 0,
+  "source": "/Users/lanchair/Developer/Buddha/Github/siwen/siwen/patches.py",
+  "source_sha256": "32c1c5e9ca95fe9c94ca03d7fbd81fa1512063f889e94d53e168eaa1ce185b5f",
+  "lint_module": "/Users/lanchair/Developer/LLM-infra/Github/llmbase-rust/llmwiki/lint/checks.py",
+  "lint_source_sha256": "b58820931305be226f59dd2dc3f1b713d345f03ed9f151ff7ead6c87314b050a",
+  "callback_source": "def _check_stubs_siwen(cfg: dict) -> list[str]:\n    \"\"\"斯文版 check_stubs：不以 CJK slug 為 garbage，短文限放至 30 字。\"\"\"\n    import frontmatter as _fm\n    issues = []\n    concepts_dir = _Path(cfg[\"paths\"][\"concepts\"])\n    for md_file in concepts_dir.glob(\"*.md\"):\n        post = _fm.load(str(md_file))\n        title = post.metadata.get(\"title\", \"\")\n        summary = post.metadata.get(\"summary\", \"\")\n        content = post.content.strip()\n        slug = md_file.stem\n        if \"English Title / 中文标题\" in title:\n            issues.append(f\"未填之模：{slug}\")\n        elif \"One-line summary in English\" in summary:\n            issues.append(f\"未填之模：{slug}\")\n        elif title.replace(\".\", \"\").replace(\"/\", \"\").replace(\" \", \"\") == \"\":\n            issues.append(f\"空題：{slug}\")\n        elif \"has not been fully written\" in content or \"has not been written yet\" in content:\n            issues.append(f\"佔位之殘：{slug}\")\n        elif \"尚未完成撰写\" in content:\n            issues.append(f\"佔位之殘：{slug}\")\n        elif any(leak in summary.lower() for leak in [\n            \"the user says\", \"the user wants\", \"the user asks\", \"the user is\",\n        ]):\n            issues.append(f\"LLM 漏辭：{slug}\")\n        # 不以 CJK slug 為 garbage——斯文之 slug 恰為 CJK\n        elif len(content) < 30 and not post.metadata.get(\"stub\"):\n            issues.append(f\"近空之條：{slug}（{len(content)} 字）\")\n    return issues",
+  "scope": "isolated real callback function; not full Siwen integration"
+}

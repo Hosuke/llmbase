@@ -1,0 +1,6 @@
+{
+  "pid": 8758,
+  "reason": "Five observed APIConnectionError retries; primary takes over the bounded task",
+  "action": "SIGTERM to verified Kimi process group; retain all work",
+  "time": 1790424705.1558511
+}

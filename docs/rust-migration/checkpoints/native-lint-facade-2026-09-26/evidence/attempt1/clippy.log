@@ -1,0 +1,7 @@
+    Checking tower-http v0.6.11
+    Checking ferrous-opencc v0.3.1
+    Checking reqwest v0.12.28
+   Compiling llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b11-native-lint/source/crates/llmbase-python)
+    Checking llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/b11-native-lint/source/crates/llmbase-model)
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b11-native-lint/source/crates/llmbase-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.50s

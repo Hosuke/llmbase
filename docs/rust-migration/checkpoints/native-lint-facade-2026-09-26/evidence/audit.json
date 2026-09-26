@@ -1,0 +1,42 @@
+{
+  "accepted": true,
+  "phases": {
+    "runner": 0,
+    "source-before": 0,
+    "fmt": 0,
+    "clippy": 0,
+    "core-maintenance": 0,
+    "source-resume": 0,
+    "build-venv-v2": 0,
+    "build-deps": 0,
+    "wheel": 0,
+    "constraints": 0,
+    "candidate-venv": 0,
+    "install": 0,
+    "test-harness": 0,
+    "provenance": 0,
+    "focused": 0,
+    "primary-comparison": 0,
+    "full-python": 0,
+    "source-after": 0
+  },
+  "focused_passed": 35,
+  "full_python_passed": 590,
+  "complete_source_hashes": 211,
+  "installed_python_files": 48,
+  "wheel_sha256": "838d07753eb153cdd2e35833a78e37e048741529e3f6663ac2b201232b8afdf2",
+  "extension_sha256": "9d255adaf3320573d21747a5296e6a6e3ba7c9f799bdc4c1ea3d93bad6747ee4",
+  "changed_files": [
+    "crates/llmbase-python/src/lib.rs",
+    "crates/llmbase-python/src/maintenance.rs",
+    "llmwiki/_native.py",
+    "llmwiki/lint/checks.py",
+    "tests/rust_migration/test_native_lint.py"
+  ],
+  "legacy_totals": {
+    "false": 17,
+    "true": 16
+  },
+  "actual_siwen_callback_calls": 1,
+  "first_attempt_venv_failure_retained": true
+}

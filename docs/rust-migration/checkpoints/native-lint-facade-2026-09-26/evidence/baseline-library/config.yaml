@@ -1,0 +1,14 @@
+paths:
+  raw: originals
+  wiki: knowledge
+  concepts: knowledge/entries
+  outputs: knowledge/answers
+  meta: knowledge/metadata
+languages:
+  default: classical
+  profiles:
+    classical:
+      sections:
+        - {key: 文言, header: "", code: zh, label: 文言}
+      default_lang: zh
+      api_default_lang: zh

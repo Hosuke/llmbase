@@ -1,0 +1,14 @@
+{
+  "after_commit": "a27595cbb77f46125fa229e78193546d396c629a",
+  "model": "kimi-code/k3",
+  "source_files": 210,
+  "task_sha256": "457c9e9849fcd0f3ce992fae13a94c079a9f962d14570486d953a0649e8d0ac2",
+  "remote_root": "/root/llmbase-rust-migration-20260920/b11-native-lint",
+  "ownership": [
+    "crates/llmbase-python/src/lib.rs",
+    "crates/llmbase-python/src/maintenance.rs",
+    "llmwiki/_native.py",
+    "llmwiki/lint/checks.py",
+    "tests/rust_migration/test_native_lint.py"
+  ]
+}

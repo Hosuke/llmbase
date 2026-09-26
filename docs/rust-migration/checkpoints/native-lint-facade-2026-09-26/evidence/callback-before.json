@@ -1,0 +1,19 @@
+{
+  "renamed": {
+    "error": "TypeError",
+    "message": "missing a required argument: 'config'"
+  },
+  "positional_kwargs": {
+    "error": "TypeError",
+    "message": "positional_kwargs() missing 1 required positional argument: 'cfg'"
+  },
+  "optional_gap": {
+    "value": [
+      "CFG",
+      [
+        "A"
+      ],
+      null
+    ]
+  }
+}

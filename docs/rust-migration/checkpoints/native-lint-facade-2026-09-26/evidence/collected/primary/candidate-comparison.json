@@ -1,0 +1,219 @@
+{
+  "passed": true,
+  "results": {
+    "false": {
+      "structural": [
+        "Missing master index file (_index.md)",
+        "Missing JSON index (index.json)"
+      ],
+      "broken_links": [
+        "Broken link in alpha: [[missing]]"
+      ],
+      "orphans": [
+        "Orphan article (no incoming links): beta",
+        "Orphan article (no incoming links): empty",
+        "Orphan article (no incoming links): 學"
+      ],
+      "missing_metadata": [
+        "Missing title: empty",
+        "Missing summary: empty",
+        "Missing tags: empty"
+      ],
+      "dirty_tags": [
+        "Dirty tags in alpha: ['we need output tags', '7']"
+      ],
+      "duplicates": [
+        "Likely duplicate: alpha <-> beta",
+        "Likely duplicate: alpha <-> 學",
+        "Likely duplicate: beta <-> 學"
+      ],
+      "stubs": [
+        "Empty/garbage title: empty",
+        "CJK slug (should be pinyin): 學"
+      ],
+      "uncategorized": [
+        "Uncategorized article: beta",
+        "Uncategorized article: 學"
+      ],
+      "total_issues": 17
+    },
+    "true": {
+      "structural": [
+        "Missing master index file (_index.md)",
+        "Missing JSON index (index.json)"
+      ],
+      "broken_links": [
+        "Broken link in alpha: [[missing]]"
+      ],
+      "orphans": [
+        "Orphan article (no incoming links): beta",
+        "Orphan article (no incoming links): empty",
+        "Orphan article (no incoming links): 學"
+      ],
+      "missing_metadata": [
+        "Missing title: empty",
+        "Missing summary: empty",
+        "Missing tags: empty"
+      ],
+      "dirty_tags": [
+        "Dirty tags in alpha: ['we need output tags', '7']"
+      ],
+      "duplicates": [
+        "Likely duplicate: alpha <-> beta",
+        "Likely duplicate: alpha <-> 學",
+        "Likely duplicate: beta <-> 學"
+      ],
+      "stubs": [
+        "Empty/garbage title: empty"
+      ],
+      "uncategorized": [
+        "Uncategorized article: beta",
+        "Uncategorized article: 學"
+      ],
+      "total_issues": 16
+    }
+  },
+  "expected_results": {
+    "false": {
+      "structural": [
+        "Missing master index file (_index.md)",
+        "Missing JSON index (index.json)"
+      ],
+      "broken_links": [
+        "Broken link in alpha: [[missing]]"
+      ],
+      "orphans": [
+        "Orphan article (no incoming links): beta",
+        "Orphan article (no incoming links): empty",
+        "Orphan article (no incoming links): 學"
+      ],
+      "missing_metadata": [
+        "Missing title: empty",
+        "Missing summary: empty",
+        "Missing tags: empty"
+      ],
+      "dirty_tags": [
+        "Dirty tags in alpha: ['we need output tags', '7']"
+      ],
+      "duplicates": [
+        "Likely duplicate: alpha <-> beta",
+        "Likely duplicate: alpha <-> 學",
+        "Likely duplicate: beta <-> 學"
+      ],
+      "stubs": [
+        "Empty/garbage title: empty",
+        "CJK slug (should be pinyin): 學"
+      ],
+      "uncategorized": [
+        "Uncategorized article: beta",
+        "Uncategorized article: 學"
+      ],
+      "total_issues": 17
+    },
+    "true": {
+      "structural": [
+        "Missing master index file (_index.md)",
+        "Missing JSON index (index.json)"
+      ],
+      "broken_links": [
+        "Broken link in alpha: [[missing]]"
+      ],
+      "orphans": [
+        "Orphan article (no incoming links): beta",
+        "Orphan article (no incoming links): empty",
+        "Orphan article (no incoming links): 學"
+      ],
+      "missing_metadata": [
+        "Missing title: empty",
+        "Missing summary: empty",
+        "Missing tags: empty"
+      ],
+      "dirty_tags": [
+        "Dirty tags in alpha: ['we need output tags', '7']"
+      ],
+      "duplicates": [
+        "Likely duplicate: alpha <-> beta",
+        "Likely duplicate: alpha <-> 學",
+        "Likely duplicate: beta <-> 學"
+      ],
+      "stubs": [
+        "Empty/garbage title: empty"
+      ],
+      "uncategorized": [
+        "Uncategorized article: beta",
+        "Uncategorized article: 學"
+      ],
+      "total_issues": 16
+    }
+  },
+  "traces": {
+    "false": {
+      "core": "rust",
+      "operation": "maintenance_run",
+      "action": "lint"
+    },
+    "true": {
+      "core": "rust",
+      "operation": "maintenance_run",
+      "action": "lint"
+    }
+  },
+  "inventory_after": {
+    "config.yaml": "e1dfaaa9b915c49a3ffe21234397188616953b8efe4ee8ab7b0038241ec8c0ea",
+    "knowledge/entries/alpha.md": "54079b009e74a104cc7ef6396e9e60ac5e04a501e4cdf2a45e5d7f7056874c0a",
+    "knowledge/entries/beta.md": "428dd055268d9d08f4b6e3259804352766695ea2b3548ea778a0a6d20eeafbda",
+    "knowledge/entries/empty.md": "f84fc0b89406e56a9e28928d4803d254de0ab81a1b0e2a7f1a0a29ccb44cafd3",
+    "knowledge/entries/學.md": "b9aeb9060e55ad6c464f8f240081624b05dde5077f762f20598e9f35dce62162",
+    "knowledge/metadata/aliases.json": "30de8fb9e1f54140137608e0945469a08f1e7f4cab1b2d46f516c6eaee4a3f55",
+    "knowledge/metadata/backlinks.json": "ae40bec73c123db85c5b88287f5f285c20f274abe044672ea647a551e9ef5c71",
+    "knowledge/metadata/taxonomy.json": "31ca67b4d863596dd322c61cc1630ac804dfb1ae37e2c7e9980d60fb130846ea"
+  },
+  "package": "/root/llmbase-rust-migration-20260920/b11-native-lint/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/b11-native-lint/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "9d255adaf3320573d21747a5296e6a6e3ba7c9f799bdc4c1ea3d93bad6747ee4",
+  "siwen_callback": {
+    "source_sha256": "32c1c5e9ca95fe9c94ca03d7fbd81fa1512063f889e94d53e168eaa1ce185b5f",
+    "calls": 1,
+    "result": {
+      "structural": [
+        "Missing master index file (_index.md)",
+        "Missing JSON index (index.json)"
+      ],
+      "broken_links": [
+        "Broken link in alpha: [[missing]]"
+      ],
+      "orphans": [
+        "Orphan article (no incoming links): beta",
+        "Orphan article (no incoming links): empty",
+        "Orphan article (no incoming links): 學"
+      ],
+      "missing_metadata": [
+        "Missing title: empty",
+        "Missing summary: empty",
+        "Missing tags: empty"
+      ],
+      "dirty_tags": [
+        "Dirty tags in alpha: ['we need output tags', '7']"
+      ],
+      "duplicates": [
+        "Likely duplicate: alpha <-> beta",
+        "Likely duplicate: alpha <-> 學",
+        "Likely duplicate: beta <-> 學"
+      ],
+      "stubs": [
+        "空題：empty"
+      ],
+      "uncategorized": [
+        "Uncategorized article: beta",
+        "Uncategorized article: 學"
+      ],
+      "total_issues": 16
+    },
+    "trace": {
+      "core": "rust",
+      "operation": "maintenance_run",
+      "action": "lint"
+    },
+    "scope": "actual extracted callback, not full Siwen integration"
+  }
+}

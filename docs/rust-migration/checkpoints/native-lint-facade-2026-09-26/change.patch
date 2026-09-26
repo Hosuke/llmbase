@@ -1,0 +1,565 @@
+diff --git a/crates/llmbase-python/src/lib.rs b/crates/llmbase-python/src/lib.rs
+--- a/crates/llmbase-python/src/lib.rs
++++ b/crates/llmbase-python/src/lib.rs
+@@ -1,6 +1,7 @@
+ //! Python transport only: every request enters the shared native application service.
+ mod compile;
+ mod fetch;
++mod maintenance;
+ mod model;
+ mod pipeline;
+ mod query;
+@@ -133,6 +134,7 @@
+     pipeline::register(module)?;
+     query::register(module)?;
+     fetch::register(module)?;
++    maintenance::register(module)?;
+     util::register(module)?;
+     resolve::register(module)?;
+     Ok(())
+diff --git a/crates/llmbase-python/src/maintenance.rs b/crates/llmbase-python/src/maintenance.rs
+--- a/crates/llmbase-python/src/maintenance.rs
++++ b/crates/llmbase-python/src/maintenance.rs
+@@ -10,14 +10,21 @@
+     serde_json::from_str(args_json)
+         .map_err(|_| PyValueError::new_err("invalid maintenance arguments"))
+ }
++
++fn receipt(operation: &str, action: &str, value: Value) -> String {
++    let trace = json!({"core":"rust","operation":operation,"action":action});
++    json!({"value":value,"trace":trace}).to_string()
++}
++
+ #[pyfunction]
+ fn maintenance_transform(py: Python<'_>, action: String, args_json: String) -> PyResult<String> {
+     let args = arguments(&args_json)?;
+-    py.detach(move||{
+-        let value=compat_maintenance::transform(&action,&args).map_err(crate::python_error)?;
+-        Ok(json!({"value":value,"trace":{"core":"rust","operation":"maintenance_transform","action":action}}).to_string())
++    py.detach(move || {
++        let value = compat_maintenance::transform(&action, &args).map_err(crate::python_error)?;
++        Ok(receipt("maintenance_transform", &action, value))
+     })
+ }
++
+ #[pyfunction]
+ fn maintenance_run(
+     py: Python<'_>,
+@@ -44,12 +51,14 @@
+             }
+         }
+     });
++    // The original Python exception is preserved, never wrapped or retried.
+     if let Some(error) = callback_error {
+         return Err(error);
+     }
+     let value = value.map_err(crate::python_error)?;
+-    Ok(json!({"value":value,"trace":{"core":"rust","operation":"maintenance_run","action":action}}).to_string())
++    Ok(receipt("maintenance_run", action, value))
+ }
++
+ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+     module.add_function(wrap_pyfunction!(maintenance_transform, module)?)?;
+     module.add_function(wrap_pyfunction!(maintenance_run, module)?)?;
+diff --git a/llmwiki/_native.py b/llmwiki/_native.py
+--- a/llmwiki/_native.py
++++ b/llmwiki/_native.py
+@@ -102,6 +102,34 @@
+     clear_trace()
+     result = json.loads(_extension(required=True).resolve_transform(
+         action, json.dumps(args, ensure_ascii=False)))
++    _last_trace.set(result.get("trace"))
++    return result["value"]
++
++
++def maintenance_transform(action: str, args: dict) -> Any:
++    """Run a pure native maintenance helper; no library is opened or inferred."""
++    clear_trace()
++    result = json.loads(_extension(required=True).maintenance_transform(
++        action, json.dumps(args, ensure_ascii=False)))
++    _last_trace.set(result.get("trace"))
++    return result["value"]
++
++
++def run_maintenance(action: str, args: dict, callback) -> Any:
++    """Host explicit live Python callbacks in the Rust-owned maintenance sequence."""
++    clear_trace()
++    extension = _extension(required=True)
++    def host(stage: str, payload_json: str) -> str:
++        clear_trace()
++        value = callback(stage, json.loads(payload_json))
++        return json.dumps(value, ensure_ascii=False)
++    try:
++        result = json.loads(extension.maintenance_run(
++            action, json.dumps(args, ensure_ascii=False), host))
++    except BaseException:
++        # A failed run keeps no receipt: neither a stale trace nor a success trace.
++        clear_trace()
++        raise
+     _last_trace.set(result.get("trace"))
+     return result["value"]
+ 
+diff --git a/llmwiki/lint/checks.py b/llmwiki/lint/checks.py
+--- a/llmwiki/lint/checks.py
++++ b/llmwiki/lint/checks.py
+@@ -1,7 +1,9 @@
+ """Lint checks — detect issues in the knowledge base."""
+ 
++import inspect
+ import json
+ import re
++import sys
+ from pathlib import Path
+ 
+ import frontmatter
+@@ -34,8 +36,17 @@
+     """Parse every article's frontmatter + content exactly once.
+ 
+     Returned dicts are shared by all lint checks, so each file is read and
+-    parsed a single time per lint() pass instead of once per check.
+-    """
++    parsed a single time per lint() pass instead of once per check. The native
++    branch runs the same parse in Rust; each article ``path`` is restored to a
++    Path value at this Python boundary. The legacy branch remains only for
++    unbuilt source checkouts under the ``_native.available()`` policy.
++    """
++    from .. import _native
++    if _native.available():
++        loaded = _native.maintenance_transform("load", {"concepts_dir": str(concepts_dir)})
++        for article in loaded:
++            article["path"] = Path(article["path"])
++        return loaded
+     articles = []
+     if not concepts_dir.exists():
+         return articles
+@@ -54,37 +65,155 @@
+ 
+ 
+ def lint(base_dir: Path | None = None) -> dict:
+-    """Run all lint checks on the wiki."""
+-    from ..resolve import load_aliases
++    """Run all lint checks on the wiki.
++
++    With the native extension, Rust owns the snapshot sequencing, the eight
++    checks, the total and the emit stage (maintenance_run). Module-level check
++    callables are resolved live at every Rust callback stage: defaults return
++    null so Rust executes the check, while a genuinely replaced callable runs
++    once as an explicit Python callback with only the arguments its signature
++    accepts.
++    """
++    from .. import _native
+ 
+     cfg = load_config(base_dir)
+     ensure_dirs(cfg)
+ 
+     concepts_dir = Path(cfg["paths"]["concepts"])
+     meta_dir = Path(cfg["paths"]["meta"])
++
++    if not _native.available():
++        # Unbuilt source checkout only; installed candidates fail closed above.
++        from ..resolve import load_aliases
++
++        articles = _load_articles(concepts_dir)
++        existing_slugs = {a["slug"].lower() for a in articles}
++        aliases = load_aliases(meta_dir)
++
++        results = {
++            "structural": check_structural(cfg, articles=articles),
++            "broken_links": check_broken_links(cfg, articles=articles, existing_slugs=existing_slugs, aliases=aliases),
++            "orphans": check_orphans(cfg, articles=articles),
++            "missing_metadata": check_missing_metadata(cfg, articles=articles),
++            "dirty_tags": check_dirty_tags(cfg, articles=articles),
++            "duplicates": check_duplicates(cfg, articles=articles),
++            "stubs": check_stubs(cfg, articles=articles),
++            "uncategorized": check_uncategorized(cfg, base_dir),
++        }
++
++        # Count total issues
++        total = sum(len(v) for v in results.values())
++        results["total_issues"] = total
++
++        from ..hooks import emit
++        emit("after_lint_check", total_issues=total, results=results)
++
++        return results
++
++    from .. import hooks
++
+     articles = _load_articles(concepts_dir)
+     existing_slugs = {a["slug"].lower() for a in articles}
+-    aliases = load_aliases(meta_dir)
+-
+-    results = {
+-        "structural": check_structural(cfg, articles=articles),
+-        "broken_links": check_broken_links(cfg, articles=articles, existing_slugs=existing_slugs, aliases=aliases),
+-        "orphans": check_orphans(cfg, articles=articles),
+-        "missing_metadata": check_missing_metadata(cfg, articles=articles),
+-        "dirty_tags": check_dirty_tags(cfg, articles=articles),
+-        "duplicates": check_duplicates(cfg, articles=articles),
+-        "stubs": check_stubs(cfg, articles=articles),
+-        "uncategorized": check_uncategorized(cfg, base_dir),
+-    }
+-
+-    # Count total issues
+-    total = sum(len(v) for v in results.values())
+-    results["total_issues"] = total
+-
+-    from ..hooks import emit
+-    emit("after_lint_check", total_issues=total, results=results)
+-
+-    return results
++    # JSON DTO: only the article path field is converted explicitly; arbitrary
++    # metadata is never stringified, so unsupported value types fail loudly.
++    snapshot = []
++    for article in articles:
++        row = dict(article)
++        if "path" in row:
++            row["path"] = str(row["path"])
++        snapshot.append(row)
++    prepared = _native.maintenance_transform("prepare", {
++        "concepts_dir": str(concepts_dir),
++        "meta_dir": str(meta_dir),
++        "articles": snapshot,
++        "allow_cjk_slugs": ALLOW_CJK_SLUGS,
++    })
++    aliases = dict(prepared["aliases"])
++
++    def host(stage: str, payload: dict):
++        if stage == "emit":
++            # The single actual hook dispatch with the original event/kwargs.
++            hooks.emit(payload["event"], total_issues=payload["total_issues"],
++                       results=payload["results"])
++            return None
++        live = getattr(sys.modules[__name__], "check_" + stage)
++        if live is _DEFAULT_CHECKS[stage]:
++            if stage != "uncategorized":
++                return None  # Null: Rust executes the default check.
++            # The taxonomy boundary stays lazy and explicit: categories are
++            # built only when no replacement handles this stage, then Rust
++            # executes the uncategorized check on the prepared snapshot.
++            from .. import taxonomy
++            categories = taxonomy.build_taxonomy(base_dir, lang="en")
++            _native.python_boundary("maintenance_run", "taxonomy.build_taxonomy")
++            value = _native.maintenance_transform(
++                "check", dict(payload, name="uncategorized", categories=categories))
++            return {"override": True, "value": value}
++        candidates = {"cfg": cfg}
++        if stage == "uncategorized":
++            candidates["base_dir"] = base_dir
++        if stage != "uncategorized":
++            # One shared Path-valued article snapshot for the Python callbacks.
++            candidates["articles"] = articles
++        if stage == "broken_links":
++            candidates["existing_slugs"] = existing_slugs
++            candidates["aliases"] = aliases
++        result = _invoke_check(live, candidates)
++        _native.python_boundary("maintenance_run", "check_" + stage)
++        return {"override": True, "value": result}
++
++    return _native.run_maintenance("lint", prepared, host)
++
++
++def _invoke_check(check, candidates: dict):
++    """Invoke a replaced check with exactly the arguments its signature accepts.
++
++    Arguments are bound before invocation: only supported optional kwargs are
++    retained unless the callable accepts **kwargs, required parameters must be
++    satisfiable, and positional-only parameters stay positional. A binding
++    failure raises before the body runs; a TypeError raised inside the body
++    propagates unchanged and is never retried with fewer arguments. If
++    introspection is unavailable, the historical positional/keyword shape is invoked
++    exactly once and its error propagates.
++    """
++    positional_names = ("cfg", "base_dir") if "base_dir" in candidates else ("cfg",)
++    original_args = tuple(candidates[name] for name in positional_names)
++    optional = {name: value for name, value in candidates.items() if name not in positional_names}
++    try:
++        signature = inspect.signature(check)
++    except (TypeError, ValueError):
++        return check(*original_args, **optional)
++    parameters = signature.parameters
++    positional_count = sum(p.kind in (inspect.Parameter.POSITIONAL_ONLY,
++                                     inspect.Parameter.POSITIONAL_OR_KEYWORD)
++                           for p in parameters.values())
++    accepts_args = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in parameters.values())
++    selected_args = original_args if accepts_args else original_args[:positional_count]
++    bound = signature.bind_partial(*selected_args)
++    # Preserve old positional meaning even if a callback calls its first
++    # argument "config" instead of "cfg". Keyword-only equivalents may still
++    # request the semantic names of any positional inputs they did not consume.
++    for name in positional_names[len(selected_args):]:
++        optional[name] = candidates[name]
++    extra_name = next((p.name for p in parameters.values()
++                       if p.kind is inspect.Parameter.VAR_KEYWORD), None)
++    extras = {}
++    for name, value in optional.items():
++        parameter = parameters.get(name)
++        if name in bound.arguments:
++            continue
++        if parameter is not None and parameter.kind not in (
++                inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
++            bound.arguments[name] = value
++        elif extra_name is not None:
++            extras[name] = value
++    if extra_name is not None:
++        bound.arguments[extra_name] = extras
++    # Fill optional gaps before reconstructing positional-only arguments;
++    # missing required arguments remain errors and never reach the callback.
++    bound.apply_defaults()
++    bound = signature.bind(*bound.args, **bound.kwargs)
++    return check(*bound.args, **bound.kwargs)
+ 
+ 
+ 
+@@ -372,3 +501,18 @@
+     return issues
+ 
+ 
++# Default check identities, captured once after the definitions above and
++# before any downstream patching. lint() resolves the live module attribute at
++# every Rust callback stage; only a genuinely replaced callable is invoked as
++# a Python callback, everything else executes as a native Rust check.
++_DEFAULT_CHECKS = {
++    "structural": check_structural,
++    "broken_links": check_broken_links,
++    "orphans": check_orphans,
++    "missing_metadata": check_missing_metadata,
++    "dirty_tags": check_dirty_tags,
++    "duplicates": check_duplicates,
++    "stubs": check_stubs,
++    "uncategorized": check_uncategorized,
++}
++
+diff --git a/tests/rust_migration/test_native_lint.py b/tests/rust_migration/test_native_lint.py
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/test_native_lint.py
+@@ -0,0 +1,228 @@
++"""Installed native lint sequencing and actual live extension contracts."""
++from pathlib import Path
++import shutil
++import sys
++
++import frontmatter
++import pytest
++
++from llmwiki import _native, hooks, taxonomy
++from llmwiki.config import ensure_dirs, load_config
++from llmwiki.lint import checks
++
++pytestmark = pytest.mark.skipif(not _native.available(), reason="native candidate required")
++
++
++@pytest.fixture
++def library(tmp_path, monkeypatch):
++    source = Path(__file__).parent / "fixtures/downstream/library"
++    base = tmp_path / "library"
++    shutil.copytree(source, base)
++    ensure_dirs(load_config(base))
++    monkeypatch.setattr(hooks, "_registry", {})
++    return base
++
++
++def file_bytes(base):
++    return {p.relative_to(base).as_posix(): p.read_bytes()
++            for p in base.rglob("*") if p.is_file()}
++
++
++def assert_run_trace():
++    assert _native.last_trace() == {
++        "core": "rust", "operation": "maintenance_run", "action": "lint"}
++
++
++def test_default_checks_and_snapshot_execute_in_rust(library, monkeypatch):
++    before = file_bytes(library)
++    entered = []
++    old_codes = {function.__code__ for function in checks._DEFAULT_CHECKS.values()}
++    def observe(frame, event, arg):
++        if event == "call" and frame.f_code in old_codes:
++            entered.append(frame.f_code.co_name)
++    def forbidden(*args, **kwargs):
++        raise AssertionError("default lint parsed frontmatter in Python")
++    monkeypatch.setattr(frontmatter, "load", forbidden)
++    monkeypatch.setattr(taxonomy, "build_taxonomy", lambda base, lang: [])
++    observed_hooks = []
++    hooks.register("after_lint_check", lambda **kwargs: observed_hooks.append(kwargs))
++    previous = sys.getprofile()
++    try:
++        sys.setprofile(observe)
++        result = checks.lint(library)
++    finally:
++        sys.setprofile(previous)
++    assert entered == []
++    names = set(checks._DEFAULT_CHECKS)
++    assert set(result) == names | {"total_issues"}
++    assert all(isinstance(result[name], list) for name in names)
++    assert result["total_issues"] == sum(len(result[name]) for name in names)
++    assert observed_hooks == [{"total_issues": result["total_issues"], "results": result}]
++    assert_run_trace()
++    assert file_bytes(library) == before
++
++
++def test_native_loader_preserves_path_metadata_and_does_not_register_phantom_root(library):
++    cfg = load_config(library)
++    roots_before = set(_native._configured_roots)
++    before = file_bytes(library)
++    articles = checks._load_articles(Path(cfg["paths"]["concepts"]))
++    assert _native.last_trace()["operation"] == "maintenance_transform"
++    assert _native.last_trace()["action"] == "load"
++    assert isinstance(articles[0]["path"], Path)
++    assert articles[0]["metadata"]["editorial_extension"]["revision_note"] == "保留未知欄"
++    assert set(_native._configured_roots) == roots_before
++    assert file_bytes(library) == before
++
++
++def test_cfg_only_override_is_live_and_called_once(library, monkeypatch):
++    calls = []
++    def first(config):
++        calls.append(config)
++        return ["first callback"]
++    monkeypatch.setattr(checks, "check_stubs", first)
++    assert checks.lint(library)["stubs"] == ["first callback"]
++    assert len(calls) == 1
++    assert Path(calls[0]["paths"]["concepts"]) == library / "knowledge/entries"
++    monkeypatch.setattr(checks, "check_stubs", lambda cfg: ["second callback"])
++    assert checks.lint(library)["stubs"] == ["second callback"]
++    assert len(calls) == 1
++    assert_run_trace()
++
++
++def test_live_cjk_policy_changes_native_default(library, monkeypatch):
++    concepts = library / "knowledge/entries"
++    (concepts / "學.md").write_text("---\ntitle: 學\nsummary: 義\ntags: [經]\n---\n" + "文言正文。" * 20)
++    monkeypatch.setattr(checks, "ALLOW_CJK_SLUGS", False)
++    assert "CJK slug (should be pinyin): 學" in checks.lint(library)["stubs"]
++    monkeypatch.setattr(checks, "ALLOW_CJK_SLUGS", True)
++    assert "CJK slug (should be pinyin): 學" not in checks.lint(library)["stubs"]
++    assert_run_trace()
++
++
++@pytest.mark.parametrize("kind", ["full", "subset", "positional_kwargs", "optional_gap", "opaque"])
++def test_callback_shapes_keep_positional_meaning_and_optional_arguments(library, monkeypatch, kind):
++    seen = []
++    if kind == "full":
++        def callback(config, articles=None, existing_slugs=None, aliases=None):
++            seen.append((config, articles, existing_slugs, aliases))
++            return [kind]
++    elif kind == "subset":
++        def callback(config, aliases):
++            seen.append((config, aliases))
++            return [kind]
++    elif kind == "positional_kwargs":
++        def callback(config, /, **kwargs):
++            assert set(kwargs) == {"articles", "existing_slugs", "aliases"}
++            seen.append((config, kwargs))
++            return [kind]
++    elif kind == "optional_gap":
++        def callback(config, marker="default", articles=None, /):
++            assert marker == "default"
++            assert isinstance(articles[0]["path"], Path)
++            seen.append((config, articles))
++            return [kind]
++    else:
++        class Opaque:
++            __signature__ = "not introspectable"
++            def __call__(self, config, **kwargs):
++                assert set(kwargs) == {"articles", "existing_slugs", "aliases"}
++                seen.append((config, kwargs))
++                return [kind]
++        callback = Opaque()
++    monkeypatch.setattr(checks, "check_broken_links", callback)
++    assert checks.lint(library)["broken_links"] == [kind]
++    assert len(seen) == 1
++    assert Path(seen[0][0]["base_dir"]) == library
++    assert_run_trace()
++
++
++def test_replaced_loader_and_python_callbacks_share_path_valued_snapshot(library, monkeypatch):
++    cfg = load_config(library)
++    rows = checks._load_articles(Path(cfg["paths"]["concepts"]))
++    rows[0]["slug"] = "live-slug"
++    seen = []
++    def loader(path):
++        seen.append(path)
++        return rows
++    def structural(cfg, articles):
++        assert articles is rows
++        return []
++    def broken(cfg, articles, existing_slugs, aliases):
++        assert articles is rows and isinstance(articles[0]["path"], Path)
++        assert existing_slugs == {"live-slug"} and isinstance(existing_slugs, set)
++        assert isinstance(aliases, dict)
++        return []
++    monkeypatch.setattr(checks, "_load_articles", loader)
++    monkeypatch.setattr(checks, "check_structural", structural)
++    monkeypatch.setattr(checks, "check_broken_links", broken)
++    checks.lint(library)
++    assert seen == [Path(cfg["paths"]["concepts"])]
++    assert_run_trace()
++
++
++@pytest.mark.parametrize("error_type", [TypeError, KeyboardInterrupt])
++def test_callback_exception_is_preserved_once_without_success_trace_or_hook(library, monkeypatch, error_type):
++    expected = error_type("body sentinel")
++    calls, emitted = [], []
++    def callback(cfg):
++        calls.append(True)
++        _native.maintenance_transform("load", {"concepts_dir": cfg["paths"]["concepts"]})
++        raise expected
++    monkeypatch.setattr(checks, "check_stubs", callback)
++    hooks.register("after_lint_check", lambda **kwargs: emitted.append(kwargs))
++    with pytest.raises(error_type) as caught:
++        checks.lint(library)
++    assert caught.value is expected and calls == [True]
++    assert emitted == [] and _native.last_trace() is None
++
++
++def test_binding_error_never_executes_callback(library, monkeypatch):
++    calls = []
++    def callback(cfg, missing_required):
++        calls.append(True)
++        return []
++    monkeypatch.setattr(checks, "check_stubs", callback)
++    with pytest.raises(TypeError):
++        checks.lint(library)
++    assert calls == [] and _native.last_trace() is None
++
++
++def test_stages_are_ordered_and_taxonomy_boundary_is_lazy(library, monkeypatch):
++    order = []
++    names = ["structural", "broken_links", "orphans", "missing_metadata",
++             "dirty_tags", "duplicates", "stubs"]
++    def replacement(name):
++        def callback(cfg):
++            order.append(name)
++            return []
++        return callback
++    for name in names:
++        monkeypatch.setattr(checks, "check_" + name, replacement(name))
++    def categories(base, lang):
++        assert base == library and lang == "en"
++        order.append("taxonomy")
++        return [{"id": "other", "articles": [{"slug": "xue"}]}]
++    monkeypatch.setattr(taxonomy, "build_taxonomy", categories)
++    hooks.register("after_lint_check", lambda **kwargs: order.append("emit"))
++    assert checks.lint(library)["uncategorized"] == ["Uncategorized article: xue"]
++    assert order == names + ["taxonomy", "emit"]
++    order.clear()
++    def uncategorized(config, *, base_dir):
++        assert base_dir == library
++        order.append("uncategorized")
++        return ["replacement"]
++    monkeypatch.setattr(checks, "check_uncategorized", uncategorized)
++    assert checks.lint(library)["uncategorized"] == ["replacement"]
++    assert order == names + ["uncategorized", "emit"]
++    assert_run_trace()
++
++
++def test_unsupported_callback_metadata_is_not_silently_stringified(library, monkeypatch):
++    cfg = load_config(library)
++    rows = checks._load_articles(Path(cfg["paths"]["concepts"]))
++    rows[0]["metadata"]["unsupported"] = object()
++    monkeypatch.setattr(checks, "_load_articles", lambda path: rows)
++    with pytest.raises(TypeError, match="JSON serializable"):
++        checks.lint(library)
++    assert _native.last_trace() is None
