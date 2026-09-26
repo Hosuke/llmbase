@@ -1,0 +1,8 @@
+{
+  "after_commit": "355db6f4f81af67043640621083b2c0c603c4dbd",
+  "model": "kimi-code/k3",
+  "source_files": 212,
+  "task_sha256": "407a7207e80e577aa9c0ac8677e37fb756a5b7ded8271ce4614fccb5c671e62f",
+  "oracle_sha256": "d02ee222308ad13f54b8a176c97e8bfefff305c5a0414f1e0e6b43ea7026b11e",
+  "remote_root": "/root/llmbase-rust-migration-20260920/b12-paragraphs"
+}

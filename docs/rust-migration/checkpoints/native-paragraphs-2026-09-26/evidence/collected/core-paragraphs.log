@@ -1,0 +1,19 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b12-paragraphs/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.61s
+     Running tests/compat_paragraphs.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_paragraphs-1819a1e2a0edb7d5)
+
+running 2 tests
+test paragraph_arguments_are_strings_and_unknown_actions_fail ... ok
+test frozen_legacy_paragraph_oracle ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/compat_util.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_util-ccb1e5b7237afaa5)
+
+running 3 tests
+test span_anchoring_maps_back_to_exact_original_without_byte_offset_confusion ... ok
+test anchor_configuration_and_unknown_actions_are_not_cached_or_silently_ignored ... ok
+test sections_and_flat_split_preserve_original_unicode_scalar_slices ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

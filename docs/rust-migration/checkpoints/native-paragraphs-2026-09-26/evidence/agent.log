@@ -1,0 +1,2 @@
+error: failed to run prompt: provider.connection_error: OAuth provider "managed:kimi-code" failed to fetch an access token: OAuth request to https://auth.kimi.com/api/oauth/token failed: fetch failed: Client network socket disconnected before secure TLS connection was established
+See log: /Users/lanchair/.kimi-code/logs/kimi-code.log

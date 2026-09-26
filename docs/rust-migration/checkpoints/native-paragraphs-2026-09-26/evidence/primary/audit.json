@@ -1,0 +1,30 @@
+{
+  "accepted": true,
+  "complete_source_hashes": 214,
+  "installed_python_files": 48,
+  "frozen_oracle_cases": 229,
+  "independent_differential_cases": 1200,
+  "native_tests": 5,
+  "focused_python_passed": 65,
+  "full_python_passed": 595,
+  "wheel_sha256": "0bd61af1b9b3f38af563bad4ac3d86197062531ce31c494d862acf2866950f73",
+  "extension_sha256": "8cf8173360d3bc20647035ea126180e3728bd7a430ca8e9f6e1b32d3cb4583c2",
+  "exact_replay_files": 5,
+  "typescript_no_emit_exit": 0,
+  "python_lint_import_exit": 0,
+  "phases": {
+    "runner": 0,
+    "source-before": 0,
+    "fmt": 0,
+    "clippy": 0,
+    "core-paragraphs": 0,
+    "wheel": 0,
+    "candidate-venv": 0,
+    "install": 0,
+    "test-harness": 0,
+    "provenance": 0,
+    "focused": 0,
+    "full-python": 0,
+    "source-after": 0
+  }
+}

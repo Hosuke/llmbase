@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "cases": 1200,
+  "seed": 385012,
+  "legacy_source_sha256": "b0411b409377b6c19fc0ecca29b07dd8481fe74b859f066029f00a92cd25c4e1",
+  "corpus_sha256": "f0fd82ee110a9bab558f4ef70c575075af5cdb2be3cb250e76e33af1d4310329",
+  "extension": "/root/llmbase-rust-migration-20260920/b12-paragraphs/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "8cf8173360d3bc20647035ea126180e3728bd7a430ca8e9f6e1b32d3cb4583c2",
+  "no_library_registration": true,
+  "last_trace": {
+    "core": "rust",
+    "operation": "utility_normalize_paragraphs",
+    "adapter": "llmbase_core::compat_util::transform",
+    "offset_unit": "unicode_scalars",
+    "sequence": 1200
+  }
+}

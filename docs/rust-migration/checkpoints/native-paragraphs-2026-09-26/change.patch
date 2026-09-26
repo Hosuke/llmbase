@@ -1,0 +1,2002 @@
+diff --git a/crates/llmbase-core/src/compat_util.rs b/crates/llmbase-core/src/compat_util.rs
+--- a/crates/llmbase-core/src/compat_util.rs
++++ b/crates/llmbase-core/src/compat_util.rs
+@@ -3,6 +3,7 @@
+ use crate::{Error, Result, compat_kb};
+ use serde_json::{Value, json};
+ use sha1::{Digest, Sha1};
++use std::sync::LazyLock;
+ 
+ fn field<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
+     args.get(key)
+@@ -11,6 +12,194 @@
+ }
+ fn whitespace(c: char) -> bool {
+     c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}')
++}
++
++struct ParagraphPatterns {
++    heading: regex::Regex,
++    list: regex::Regex,
++    thematic: regex::Regex,
++    html: regex::Regex,
++    reference: regex::Regex,
++    fence_open: regex::Regex,
++    fence_close: regex::Regex,
++}
++
++static PARAGRAPH_PATTERNS: LazyLock<ParagraphPatterns> = LazyLock::new(|| {
++    let pattern = |s| regex::Regex::new(s).expect("constant paragraph pattern");
++    ParagraphPatterns {
++        heading: pattern(r"^ {0,3}#{1,6}(?:[ \t]|$)"),
++        list: pattern(r"^ {0,3}(?:[-*+]|\d{1,9}[.)])[\s\x1c-\x1f]"),
++        thematic: pattern(r"^ {0,3}(?:-[ -]{2,}|\*[ *]{2,}|_[ _]{2,})[\s\x1c-\x1f]*$"),
++        html: pattern(concat!(
++            r"^ {0,3}(?:<(?:script|pre|style|textarea)(?:[\s\x1c-\x1f]|>|$)",
++            r"|<!--|<\?|<![a-z]|<!\[cdata\[",
++            r"|</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|",
++            r"col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|",
++            r"footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|",
++            r"link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|",
++            r"source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)",
++            r"(?:[\s\x1c-\x1f]|/?>|$))"
++        )),
++        reference: pattern(r"^ {0,3}\[[^\]\n]+\]:[\s\x1c-\x1f]*[^\s\x1c-\x1f]+"),
++        fence_open: pattern(r"^ {0,3}(`{3,}|~{3,})"),
++        fence_close: pattern(r"^ {0,3}([`~]{3,})[\s\x1c-\x1f]*$"),
++    }
++});
++
++impl ParagraphPatterns {
++    fn html(&self, line: &str) -> bool {
++        // Python IGNORECASE for the ASCII tag patterns also folds these four
++        // Unicode letters; Rust regex's case folding is not identical.
++        let folded: String = line
++            .chars()
++            .map(|c| match c {
++                'İ' | 'ı' => 'i',
++                'ſ' => 's',
++                'K' => 'k',
++                _ => c.to_ascii_lowercase(),
++            })
++            .collect();
++        self.html.is_match(&folded)
++    }
++
++    fn structural(&self, line: &str) -> bool {
++        let stripped = line.trim_start_matches(whitespace);
++        self.heading.is_match(line)
++            || self.list.is_match(line)
++            || stripped.starts_with(['>', '|'])
++            || self.thematic.is_match(line)
++            || self.html(line)
++            || self.reference.is_match(line)
++            || self.fence_open.is_match(line)
++    }
++
++    fn container(&self, line: &str) -> bool {
++        self.list.is_match(line)
++            || line.trim_start_matches(whitespace).starts_with('>')
++            || self.html(line)
++    }
++}
++
++/// Python str.splitlines without keepends. CRLF is one delimiter; a terminal
++/// delimiter does not add an empty item. U+001F is whitespace, not a delimiter.
++fn paragraph_lines(body: &str) -> Vec<&str> {
++    let mut result = Vec::new();
++    let mut start = 0;
++    let mut chars = body.char_indices().peekable();
++    while let Some((index, c)) = chars.next() {
++        if matches!(
++            c,
++            '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{1c}'
++                ..='\u{1e}' | '\u{85}' | '\u{2028}' | '\u{2029}'
++        ) {
++            result.push(&body[start..index]);
++            start = index + c.len_utf8();
++            if c == '\r' && chars.peek().is_some_and(|(_, c)| *c == '\n') {
++                chars.next();
++                start += 1;
++            }
++        }
++    }
++    if start < body.len() {
++        result.push(&body[start..]);
++    }
++    result
++}
++
++fn paragraph_indented(line: &str) -> bool {
++    line.starts_with("    ") || line.starts_with('\t')
++}
++
++fn normalize_paragraphs(body: &str, terminators: &str, wrappers: &str) -> String {
++    let patterns = &*PARAGRAPH_PATTERNS;
++    let nl = if body.contains("\r\n") { "\r\n" } else { "\n" };
++    let mut out = Vec::<String>::new();
++    let mut fence: Option<&str> = None;
++    let mut container = false;
++    let mut indented = false;
++    let mut continuation_pending = false;
++    for line in paragraph_lines(body) {
++        if let Some(opener) = fence {
++            out.push(line.to_owned());
++            if let Some(m) = patterns.fence_close.captures(line) {
++                let closer = m.get(1).unwrap().as_str();
++                if closer.as_bytes()[0] == opener.as_bytes()[0] && closer.len() >= opener.len() {
++                    fence = None;
++                }
++            }
++            continue;
++        }
++        if let Some(m) = patterns.fence_open.captures(line) {
++            out.push(line.to_owned());
++            fence = Some(m.get(1).unwrap().as_str());
++            indented = false;
++            continue;
++        }
++        if line.trim_matches(whitespace).is_empty() {
++            out.push(line.to_owned());
++            if container {
++                continuation_pending = true;
++            }
++            container = false;
++            indented = false;
++            continue;
++        }
++        if continuation_pending {
++            continuation_pending = false;
++            if line.starts_with([' ', '\t']) {
++                container = true;
++            }
++        }
++        if paragraph_indented(line)
++            && (indented
++                || out.last().is_none_or(|prev| {
++                    prev.trim_matches(whitespace).is_empty() || patterns.structural(prev)
++                }))
++        {
++            out.push(line.to_owned());
++            indented = true;
++            continue;
++        }
++        indented = false;
++        if patterns.structural(line) {
++            out.push(line.to_owned());
++            container = patterns.container(line);
++            continue;
++        }
++        let Some(prev) = out.last_mut() else {
++            out.push(line.to_owned());
++            continue;
++        };
++        let tail = prev
++            .trim_end_matches(whitespace)
++            .trim_end_matches(|c| wrappers.contains(c));
++        let terminated = tail.chars().last().is_none_or(|c| terminators.contains(c));
++        if container
++            || prev.trim_matches(whitespace).is_empty()
++            || patterns.structural(prev)
++            || paragraph_indented(prev)
++            || terminated
++        {
++            out.push(line.to_owned());
++        } else {
++            *prev = format!(
++                "{}{}",
++                prev.trim_end_matches(whitespace),
++                line.trim_start_matches(whitespace)
++            );
++        }
++    }
++    let mut trail = 0;
++    let mut original = body;
++    while let Some(prefix) = original
++        .strip_suffix("\r\n")
++        .or_else(|| original.strip_suffix('\n'))
++    {
++        original = prefix;
++        trail += 1;
++    }
++    let joined = out.join(nl);
++    format!("{}{}", joined.trim_end_matches(nl), nl.repeat(trail))
+ }
+ 
+ fn headings(body: &str) -> Vec<Value> {
+@@ -138,6 +327,11 @@
+         return Err(Error::Invalid("utility arguments must be an object".into()));
+     }
+     match action {
++        "normalize_paragraphs" => Ok(json!(normalize_paragraphs(
++            field(args, "body")?,
++            field(args, "terminators")?,
++            field(args, "wrappers")?
++        ))),
+         "normalize_title" => Ok(json!(compat_kb::normalized_title(field(args, "text")?))),
+         "sha1" => Ok(json!(format!(
+             "{:x}",
+diff --git a/crates/llmbase-core/tests/compat_paragraphs.rs b/crates/llmbase-core/tests/compat_paragraphs.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/tests/compat_paragraphs.rs
+@@ -0,0 +1,37 @@
++use llmbase_core::compat_util::transform;
++use serde_json::{Value, json};
++
++#[test]
++fn frozen_legacy_paragraph_oracle() {
++    let oracle: Value = serde_json::from_str(include_str!(
++        "../../../tests/rust_migration/fixtures/paragraphs.json"
++    ))
++    .unwrap();
++    let cases = oracle["cases"].as_array().unwrap();
++    assert_eq!(cases.len(), 229);
++    for case in cases {
++        let result = transform(
++            "normalize_paragraphs",
++            &json!({
++                "body": case["body"], "terminators": case["terminators"],
++                "wrappers": case["wrappers"],
++            }),
++        )
++        .unwrap();
++        assert_eq!(result, case["expected"], "{}", case["name"]);
++    }
++}
++
++#[test]
++fn paragraph_arguments_are_strings_and_unknown_actions_fail() {
++    let args = json!({"body":"甲\n乙", "terminators":"。", "wrappers":"」"});
++    for name in ["body", "terminators", "wrappers"] {
++        let mut invalid = args.clone();
++        invalid.as_object_mut().unwrap().remove(name);
++        assert!(transform("normalize_paragraphs", &invalid).is_err());
++        invalid[name] = json!(42);
++        assert!(transform("normalize_paragraphs", &invalid).is_err());
++    }
++    assert!(transform("normalize_paragraphs", &json!([])).is_err());
++    assert!(transform("unknown", &args).is_err());
++}
+diff --git a/llmwiki/normalize.py b/llmwiki/normalize.py
+--- a/llmwiki/normalize.py
++++ b/llmwiki/normalize.py
+@@ -232,6 +232,12 @@
+     already consumed; callers needing word-boundary space can override
+     ``SENTENCE_TERMINATORS`` to include more punctuation).
+     """
++    from . import _native
++    if _native.available():
++        return _native.utility_transform("normalize_paragraphs", {
++            "body": body, "terminators": SENTENCE_TERMINATORS,
++            "wrappers": CLOSING_WRAPPERS,
++        })
+     nl = _line_ending(body)
+     lines = body.splitlines()
+     out: list[str] = []
+diff --git a/tests/rust_migration/test_native_paragraphs.py b/tests/rust_migration/test_native_paragraphs.py
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/test_native_paragraphs.py
+@@ -0,0 +1,66 @@
++"""Actual installed native paragraph normalization and live profile contracts."""
++import json
++from pathlib import Path
++
++import pytest
++
++from llmwiki import _native, normalize
++
++pytestmark = pytest.mark.skipif(not _native.available(), reason="native candidate required")
++
++
++def test_frozen_legacy_oracle_executes_in_rust_without_python_algorithm(monkeypatch):
++    def forbidden(*args, **kwargs):
++        raise AssertionError("legacy Python paragraph algorithm executed")
++    for name in ["_line_ending", "_is_structural", "_ends_with_terminator", "_preserve_trailing_newline"]:
++        monkeypatch.setattr(normalize, name, forbidden)
++    before = dict(_native._configured_roots)
++    oracle = json.loads((Path(__file__).parent / 'fixtures/paragraphs.json').read_text())
++    assert len(oracle['cases']) == 229
++    for case in oracle['cases']:
++        monkeypatch.setattr(normalize, 'SENTENCE_TERMINATORS', case['terminators'])
++        monkeypatch.setattr(normalize, 'CLOSING_WRAPPERS', case['wrappers'])
++        assert normalize.normalize_paragraphs(case['body']) == case['expected'], case['name']
++        trace = _native.last_trace()
++        assert trace['core'] == 'rust'
++        assert trace['operation'] == 'utility_normalize_paragraphs'
++        assert trace['adapter'] == 'llmbase_core::compat_util::transform'
++        assert trace['sequence'] > 0
++    assert _native._configured_roots == before
++
++
++def test_live_terminators_and_wrappers_are_read_on_every_call(monkeypatch):
++    monkeypatch.setattr(normalize, 'SENTENCE_TERMINATORS', '。')
++    monkeypatch.setattr(normalize, 'CLOSING_WRAPPERS', '')
++    assert normalize.normalize_paragraphs('甲，\n乙') == '甲，乙'
++    assert normalize.normalize_paragraphs('甲。』\n乙') == '甲。』乙'
++    monkeypatch.setattr(normalize, 'SENTENCE_TERMINATORS', '。，')
++    monkeypatch.setattr(normalize, 'CLOSING_WRAPPERS', '』')
++    assert normalize.normalize_paragraphs('甲，\n乙') == '甲，\n乙'
++    assert normalize.normalize_paragraphs('甲。』\n乙') == '甲。』\n乙'
++
++
++def test_native_invalid_dto_does_not_fall_back(monkeypatch):
++    normalize.normalize_paragraphs('甲\n乙')
++    monkeypatch.setattr(normalize, 'CLOSING_WRAPPERS', 42)
++    with pytest.raises(ValueError, match='wrappers must be a string'):
++        normalize.normalize_paragraphs('甲\n乙')
++    assert _native.last_trace() is None
++
++
++def test_explicit_unbuilt_development_fallback(monkeypatch):
++    monkeypatch.setattr(_native, 'available', lambda: False)
++    def forbidden(*args, **kwargs):
++        raise AssertionError('development fallback entered native transport')
++    monkeypatch.setattr(_native, 'utility_transform', forbidden)
++    assert normalize.normalize_paragraphs('甲，\n乙。\n\n') == '甲，乙。\n\n'
++
++
++def test_required_native_capability_error_is_not_swallowed(monkeypatch):
++    expected = _native.NativeCapabilityError('required extension absent')
++    def unavailable():
++        raise expected
++    monkeypatch.setattr(_native, 'available', unavailable)
++    with pytest.raises(_native.NativeCapabilityError) as caught:
++        normalize.normalize_paragraphs('甲\n乙')
++    assert caught.value is expected
+diff --git a/tests/rust_migration/fixtures/paragraphs.json b/tests/rust_migration/fixtures/paragraphs.json
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/fixtures/paragraphs.json
+@@ -0,0 +1,1650 @@
++{
++  "schema": 1,
++  "baseline_commit": "a7c4d9da764462e09c0769ecd8ba548a46d27e83",
++  "source_sha256": "b0411b409377b6c19fc0ecca29b07dd8481fe74b859f066029f00a92cd25c4e1",
++  "existing_tests": [
++    "test_paragraphs_merges_non_terminator_line",
++    "test_paragraphs_keeps_break_after_terminator",
++    "test_paragraphs_merges_chain_across_multiple_lines",
++    "test_paragraphs_preserves_blank_line_as_boundary",
++    "test_paragraphs_terminator_followed_by_closing_wrapper",
++    "test_paragraphs_does_not_merge_into_heading",
++    "test_paragraphs_does_not_merge_into_empty_heading",
++    "test_paragraphs_does_not_merge_heading_into_body",
++    "test_paragraphs_preserves_list_items",
++    "test_paragraphs_preserves_list_item_continuation",
++    "test_paragraphs_list_ends_on_blank_line",
++    "test_paragraphs_preserves_blockquote_continuation",
++    "test_paragraphs_preserves_html_block_inner",
++    "test_paragraphs_inline_html_does_not_open_block",
++    "test_paragraphs_preserves_link_reference_definition",
++    "test_paragraphs_preserves_indented_code_block",
++    "test_paragraphs_indented_code_ends_on_blank_line",
++    "test_paragraphs_preserves_tab_indented_code",
++    "test_paragraphs_indented_code_after_heading",
++    "test_paragraphs_line_after_indented_code_does_not_merge",
++    "test_paragraphs_fence_inside_list_keeps_container",
++    "test_paragraphs_multi_paragraph_list_item",
++    "test_paragraphs_multi_paragraph_list_item_deep",
++    "test_paragraphs_preserves_blockquote",
++    "test_paragraphs_preserves_table_row",
++    "test_paragraphs_preserves_thematic_break",
++    "test_paragraphs_preserves_fenced_code_verbatim",
++    "test_paragraphs_fence_opener_with_info_string",
++    "test_paragraphs_tilde_fences",
++    "test_paragraphs_preserves_missing_trailing_newline",
++    "test_paragraphs_preserves_multiple_trailing_newlines",
++    "test_paragraphs_mixed_endings_preserve_trailing_newline",
++    "test_paragraphs_lstrips_lazy_continuation",
++    "test_paragraphs_empty_input",
++    "test_paragraphs_preserves_crlf",
++    "test_paragraphs_override_terminators",
++    "test_paragraphs_default_constants_shape",
++    "test_paragraphs_then_heads_composes_cleanly"
++  ],
++  "cases": [
++    {
++      "name": "test_paragraphs_merges_non_terminator_line-0000",
++      "body": "甲曰，\n夫道者\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲曰，夫道者\n"
++    },
++    {
++      "name": "test_paragraphs_keeps_break_after_terminator-0001",
++      "body": "甲曰道也。\n乙曰德也。\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲曰道也。\n乙曰德也。\n"
++    },
++    {
++      "name": "test_paragraphs_merges_chain_across_multiple_lines-0002",
++      "body": "一，\n二，\n三，\n四。\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "一，二，三，四。\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_blank_line_as_boundary-0003",
++      "body": "甲曰，\n夫道者\n\n乙曰，\n夫德者\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲曰，夫道者\n\n乙曰，夫德者\n"
++    },
++    {
++      "name": "test_paragraphs_terminator_followed_by_closing_wrapper-0004",
++      "body": "甲曰『道』。\n乙答曰\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲曰『道』。\n乙答曰\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_into_heading-0005",
++      "body": "前一段，\n## 標題\n後一段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前一段，\n## 標題\n後一段\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_into_empty_heading-0006",
++      "body": "前一段，\n#\n後一段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前一段，\n#\n後一段\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_into_empty_heading-0007",
++      "body": "前一段，\n##\n後一段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前一段，\n##\n後一段\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_into_empty_heading-0008",
++      "body": "前一段，\n### \n後一段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前一段，\n### \n後一段\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_into_empty_heading-0009",
++      "body": "前一段，\n###### \n後一段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前一段，\n###### \n後一段\n"
++    },
++    {
++      "name": "test_paragraphs_does_not_merge_heading_into_body-0010",
++      "body": "## 標題\n後一段，\n續之\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "## 標題\n後一段，續之\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_list_items-0011",
++      "body": "一曰，\n- 道\n- 德\n續之\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "一曰，\n- 道\n- 德\n續之\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_list_item_continuation-0012",
++      "body": "- item\n  cont\nnext\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- item\n  cont\nnext\n"
++    },
++    {
++      "name": "test_paragraphs_list_ends_on_blank_line-0013",
++      "body": "- item\n  cont\n\n甲，\n乙\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- item\n  cont\n\n甲，乙\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_blockquote_continuation-0014",
++      "body": "> 引也\n續之\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "> 引也\n續之\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_html_block_inner-0015",
++      "body": "<div>\nfoo\nbar\n</div>\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\nfoo\nbar\n</div>\n"
++    },
++    {
++      "name": "test_paragraphs_inline_html_does_not_open_block-0016",
++      "body": "甲，\n<span>乙</span>\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，<span>乙</span>\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_link_reference_definition-0017",
++      "body": "前文，\n[ref]: https://example.com\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前文，\n[ref]: https://example.com\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_indented_code_block-0018",
++      "body": "前文。\n\n    code_a\n    code_b\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前文。\n\n    code_a\n    code_b\n"
++    },
++    {
++      "name": "test_paragraphs_indented_code_ends_on_blank_line-0019",
++      "body": "\n    a\n    b\n\n甲，\n乙\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n    a\n    b\n\n甲，乙\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_tab_indented_code-0020",
++      "body": "\n\tcode\n\tline\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n\tcode\n\tline\n"
++    },
++    {
++      "name": "test_paragraphs_indented_code_after_heading-0021",
++      "body": "# H\n    a\n    b\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "# H\n    a\n    b\n"
++    },
++    {
++      "name": "test_paragraphs_line_after_indented_code_does_not_merge-0022",
++      "body": "\n    a,\nnext,\nline\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n    a,\nnext,line\n"
++    },
++    {
++      "name": "test_paragraphs_fence_inside_list_keeps_container-0023",
++      "body": "- item\n  ```\n  code\n  ```\n  cont,\n  next\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- item\n  ```\n  code\n  ```\n  cont,\n  next\n"
++    },
++    {
++      "name": "test_paragraphs_multi_paragraph_list_item-0024",
++      "body": "- item\n\n  cont,\n  next\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- item\n\n  cont,\n  next\n"
++    },
++    {
++      "name": "test_paragraphs_multi_paragraph_list_item_deep-0025",
++      "body": "- item\n  first,\n\n  second,\n  third\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- item\n  first,\n\n  second,\n  third\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_blockquote-0026",
++      "body": "甲曰，\n> 引也\n乙答\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲曰，\n> 引也\n乙答\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_table_row-0027",
++      "body": "列也，\n| 甲 | 乙 |\n| -- | -- |\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "列也，\n| 甲 | 乙 |\n| -- | -- |\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_thematic_break-0028",
++      "body": "終也，\n---\n次段\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "終也，\n---\n次段\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_fenced_code_verbatim-0029",
++      "body": "前文，\n```\n甲曰，\n夫道者\n```\n後文\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前文，\n```\n甲曰，\n夫道者\n```\n後文\n"
++    },
++    {
++      "name": "test_paragraphs_fence_opener_with_info_string-0030",
++      "body": "```python\nx = 1\ny = 2\n```\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```python\nx = 1\ny = 2\n```\n"
++    },
++    {
++      "name": "test_paragraphs_tilde_fences-0031",
++      "body": "前文，\n~~~\n甲，\n乙\n~~~\n後文\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "前文，\n~~~\n甲，\n乙\n~~~\n後文\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_missing_trailing_newline-0032",
++      "body": "甲，\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，乙"
++    },
++    {
++      "name": "test_paragraphs_preserves_multiple_trailing_newlines-0033",
++      "body": "a\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "a\n\n"
++    },
++    {
++      "name": "test_paragraphs_preserves_multiple_trailing_newlines-0034",
++      "body": "甲，\n乙\n\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，乙\n\n\n"
++    },
++    {
++      "name": "test_paragraphs_mixed_endings_preserve_trailing_newline-0035",
++      "body": "a。\r\nb。\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "a。\r\nb。\r\n"
++    },
++    {
++      "name": "test_paragraphs_lstrips_lazy_continuation-0036",
++      "body": "甲，\n   乙\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，乙\n"
++    },
++    {
++      "name": "test_paragraphs_empty_input-0037",
++      "body": "",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": ""
++    },
++    {
++      "name": "test_paragraphs_preserves_crlf-0038",
++      "body": "甲，\r\n乙。\r\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，乙。\r\n"
++    },
++    {
++      "name": "test_paragraphs_override_terminators-0039",
++      "body": "甲，\n乙。\n",
++      "terminators": "。！？；.!?;，",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，\n乙。\n"
++    },
++    {
++      "name": "test_paragraphs_then_heads_composes_cleanly-0040",
++      "body": "#### 第一章 判教\n夫道者，\n萬物之始也。\n\n# 甲、釋義\n未終，\n續之。\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#### 第一章 判教\n夫道者，萬物之始也。\n\n# 甲、釋義\n未終，續之。\n"
++    },
++    {
++      "name": "adversarial-0-0041",
++      "body": "",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": ""
++    },
++    {
++      "name": "adversarial-1-0042",
++      "body": "\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n"
++    },
++    {
++      "name": "adversarial-2-0043",
++      "body": "\r",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": ""
++    },
++    {
++      "name": "adversarial-3-0044",
++      "body": "\r\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\r\n\r\n"
++    },
++    {
++      "name": "adversarial-4-0045",
++      "body": "甲\r乙\r",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲乙"
++    },
++    {
++      "name": "adversarial-5-0046",
++      "body": "甲\u001f乙\n丙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲\u001f乙丙"
++    },
++    {
++      "name": "adversarial-6-0047",
++      "body": "甲𠮷é\n  乙\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷é乙\n\n"
++    },
++    {
++      "name": "adversarial-7-0048",
++      "body": "「甲。」\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "「甲。」\n乙"
++    },
++    {
++      "name": "adversarial-8-0049",
++      "body": "。）』\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "。）』\n乙"
++    },
++    {
++      "name": "adversarial-9-0050",
++      "body": "```\n甲\n乙\n~~~\n```\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n甲\n乙\n~~~\n```\n甲乙"
++    },
++    {
++      "name": "adversarial-10-0051",
++      "body": "````\n甲\n```\n乙\n````\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "````\n甲\n```\n乙\n````\n甲乙"
++    },
++    {
++      "name": "adversarial-11-0052",
++      "body": "```\n甲\n`~`\n乙\n甲\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n甲\n`~`乙甲\n"
++    },
++    {
++      "name": "adversarial-12-0053",
++      "body": "~~~\n甲\n~`~\n乙\n甲",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "~~~\n甲\n~`~乙甲"
++    },
++    {
++      "name": "adversarial-13-0054",
++      "body": "- x\n\n\n  y\n z\n\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- x\n\n\n  y\n z\n\n甲乙"
++    },
++    {
++      "name": "adversarial-14-0055",
++      "body": "- x\n```\na\n```\ncontinuation\n\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "- x\n```\na\n```\ncontinuation\n\n甲乙"
++    },
++    {
++      "name": "adversarial-15-0056",
++      "body": "> x\n\n  y\nz\n\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "> x\n\n  y\nz\n\n甲乙"
++    },
++    {
++      "name": "adversarial-16-0057",
++      "body": "<div>\n</div>\n甲\n乙\n\n丙\n丁",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n</div>\n甲\n乙\n\n丙丁"
++    },
++    {
++      "name": "adversarial-17-0058",
++      "body": "<script>\n</script>\n甲\n乙\n\n丙\n丁",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<script>\n</script>\n甲\n乙\n\n丙丁"
++    },
++    {
++      "name": "adversarial-18-0059",
++      "body": "<scrİpt>\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<scrİpt>\n甲\n乙"
++    },
++    {
++      "name": "adversarial-19-0060",
++      "body": "<ſtyle>\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<ſtyle>\n甲\n乙"
++    },
++    {
++      "name": "adversarial-20-0061",
++      "body": "<span>甲</span>\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<span>甲</span>乙"
++    },
++    {
++      "name": "adversarial-21-0062",
++      "body": "<!-- x -->\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<!-- x -->\n甲\n乙"
++    },
++    {
++      "name": "adversarial-22-0063",
++      "body": "甲\n[字]: url\n乙\n丙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲\n[字]: url\n乙丙"
++    },
++    {
++      "name": "adversarial-23-0064",
++      "body": "##\n    code\nnext\nline",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "##\n    code\nnextline"
++    },
++    {
++      "name": "adversarial-24-0065",
++      "body": "####### title\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "####### title甲乙"
++    },
++    {
++      "name": "adversarial-25-0066",
++      "body": "###　title\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "###　title甲乙"
++    },
++    {
++      "name": "adversarial-26-0067",
++      "body": "١. item\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "١. item\n甲\n乙"
++    },
++    {
++      "name": "adversarial-27-0068",
++      "body": "１２） item\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "１２） item甲乙"
++    },
++    {
++      "name": "adversarial-28-0069",
++      "body": "    code\n甲\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n甲乙"
++    },
++    {
++      "name": "adversarial-29-0070",
++      "body": "甲\n    code\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲code乙"
++    },
++    {
++      "name": "adversarial-30-0071",
++      "body": "甲\n\t乙\n丙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲乙丙"
++    },
++    {
++      "name": "adversarial-31-0072",
++      "body": "甲\n---\n乙\n丙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲\n---\n乙丙"
++    },
++    {
++      "name": "adversarial-32-0073",
++      "body": "甲\n- - -\n乙\n丙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲\n- - -\n乙\n丙"
++    },
++    {
++      "name": "adversarial-33-0074",
++      "body": " 甲\n 乙\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " 甲乙\n"
++    },
++    {
++      "name": "adversarial-34-0075",
++      "body": "甲𠮷\n  乙。\n丙\n\n丁\n戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-35-0076",
++      "body": "甲𠮷\n  乙。\n丙\n\n丁\n戊\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊\n"
++    },
++    {
++      "name": "adversarial-36-0077",
++      "body": "甲𠮷\n  乙。\n丙\n\n丁\n戊\n\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊\n\n\n"
++    },
++    {
++      "name": "adversarial-37-0078",
++      "body": "甲𠮷\r\n  乙。\r\n丙\r\n\r\n丁\r\n戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\r\n丙\r\n\r\n丁戊"
++    },
++    {
++      "name": "adversarial-38-0079",
++      "body": "甲𠮷\r\n  乙。\r\n丙\r\n\r\n丁\r\n戊\r\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\r\n丙\r\n\r\n丁戊\r\n"
++    },
++    {
++      "name": "adversarial-39-0080",
++      "body": "甲𠮷\r\n  乙。\r\n丙\r\n\r\n丁\r\n戊\r\n\r\n\r\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\r\n丙\r\n\r\n丁戊\r\n\r\n\r\n"
++    },
++    {
++      "name": "adversarial-40-0081",
++      "body": "甲𠮷\r  乙。\r丙\r\r丁\r戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-41-0082",
++      "body": "甲𠮷\r  乙。\r丙\r\r丁\r戊\r",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-42-0083",
++      "body": "甲𠮷\r  乙。\r丙\r\r丁\r戊\r\r\r",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-43-0084",
++      "body": "甲𠮷\u000b  乙。\u000b丙\u000b\u000b丁\u000b戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-44-0085",
++      "body": "甲𠮷\u000b  乙。\u000b丙\u000b\u000b丁\u000b戊\u000b",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-45-0086",
++      "body": "甲𠮷\u000b  乙。\u000b丙\u000b\u000b丁\u000b戊\u000b\u000b\u000b",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-46-0087",
++      "body": "甲𠮷\f  乙。\f丙\f\f丁\f戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-47-0088",
++      "body": "甲𠮷\f  乙。\f丙\f\f丁\f戊\f",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-48-0089",
++      "body": "甲𠮷\f  乙。\f丙\f\f丁\f戊\f\f\f",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-49-0090",
++      "body": "甲𠮷\u001c  乙。\u001c丙\u001c\u001c丁\u001c戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-50-0091",
++      "body": "甲𠮷\u001c  乙。\u001c丙\u001c\u001c丁\u001c戊\u001c",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-51-0092",
++      "body": "甲𠮷\u001c  乙。\u001c丙\u001c\u001c丁\u001c戊\u001c\u001c\u001c",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-52-0093",
++      "body": "甲𠮷\u001d  乙。\u001d丙\u001d\u001d丁\u001d戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-53-0094",
++      "body": "甲𠮷\u001d  乙。\u001d丙\u001d\u001d丁\u001d戊\u001d",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-54-0095",
++      "body": "甲𠮷\u001d  乙。\u001d丙\u001d\u001d丁\u001d戊\u001d\u001d\u001d",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-55-0096",
++      "body": "甲𠮷\u001e  乙。\u001e丙\u001e\u001e丁\u001e戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-56-0097",
++      "body": "甲𠮷\u001e  乙。\u001e丙\u001e\u001e丁\u001e戊\u001e",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-57-0098",
++      "body": "甲𠮷\u001e  乙。\u001e丙\u001e\u001e丁\u001e戊\u001e\u001e\u001e",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-58-0099",
++      "body": "甲𠮷  乙。丙丁戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-59-0100",
++      "body": "甲𠮷  乙。丙丁戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-60-0101",
++      "body": "甲𠮷  乙。丙丁戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-61-0102",
++      "body": "甲𠮷   乙。 丙  丁 戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-62-0103",
++      "body": "甲𠮷   乙。 丙  丁 戊 ",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-63-0104",
++      "body": "甲𠮷   乙。 丙  丁 戊   ",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-64-0105",
++      "body": "甲𠮷   乙。 丙  丁 戊",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-65-0106",
++      "body": "甲𠮷   乙。 丙  丁 戊 ",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "adversarial-66-0107",
++      "body": "甲𠮷   乙。 丙  丁 戊   ",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷乙。\n丙\n\n丁戊"
++    },
++    {
++      "name": "live-overrides-0108",
++      "body": "甲，\n乙",
++      "terminators": "",
++      "wrappers": "",
++      "expected": "甲，乙"
++    },
++    {
++      "name": "live-overrides-0109",
++      "body": "甲。』\n乙",
++      "terminators": "",
++      "wrappers": "",
++      "expected": "甲。』乙"
++    },
++    {
++      "name": "live-overrides-0110",
++      "body": "甲𠮷🙂\n乙",
++      "terminators": "",
++      "wrappers": "",
++      "expected": "甲𠮷🙂乙"
++    },
++    {
++      "name": "live-overrides-0111",
++      "body": "』\n乙",
++      "terminators": "",
++      "wrappers": "",
++      "expected": "』乙"
++    },
++    {
++      "name": "live-overrides-0112",
++      "body": "甲。 \n乙",
++      "terminators": "",
++      "wrappers": "",
++      "expected": "甲。乙"
++    },
++    {
++      "name": "live-overrides-0113",
++      "body": "甲，\n乙",
++      "terminators": "，",
++      "wrappers": "",
++      "expected": "甲，\n乙"
++    },
++    {
++      "name": "live-overrides-0114",
++      "body": "甲。』\n乙",
++      "terminators": "，",
++      "wrappers": "",
++      "expected": "甲。』乙"
++    },
++    {
++      "name": "live-overrides-0115",
++      "body": "甲𠮷🙂\n乙",
++      "terminators": "，",
++      "wrappers": "",
++      "expected": "甲𠮷🙂乙"
++    },
++    {
++      "name": "live-overrides-0116",
++      "body": "』\n乙",
++      "terminators": "，",
++      "wrappers": "",
++      "expected": "』乙"
++    },
++    {
++      "name": "live-overrides-0117",
++      "body": "甲。 \n乙",
++      "terminators": "，",
++      "wrappers": "",
++      "expected": "甲。乙"
++    },
++    {
++      "name": "live-overrides-0118",
++      "body": "甲，\n乙",
++      "terminators": "。",
++      "wrappers": "』",
++      "expected": "甲，乙"
++    },
++    {
++      "name": "live-overrides-0119",
++      "body": "甲。』\n乙",
++      "terminators": "。",
++      "wrappers": "』",
++      "expected": "甲。』\n乙"
++    },
++    {
++      "name": "live-overrides-0120",
++      "body": "甲𠮷🙂\n乙",
++      "terminators": "。",
++      "wrappers": "』",
++      "expected": "甲𠮷🙂乙"
++    },
++    {
++      "name": "live-overrides-0121",
++      "body": "』\n乙",
++      "terminators": "。",
++      "wrappers": "』",
++      "expected": "』\n乙"
++    },
++    {
++      "name": "live-overrides-0122",
++      "body": "甲。 \n乙",
++      "terminators": "。",
++      "wrappers": "』",
++      "expected": "甲。 \n乙"
++    },
++    {
++      "name": "live-overrides-0123",
++      "body": "甲，\n乙",
++      "terminators": "𠮷",
++      "wrappers": "🙂",
++      "expected": "甲，乙"
++    },
++    {
++      "name": "live-overrides-0124",
++      "body": "甲。』\n乙",
++      "terminators": "𠮷",
++      "wrappers": "🙂",
++      "expected": "甲。』乙"
++    },
++    {
++      "name": "live-overrides-0125",
++      "body": "甲𠮷🙂\n乙",
++      "terminators": "𠮷",
++      "wrappers": "🙂",
++      "expected": "甲𠮷🙂\n乙"
++    },
++    {
++      "name": "live-overrides-0126",
++      "body": "』\n乙",
++      "terminators": "𠮷",
++      "wrappers": "🙂",
++      "expected": "』乙"
++    },
++    {
++      "name": "live-overrides-0127",
++      "body": "甲。 \n乙",
++      "terminators": "𠮷",
++      "wrappers": "🙂",
++      "expected": "甲。乙"
++    },
++    {
++      "name": "live-overrides-0128",
++      "body": "甲，\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，乙"
++    },
++    {
++      "name": "live-overrides-0129",
++      "body": "甲。』\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲。』\n乙"
++    },
++    {
++      "name": "live-overrides-0130",
++      "body": "甲𠮷🙂\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲𠮷🙂乙"
++    },
++    {
++      "name": "live-overrides-0131",
++      "body": "』\n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "』\n乙"
++    },
++    {
++      "name": "live-overrides-0132",
++      "body": "甲。 \n乙",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲。 \n乙"
++    },
++    {
++      "name": "fixed-seed-0-0133",
++      "body": "乙。\n甲，\n|a|",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "乙。\n甲，\n|a|"
++    },
++    {
++      "name": "fixed-seed-1-0134",
++      "body": "#\n  cont\n乙。\n\n~~~\n</div>\n- item\n- item\n \n\tcode\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n  cont乙。\n\n~~~\n</div>\n- item\n- item\n \n\tcode\n\n"
++    },
++    {
++      "name": "fixed-seed-2-0135",
++      "body": "   ```x\n[ref]: /x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "   ```x\n[ref]: /x\n\n"
++    },
++    {
++      "name": "fixed-seed-3-0136",
++      "body": "|a|\n---\n<div>\n#\n## h",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "|a|\n---\n<div>\n#\n## h"
++    },
++    {
++      "name": "fixed-seed-4-0137",
++      "body": "```\n~~~\n> quote\n- item\n```\n甲，\n\tcode\n~~~\n[ref]: /x\n> quote\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n~~~\n> quote\n- item\n```\n甲，code\n~~~\n[ref]: /x\n> quote\n\n"
++    },
++    {
++      "name": "fixed-seed-5-0138",
++      "body": "𠮷é\n#\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "𠮷é\n#\n\n"
++    },
++    {
++      "name": "fixed-seed-6-0139",
++      "body": "١. item\n</div>\n#\n\tcode\n١. item\n\n[ref]: /x\n \n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "١. item\n</div>\n#\n\tcode\n١. item\n\n[ref]: /x\n \n"
++    },
++    {
++      "name": "fixed-seed-7-0140",
++      "body": "#\n#\n## h\n𠮷é\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n#\n## h\n𠮷é\n"
++    },
++    {
++      "name": "fixed-seed-8-0141",
++      "body": "[ref]: /x\n乙。\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "[ref]: /x\n乙。\n"
++    },
++    {
++      "name": "fixed-seed-9-0142",
++      "body": "> quote\n   ```x\n\tcode\n١. item\n乙。\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "> quote\n   ```x\n\tcode\n١. item\n乙。\n\n"
++    },
++    {
++      "name": "fixed-seed-10-0143",
++      "body": " \n~~~\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n~~~\n"
++    },
++    {
++      "name": "fixed-seed-11-0144",
++      "body": "|a|\n乙。\n|a|\n- item\n## h\n  cont\n<span>x</span>\n<div>\n    code\n𠮷é",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "|a|\n乙。\n|a|\n- item\n## h\n  cont<span>x</span>\n<div>\n    code\n𠮷é"
++    },
++    {
++      "name": "fixed-seed-12-0145",
++      "body": "~~~\n \n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "~~~\n \n"
++    },
++    {
++      "name": "fixed-seed-13-0146",
++      "body": "\tcode\n<div>\n    code\n> quote\n   ```x\n|a|\n[ref]: /x\n<span>x</span>\n[ref]: /x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n<div>\n    code\n> quote\n   ```x\n|a|\n[ref]: /x\n<span>x</span>\n[ref]: /x\n\n"
++    },
++    {
++      "name": "fixed-seed-14-0147",
++      "body": "\tcode\n   ```x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n   ```x\n\n"
++    },
++    {
++      "name": "fixed-seed-15-0148",
++      "body": " \n    code\n甲，\n|a|",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n    code\n甲，\n|a|"
++    },
++    {
++      "name": "fixed-seed-16-0149",
++      "body": "乙。\n   ```x\n- item\n</div>\n#\n#\n- item\n</div>\n١. item\n---\n甲，",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "乙。\n   ```x\n- item\n</div>\n#\n#\n- item\n</div>\n١. item\n---\n甲，"
++    },
++    {
++      "name": "fixed-seed-17-0150",
++      "body": "```\n> quote\n[ref]: /x\n   ```x\n<span>x</span>\n|a|\n</div>\n[ref]: /x\n#\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n> quote\n[ref]: /x\n   ```x\n<span>x</span>\n|a|\n</div>\n[ref]: /x\n#\n"
++    },
++    {
++      "name": "fixed-seed-18-0151",
++      "body": "   ```x\n甲，\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "   ```x\n甲，\n\n"
++    },
++    {
++      "name": "fixed-seed-19-0152",
++      "body": "</div>\n   ```x\n|a|\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "</div>\n   ```x\n|a|\n\n"
++    },
++    {
++      "name": "fixed-seed-20-0153",
++      "body": "```\n甲，\n١. item\n- item",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n甲，\n١. item\n- item"
++    },
++    {
++      "name": "fixed-seed-21-0154",
++      "body": "---\n---\n<span>x</span>\n[ref]: /x\n乙。\n</div>\n乙。\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "---\n---\n<span>x</span>\n[ref]: /x\n乙。\n</div>\n乙。\n\n"
++    },
++    {
++      "name": "fixed-seed-22-0155",
++      "body": "~~~\n~~~\n~~~\n<span>x</span>\n```\n> quote\n    code\n~~~",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "~~~\n~~~\n~~~\n<span>x</span>\n```\n> quote\n    code\n~~~"
++    },
++    {
++      "name": "fixed-seed-23-0156",
++      "body": "<div>\n|a|\n   ```x\n<div>\n\n\tcode\n甲，\n[ref]: /x\n<div>\n<div>\n---",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n|a|\n   ```x\n<div>\n\n\tcode\n甲，\n[ref]: /x\n<div>\n<div>\n---"
++    },
++    {
++      "name": "fixed-seed-24-0157",
++      "body": "<div>\n[ref]: /x\n\tcode\n---\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n[ref]: /x\n\tcode\n---\n"
++    },
++    {
++      "name": "fixed-seed-25-0158",
++      "body": " \n乙。",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n乙。"
++    },
++    {
++      "name": "fixed-seed-26-0159",
++      "body": "𠮷é\n𠮷é\n> quote\n    code\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "𠮷é𠮷é\n> quote\n    code\n"
++    },
++    {
++      "name": "fixed-seed-27-0160",
++      "body": "```\n \n\tcode\n#\n乙。\n## h\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n \n\tcode\n#\n乙。\n## h\n\n"
++    },
++    {
++      "name": "fixed-seed-28-0161",
++      "body": "\n甲，\n𠮷é\n[ref]: /x\n甲，\n~~~\n    code\n|a|\n<span>x</span>",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n甲，𠮷é\n[ref]: /x\n甲，\n~~~\n    code\n|a|\n<span>x</span>"
++    },
++    {
++      "name": "fixed-seed-29-0162",
++      "body": "    code\n---\n|a|",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n---\n|a|"
++    },
++    {
++      "name": "fixed-seed-30-0163",
++      "body": "  cont\n    code\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "  contcode\n"
++    },
++    {
++      "name": "fixed-seed-31-0164",
++      "body": "١. item\n|a|\n#\n\n---\n甲，\n</div>\n---\n甲，\n> quote\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "١. item\n|a|\n#\n\n---\n甲，\n</div>\n---\n甲，\n> quote\n\n"
++    },
++    {
++      "name": "fixed-seed-32-0165",
++      "body": "<span>x</span>\n#\n𠮷é\n<span>x</span>\n---\n甲，\n<div>",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<span>x</span>\n#\n𠮷é<span>x</span>\n---\n甲，\n<div>"
++    },
++    {
++      "name": "fixed-seed-33-0166",
++      "body": "#\n甲，\n```\n甲，\n- item\n   ```x\n١. item\n  cont\n## h\n\n\tcode\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n甲，\n```\n甲，\n- item\n   ```x\n١. item\n  cont\n## h\n\n\tcode\n"
++    },
++    {
++      "name": "fixed-seed-34-0167",
++      "body": "\tcode\n|a|\n乙。\n\tcode\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n|a|\n乙。\n\tcode\n"
++    },
++    {
++      "name": "fixed-seed-35-0168",
++      "body": "  cont\n## h\n  cont\n---\n\n## h\n#\n~~~\n甲，\n乙。\n---",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "  cont\n## h\n  cont\n---\n\n## h\n#\n~~~\n甲，\n乙。\n---"
++    },
++    {
++      "name": "fixed-seed-36-0169",
++      "body": "    code\n</div>\n\n> quote\n\tcode\n\n \n𠮷é\n<span>x</span>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n</div>\n\n> quote\n\tcode\n\n \n𠮷é<span>x</span>\n\n"
++    },
++    {
++      "name": "fixed-seed-37-0170",
++      "body": "|a|\n甲，\n<span>x</span>\n<span>x</span>\n<div>\n<div>\n乙。\n~~~\n|a|\n    code\n    code\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "|a|\n甲，<span>x</span><span>x</span>\n<div>\n<div>\n乙。\n~~~\n|a|\n    code\n    code\n\n"
++    },
++    {
++      "name": "fixed-seed-38-0171",
++      "body": "#\n</div>\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n</div>\n"
++    },
++    {
++      "name": "fixed-seed-39-0172",
++      "body": "<div>\n```\n[ref]: /x\n## h\n𠮷é\n> quote",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n```\n[ref]: /x\n## h\n𠮷é\n> quote"
++    },
++    {
++      "name": "fixed-seed-40-0173",
++      "body": "</div>\n## h\n \n<span>x</span>\n> quote\n   ```x\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "</div>\n## h\n \n<span>x</span>\n> quote\n   ```x\n"
++    },
++    {
++      "name": "fixed-seed-41-0174",
++      "body": "甲，\n## h\n𠮷é",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，\n## h\n𠮷é"
++    },
++    {
++      "name": "fixed-seed-42-0175",
++      "body": "\n- item\n  cont\n## h\n  cont\n   ```x\n乙。\n\n## h",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n- item\n  cont\n## h\n  cont\n   ```x\n乙。\n\n## h"
++    },
++    {
++      "name": "fixed-seed-43-0176",
++      "body": "</div>\n|a|\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "</div>\n|a|\n"
++    },
++    {
++      "name": "fixed-seed-44-0177",
++      "body": "|a|\n|a|\n- item\n- item",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "|a|\n|a|\n- item\n- item"
++    },
++    {
++      "name": "fixed-seed-45-0178",
++      "body": "    code\n甲，\n    code\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n甲，code\n"
++    },
++    {
++      "name": "fixed-seed-46-0179",
++      "body": " \n## h\n\tcode\n<div>\n---\n\n<span>x</span>\n> quote\n|a|\n<div>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n## h\n\tcode\n<div>\n---\n\n<span>x</span>\n> quote\n|a|\n<div>\n\n"
++    },
++    {
++      "name": "fixed-seed-47-0180",
++      "body": "## h\n> quote\n\n<span>x</span>\n---\n[ref]: /x\n<div>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "## h\n> quote\n\n<span>x</span>\n---\n[ref]: /x\n<div>\n\n"
++    },
++    {
++      "name": "fixed-seed-48-0181",
++      "body": " \n```\n---\n \n<span>x</span>\n    code\n   ```x\n---\n    code\n```\n  cont\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n```\n---\n \n<span>x</span>\n    code\n   ```x\n---\n    code\n```\n  cont\n"
++    },
++    {
++      "name": "fixed-seed-49-0182",
++      "body": "  cont\n    code\n> quote\n~~~\n|a|\n \n#\n```\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "  contcode\n> quote\n~~~\n|a|\n \n#\n```\n\n"
++    },
++    {
++      "name": "fixed-seed-50-0183",
++      "body": "> quote\n甲，\n   ```x\n \n```\n<span>x</span>",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "> quote\n甲，\n   ```x\n \n```\n<span>x</span>"
++    },
++    {
++      "name": "fixed-seed-51-0184",
++      "body": "   ```x\n## h\n## h\n甲，\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "   ```x\n## h\n## h\n甲，\n"
++    },
++    {
++      "name": "fixed-seed-52-0185",
++      "body": "١. item\n甲，\n#\n[ref]: /x\n𠮷é\n١. item\n𠮷é\n---\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "١. item\n甲，\n#\n[ref]: /x\n𠮷é\n١. item\n𠮷é\n---\n\n"
++    },
++    {
++      "name": "fixed-seed-53-0186",
++      "body": "乙。\n#\n- item\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "乙。\n#\n- item\n\n"
++    },
++    {
++      "name": "fixed-seed-54-0187",
++      "body": "---\n## h\n- item\n\n</div>\n    code\n   ```x\n  cont\n#\n    code\n ",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "---\n## h\n- item\n\n</div>\n    code\n   ```x\n  cont\n#\n    code\n "
++    },
++    {
++      "name": "fixed-seed-55-0188",
++      "body": " \n#\n```",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n#\n```"
++    },
++    {
++      "name": "fixed-seed-56-0189",
++      "body": "## h\n~~~\n> quote\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "## h\n~~~\n> quote\n\n"
++    },
++    {
++      "name": "fixed-seed-57-0190",
++      "body": "    code\n١. item\n```\n\n</div>\n١. item\n    code\n<span>x</span>",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n١. item\n```\n\n</div>\n١. item\n    code\n<span>x</span>"
++    },
++    {
++      "name": "fixed-seed-58-0191",
++      "body": "---\n---\n```\n\tcode\n١. item\n```\n~~~\n<span>x</span>\n<span>x</span>\n\tcode\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "---\n---\n```\n\tcode\n١. item\n```\n~~~\n<span>x</span>\n<span>x</span>\n\tcode\n"
++    },
++    {
++      "name": "fixed-seed-59-0192",
++      "body": "乙。\n甲，\n  cont\n## h\n   ```x\n## h\n𠮷é\n<span>x</span>",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "乙。\n甲，cont\n## h\n   ```x\n## h\n𠮷é\n<span>x</span>"
++    },
++    {
++      "name": "fixed-seed-60-0193",
++      "body": "[ref]: /x\n</div>\n~~~\n</div>\n#\n- item\n#\n  cont\n## h\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "[ref]: /x\n</div>\n~~~\n</div>\n#\n- item\n#\n  cont\n## h\n"
++    },
++    {
++      "name": "fixed-seed-61-0194",
++      "body": "<div>\n<div>\n- item\n[ref]: /x\n    code\n---\n\tcode\n#\n<div>\n١. item\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n<div>\n- item\n[ref]: /x\n    code\n---\n\tcode\n#\n<div>\n١. item\n"
++    },
++    {
++      "name": "fixed-seed-62-0195",
++      "body": "١. item\n甲，\n#\n<span>x</span>\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "١. item\n甲，\n#\n<span>x</span>\n"
++    },
++    {
++      "name": "fixed-seed-63-0196",
++      "body": "甲，\n   ```x\n- item\n甲，\n</div>\n𠮷é\n   ```x\n---\n甲，",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，\n   ```x\n- item\n甲，\n</div>\n𠮷é\n   ```x\n---\n甲，"
++    },
++    {
++      "name": "fixed-seed-64-0197",
++      "body": "#\n𠮷é\n#",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n𠮷é\n#"
++    },
++    {
++      "name": "fixed-seed-65-0198",
++      "body": "\tcode\n    code\n|a|\n|a|\n    code",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n    code\n|a|\n|a|\n    code"
++    },
++    {
++      "name": "fixed-seed-66-0199",
++      "body": "    code\n~~~\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "    code\n~~~\n\n"
++    },
++    {
++      "name": "fixed-seed-67-0200",
++      "body": "#\n## h\n  cont\n## h\n١. item\n## h\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n## h\n  cont\n## h\n١. item\n## h\n"
++    },
++    {
++      "name": "fixed-seed-68-0201",
++      "body": "<div>\n```\n甲，\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n```\n甲，\n"
++    },
++    {
++      "name": "fixed-seed-69-0202",
++      "body": "   ```x\n \n\n#\n𠮷é\n  cont\n---\n## h\n١. item\n𠮷é\n```\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "   ```x\n \n\n#\n𠮷é\n  cont\n---\n## h\n١. item\n𠮷é\n```\n"
++    },
++    {
++      "name": "fixed-seed-70-0203",
++      "body": "乙。\n---\n乙。\n<span>x</span>\n~~~\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "乙。\n---\n乙。\n<span>x</span>\n~~~\n\n"
++    },
++    {
++      "name": "fixed-seed-71-0204",
++      "body": "> quote\n乙。\n \n#\n   ```x\n```\n    code",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "> quote\n乙。\n \n#\n   ```x\n```\n    code"
++    },
++    {
++      "name": "fixed-seed-72-0205",
++      "body": "<div>\n   ```x\n\n---\n<div>\n<div>\n</div>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<div>\n   ```x\n\n---\n<div>\n<div>\n</div>\n\n"
++    },
++    {
++      "name": "fixed-seed-73-0206",
++      "body": "#\n   ```x\n乙。\n- item\n𠮷é\n\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n   ```x\n乙。\n- item\n𠮷é\n\n\n"
++    },
++    {
++      "name": "fixed-seed-74-0207",
++      "body": "```\n𠮷é",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n𠮷é"
++    },
++    {
++      "name": "fixed-seed-75-0208",
++      "body": " \n## h\n    code\n١. item\n## h\n  cont\n\tcode\n---\n[ref]: /x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n## h\n    code\n١. item\n## h\n  contcode\n---\n[ref]: /x\n\n"
++    },
++    {
++      "name": "fixed-seed-76-0209",
++      "body": "#\n  cont\n## h\n|a|\n~~~\n<div>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n  cont\n## h\n|a|\n~~~\n<div>\n\n"
++    },
++    {
++      "name": "fixed-seed-77-0210",
++      "body": "#\n\tcode\n乙。\n١. item\n   ```x\n> quote",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "#\n\tcode\n乙。\n١. item\n   ```x\n> quote"
++    },
++    {
++      "name": "fixed-seed-78-0211",
++      "body": "```\n## h\n١. item\n</div>\n\n    code\n> quote\n#\n\n  cont\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "```\n## h\n١. item\n</div>\n\n    code\n> quote\n#\n\n  cont\n\n"
++    },
++    {
++      "name": "fixed-seed-79-0212",
++      "body": "\tcode\n```\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n```\n\n"
++    },
++    {
++      "name": "fixed-seed-80-0213",
++      "body": "<span>x</span>\n> quote\n    code\n---\n[ref]: /x\n \n  cont\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<span>x</span>\n> quote\n    code\n---\n[ref]: /x\n \n  cont\n"
++    },
++    {
++      "name": "fixed-seed-81-0214",
++      "body": "\tcode\n   ```x\n~~~\n- item\n```\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n   ```x\n~~~\n- item\n```\n"
++    },
++    {
++      "name": "fixed-seed-82-0215",
++      "body": "---\n[ref]: /x\n甲，\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "---\n[ref]: /x\n甲，\n"
++    },
++    {
++      "name": "fixed-seed-83-0216",
++      "body": "<span>x</span>\n```\n\n\n---\n    code\n> quote\n<div>\n   ```x\n- item\n~~~\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<span>x</span>\n```\n\n\n---\n    code\n> quote\n<div>\n   ```x\n- item\n~~~\n\n"
++    },
++    {
++      "name": "fixed-seed-84-0217",
++      "body": "\tcode\n   ```x\n<div>\n#\n<div>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n   ```x\n<div>\n#\n<div>\n\n"
++    },
++    {
++      "name": "fixed-seed-85-0218",
++      "body": "~~~\n\n\n- item\n[ref]: /x\n</div>\n[ref]: /x\n \n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "~~~\n\n\n- item\n[ref]: /x\n</div>\n[ref]: /x\n \n\n"
++    },
++    {
++      "name": "fixed-seed-86-0219",
++      "body": "<span>x</span>\n\n١. item\n𠮷é\n \n𠮷é\n[ref]: /x\n|a|\n---\n- item",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "<span>x</span>\n\n١. item\n𠮷é\n \n𠮷é\n[ref]: /x\n|a|\n---\n- item"
++    },
++    {
++      "name": "fixed-seed-87-0220",
++      "body": "\tcode\n \n甲，\n\n \n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\tcode\n \n甲，\n\n \n"
++    },
++    {
++      "name": "fixed-seed-88-0221",
++      "body": "𠮷é\n   ```x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "𠮷é\n   ```x\n\n"
++    },
++    {
++      "name": "fixed-seed-89-0222",
++      "body": "甲，\n甲，\n\n١. item\n١. item\n[ref]: /x\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "甲，甲，\n\n١. item\n١. item\n[ref]: /x\n\n"
++    },
++    {
++      "name": "fixed-seed-90-0223",
++      "body": "\n甲，\n<span>x</span>\n|a|\n- item\n𠮷é\n  cont\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n甲，<span>x</span>\n|a|\n- item\n𠮷é\n  cont\n\n"
++    },
++    {
++      "name": "fixed-seed-91-0224",
++      "body": "  cont\n</div>\n乙。\n~~~\n    code\n\n   ```x\n\tcode\n١. item\n    code",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "  cont\n</div>\n乙。\n~~~\n    code\n\n   ```x\n\tcode\n١. item\n    code"
++    },
++    {
++      "name": "fixed-seed-92-0225",
++      "body": " \n<span>x</span>\n#\n|a|\n- item\n   ```x\n## h\n<span>x</span>\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": " \n<span>x</span>\n#\n|a|\n- item\n   ```x\n## h\n<span>x</span>\n\n"
++    },
++    {
++      "name": "fixed-seed-93-0226",
++      "body": "## h\n甲，\n    code\n## h\n|a|\n𠮷é\n   ```x\n\tcode\n- item\n</div>\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "## h\n甲，code\n## h\n|a|\n𠮷é\n   ```x\n\tcode\n- item\n</div>\n"
++    },
++    {
++      "name": "fixed-seed-94-0227",
++      "body": "\n甲，\n𠮷é",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "\n甲，𠮷é"
++    },
++    {
++      "name": "fixed-seed-95-0228",
++      "body": "</div>\n\n𠮷é\n---\n  cont\n\tcode\n[ref]: /x\n\tcode\n𠮷é\n\n",
++      "terminators": "。！？；.!?;",
++      "wrappers": "）」』】》〉)]}\"'",
++      "expected": "</div>\n\n𠮷é\n---\n  contcode\n[ref]: /x\n\tcode\n𠮷é\n\n"
++    }
++  ]
++}

@@ -1,0 +1,22 @@
+{
+  "crates/llmbase-core/src/compat_util.rs": {
+    "before": "fbf66821dc7937ca3a304e37593ed9eb5889d74953332d1f47d2ad36aab63fde",
+    "after": "211a37ea45dd0ad95bc0cb645940be828c69f9d07ebc2f741075647da5387a15"
+  },
+  "crates/llmbase-core/tests/compat_paragraphs.rs": {
+    "before": null,
+    "after": "68ff880e433e29eb78c103386b1b7a740b175274ca877a3c57b6647dc966473c"
+  },
+  "llmwiki/normalize.py": {
+    "before": "b0411b409377b6c19fc0ecca29b07dd8481fe74b859f066029f00a92cd25c4e1",
+    "after": "77818f8c973e5c1981c2335541fc860ec3c62664977ae9d1a7aef50640f8c5b6"
+  },
+  "tests/rust_migration/test_native_paragraphs.py": {
+    "before": null,
+    "after": "c1bf95da54d432cf78fa0bc5ede2bd978d07e3490c6d0d9f48c44780987201c2"
+  },
+  "tests/rust_migration/fixtures/paragraphs.json": {
+    "before": null,
+    "after": "d02ee222308ad13f54b8a176c97e8bfefff305c5a0414f1e0e6b43ea7026b11e"
+  }
+}

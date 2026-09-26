@@ -1,0 +1,8 @@
+Initial B12 recovery replay: git apply --check failed, exit128:
+error: corrupt patch at line2003
+
+Cause: the generic checkpoint packager used str.splitlines, which interprets
+literal Unicode line separators inside frozen JSON strings as patch lines.
+Primary corrected the packager to split on LF only and preserve no-EOL markers.
+No oracle or implementation bytes were changed. Regenerate then verify exact
+five-file replay; this initial failure must not be presented as a passing check.
