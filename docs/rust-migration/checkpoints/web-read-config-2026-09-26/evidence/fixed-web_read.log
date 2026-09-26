@@ -1,0 +1,13 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b8-web-read-config/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.96s
+     Running tests/web_read.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/web_read-9c6c61fce43ac98a)
+
+running 5 tests
+test public_trails_returns_only_true_empty_and_never_withholds_nonempty_as_empty ... ok
+test web_reads_fail_closed_after_unindexed_private_edit_and_filter_private_caches ... ok
+test web_config_whitelists_secrets_preserves_legacy_defaults_and_custom_language_views ... ok
+test web_source_literal_yaml_cap_loads_integer_and_preserves_raw_bytes ... ok
+test web_article_pagination_sections_raw_and_statistics_follow_real_content ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+

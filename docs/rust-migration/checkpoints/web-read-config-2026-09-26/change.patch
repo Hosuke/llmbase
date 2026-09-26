@@ -1,0 +1,57 @@
+diff --git a/crates/llmbase-core/tests/web_read.rs b/crates/llmbase-core/tests/web_read.rs
+--- a/crates/llmbase-core/tests/web_read.rs
++++ b/crates/llmbase-core/tests/web_read.rs
+@@ -27,9 +27,13 @@
+     )
+     .unwrap();
+     if let Some(config) = config {
++        // Write JSON (a supported config syntax) rather than serde_yaml output:
++        // serializing a serde_json::Value with arbitrary_precision through
++        // serde_yaml turns numbers into `$serde_json::private::Number` maps,
++        // so the loaded setting would not be an integer.
+         fs::write(
+             root.path().join("config.yaml"),
+-            serde_yaml::to_string(&config).unwrap(),
++            serde_json::to_string(&config).unwrap(),
+         )
+         .unwrap();
+     }
+@@ -114,6 +118,12 @@
+     let (_root, mut library) = fixture(Some(
+         json!({"sources":{"max_content_chars":3},"collections":{"practice":{"label":"Practice Collection"}}}),
+     ));
++    // The loaded cap must be a real integer, not an arbitrary_precision
++    // mapping such as {"$serde_json::private::Number":"3"}.
++    assert_eq!(
++        library.config.settings["sources"]["max_content_chars"].as_i64(),
++        Some(3)
++    );
+     let listed = call(&mut library, "web_articles", json!({}), false);
+     assert_eq!(listed["articles"].as_array().unwrap().len(), 2);
+     assert!(listed.get("total").is_none());
+@@ -252,3 +262,25 @@
+         1
+     );
+ }
++
++#[test]
++fn web_source_literal_yaml_cap_loads_integer_and_preserves_raw_bytes() {
++    let (root, library) = fixture(None);
++    drop(library);
++    fs::write(
++        root.path().join("config.yaml"),
++        "sources:\n  max_content_chars: 3\n",
++    )
++    .unwrap();
++    let mut library = Library::open(LibraryConfig::load(root.path(), "web").unwrap()).unwrap();
++    assert_eq!(
++        library.config.settings["sources"]["max_content_chars"].as_i64(),
++        Some(3)
++    );
++    let detail = call(&mut library, "web_source", json!({"slug":"book"}), false);
++    assert_eq!(detail["content"], "𠮷原典");
++    assert_eq!(
++        fs::read(root.path().join("raw/book/index.md")).unwrap(),
++        "---\ntitle: Original book\ntype: book\ncompiled: false\nwork: accepted\nlocal_path: /secret/operator/path\n---\n𠮷原典 body beyond limit.".as_bytes()
++    );
++}

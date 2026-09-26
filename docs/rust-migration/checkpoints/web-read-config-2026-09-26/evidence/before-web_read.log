@@ -1,0 +1,27 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b8-web-read-config/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.07s
+     Running tests/web_read.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/web_read-9c6c61fce43ac98a)
+
+running 4 tests
+test public_trails_returns_only_true_empty_and_never_withholds_nonempty_as_empty ... ok
+test web_reads_fail_closed_after_unindexed_private_edit_and_filter_private_caches ... ok
+test web_config_whitelists_secrets_preserves_legacy_defaults_and_custom_language_views ... ok
+test web_article_pagination_sections_raw_and_statistics_follow_real_content ... FAILED
+
+failures:
+
+---- web_article_pagination_sections_raw_and_statistics_follow_real_content stdout ----
+
+thread 'web_article_pagination_sections_raw_and_statistics_follow_real_content' (3988308) panicked at crates/llmbase-core/tests/web_read.rs:181:5:
+assertion `left == right` failed
+  left: String("𠮷原典 body beyond limit.")
+ right: "𠮷原典"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    web_article_pagination_sections_raw_and_statistics_follow_real_content
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `-p llmbase-core --test web_read`

@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/document_yaml_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/document_yaml_contracts-5876ea5f075f8e9b)
+
+running 8 tests
+test document_without_frontmatter_starts_body_at_zero ... ok
+test json_flow_metadata_is_accepted ... ok
+test cyclic_and_unresolved_aliases_are_rejected ... ok
+test malformed_yaml_is_rejected ... ok
+test plain_null_mapping_key_is_the_json_null_string_key ... ok
+test utf8_original_and_body_offsets_are_byte_exact ... ok
+test yaml11_plain_booleans_but_quoted_scalars_stay_strings ... ok
+test alias_expansion_bomb_is_bounded ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

@@ -1,0 +1,5 @@
+Standalone scratch outside parent Git worktree.
+before hashes: pass
+git apply --check: 0
+git apply: 0
+after and current source hashes: pass
