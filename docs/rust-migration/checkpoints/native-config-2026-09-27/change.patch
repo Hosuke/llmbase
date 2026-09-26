@@ -1,0 +1,961 @@
+diff --git a/crates/llmbase-core/src/compat_config.rs b/crates/llmbase-core/src/compat_config.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/src/compat_config.rs
+@@ -0,0 +1,212 @@
++//! Configuration filesystem orchestration. Format decoders are explicit hosts;
++//! native LibraryConfig uses the same reader with its native YAML decoder.
++use std::collections::HashSet;
++use std::fs;
++use std::io::{self, Read};
++use std::path::{Component, Path, PathBuf};
++
++pub const MAX_CONFIG_BYTES: usize = 16 * 1024 * 1024;
++pub const PATH_KEYS: [&str; 5] = ["raw", "wiki", "outputs", "meta", "concepts"];
++
++#[derive(Debug, thiserror::Error)]
++pub enum Failure {
++    #[error("configuration I/O at {path}: {source}")]
++    Io { path: PathBuf, source: io::Error },
++    #[error("{0}")]
++    Invalid(String),
++    #[error("symlink loop at {0}")]
++    SymlinkLoop(PathBuf),
++}
++
++fn io_at(path: &Path, source: io::Error) -> Failure {
++    Failure::Io {
++        path: path.to_owned(),
++        source,
++    }
++}
++
++impl From<Failure> for crate::Error {
++    fn from(value: Failure) -> Self {
++        match value {
++            Failure::Io { source, .. } => Self::Io(source),
++            other => Self::Invalid(other.to_string()),
++        }
++    }
++}
++
++/// A missing first observation selects defaults. A later open/read failure must
++/// propagate: a concurrently removed config must not silently change policy.
++pub fn read_bytes(base: &Path) -> Result<Option<Vec<u8>>, Failure> {
++    let path = base.join("config.yaml");
++    if path.as_os_str().as_encoded_bytes().contains(&0) {
++        return Ok(None); // pathlib.exists ignores unrepresentable names.
++    }
++    match fs::metadata(&path) {
++        Ok(_) => (),
++        Err(error)
++            if matches!(
++                error.kind(),
++                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
++            ) =>
++        {
++            return Ok(None);
++        }
++        // pathlib's initial exists() treats a symlink loop as missing. Resolve
++        // only on this exceptional path so normal reads do not add extra stats.
++        Err(_) if matches!(resolve_path(&path), Err(Failure::SymlinkLoop(_))) => return Ok(None),
++        Err(error) => return Err(io_at(&path, error)),
++    }
++    let file = fs::File::open(&path).map_err(|error| io_at(&path, error))?;
++    let mut bytes = Vec::new();
++    file.take(MAX_CONFIG_BYTES as u64 + 1)
++        .read_to_end(&mut bytes)
++        .map_err(|error| io_at(&path, error))?;
++    if bytes.len() > MAX_CONFIG_BYTES {
++        return Err(Failure::Invalid("config.yaml exceeds 16 MiB".into()));
++    }
++    Ok(Some(bytes))
++}
++
++/// Non-strict config path resolution, including missing suffixes and dangling
++/// links. This is not an authorization primitive; compat_io guards are separate.
++pub fn resolve_path(path: &Path) -> Result<PathBuf, Failure> {
++    if path.as_os_str().as_encoded_bytes().contains(&0) {
++        return Err(Failure::Invalid("embedded null byte".into()));
++    }
++    let current = if path.is_absolute() {
++        PathBuf::new()
++    } else {
++        std::env::current_dir().map_err(|error| io_at(path, error))?
++    };
++    let mut active = HashSet::new();
++    let mut budget = 4096_usize;
++    resolve_components(current, path, &mut active, &mut budget)
++}
++
++fn resolve_components(
++    mut current: PathBuf,
++    path: &Path,
++    active: &mut HashSet<PathBuf>,
++    budget: &mut usize,
++) -> Result<PathBuf, Failure> {
++    for part in path.components() {
++        if *budget == 0 || active.len() > 128 {
++            return Err(Failure::Invalid(
++                "configuration path resolution limit exceeded".into(),
++            ));
++        }
++        *budget -= 1;
++        match part {
++            Component::Prefix(prefix) => current = PathBuf::from(prefix.as_os_str()),
++            Component::RootDir => current.push(part.as_os_str()),
++            Component::CurDir => (),
++            Component::ParentDir => {
++                current.pop();
++            }
++            Component::Normal(name) => {
++                let next = current.join(name);
++                match fs::symlink_metadata(&next) {
++                    Ok(meta) if meta.file_type().is_symlink() => {
++                        if !active.insert(next.clone()) {
++                            return Err(Failure::SymlinkLoop(next));
++                        }
++                        let target = fs::read_link(&next).map_err(|error| io_at(&next, error))?;
++                        current = resolve_components(current, &target, active, budget)?;
++                        active.remove(&next);
++                    }
++                    Ok(_) => current = next,
++                    // Non-strict realpath retains inaccessible/missing names;
++                    // the eventual read/mkdir is responsible for its IO error.
++                    Err(_) => current = next,
++                }
++            }
++        }
++    }
++    Ok(current)
++}
++
++pub enum ReadStep<'a> {
++    Defaults,
++    Decode(&'a [u8]),
++    Path(&'static str),
++    ResolvedPath(&'static str, &'a Path),
++    Base(&'a Path),
++}
++
++/// Host keeps its document opaque. Each live lookup, truth test and assignment
++/// happens immediately, preserving alias identity and partial mutation on error.
++/// Returns true when the decoder was used, false when defaults were used.
++pub fn read_with<E: From<Failure>>(
++    base: &Path,
++    mut host: impl FnMut(ReadStep<'_>) -> Result<Option<PathBuf>, E>,
++) -> Result<bool, E> {
++    let bytes = read_bytes(base)?;
++    if let Some(bytes) = &bytes {
++        host(ReadStep::Decode(bytes))?;
++        for key in PATH_KEYS {
++            if let Some(path) = host(ReadStep::Path(key))? {
++                let resolved = resolve_path(&base.join(path))?;
++                host(ReadStep::ResolvedPath(key, &resolved))?;
++            }
++        }
++    } else {
++        host(ReadStep::Defaults)?;
++    }
++    host(ReadStep::Base(&resolve_path(base)?))?;
++    Ok(bytes.is_some())
++}
++
++pub fn default_paths(base: &Path) -> Result<[(&'static str, PathBuf); 5], Failure> {
++    let base = resolve_path(base)?;
++    Ok([
++        ("raw", base.join("raw")),
++        ("wiki", base.join("wiki")),
++        ("outputs", base.join("wiki/outputs")),
++        ("meta", base.join("wiki/_meta")),
++        ("concepts", base.join("wiki/concepts")),
++    ])
++}
++
++// Match recursive mkdir's error filename as well as its partial effects. Each
++// attempted ancestor is retained rather than flattening errors to the leaf.
++fn mkdir_parents(path: &Path) -> Result<(), Failure> {
++    let mut pending = vec![path.to_owned()];
++    let mut attempts = 0_usize;
++    while let Some(next) = pending.last().cloned() {
++        attempts += 1;
++        if attempts > 8192 {
++            return Err(Failure::Invalid(
++                "configuration directory depth limit exceeded".into(),
++            ));
++        }
++        match fs::create_dir(&next) {
++            Ok(()) => {
++                pending.pop();
++            }
++            Err(error) if error.kind() == io::ErrorKind::NotFound => {
++                let parent = next
++                    .parent()
++                    .filter(|p| !p.as_os_str().is_empty())
++                    .unwrap_or(Path::new("."));
++                if parent == next {
++                    return Err(io_at(&next, error));
++                }
++                pending.push(parent.to_owned());
++            }
++            Err(_) if next.is_dir() => {
++                pending.pop();
++            }
++            Err(error) => return Err(io_at(&next, error)),
++        }
++    }
++    Ok(())
++}
++
++pub fn ensure_dirs_with<E: From<Failure>>(
++    mut path_for: impl FnMut(&'static str) -> Result<PathBuf, E>,
++) -> Result<(), E> {
++    for key in PATH_KEYS {
++        mkdir_parents(&path_for(key)?)?;
++    }
++    Ok(())
++}
+diff --git a/crates/llmbase-core/src/config.rs b/crates/llmbase-core/src/config.rs
+--- a/crates/llmbase-core/src/config.rs
++++ b/crates/llmbase-core/src/config.rs
+@@ -19,9 +19,10 @@
+         let library_id = library_id.into();
+         validate_id(&library_id)?;
+         let base = base.as_ref().canonicalize()?;
+-        let path = base.join("config.yaml");
+-        let settings: Value = if path.exists() {
+-            crate::document::parse_metadata(&std::fs::read_to_string(path)?)?
++        let settings: Value = if let Some(bytes) = crate::compat_config::read_bytes(&base)? {
++            let text = String::from_utf8(bytes)
++                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
++            crate::document::parse_metadata(&text)?
+         } else {
+             serde_json::json!({})
+         };
+diff --git a/crates/llmbase-core/src/lib.rs b/crates/llmbase-core/src/lib.rs
+--- a/crates/llmbase-core/src/lib.rs
++++ b/crates/llmbase-core/src/lib.rs
+@@ -4,6 +4,7 @@
+ pub mod ask;
+ pub mod catalog;
+ pub mod compat_compile;
++pub mod compat_config;
+ pub mod compat_io;
+ pub mod compat_kb;
+ pub mod compat_maintenance;
+diff --git a/crates/llmbase-core/tests/compat_config.rs b/crates/llmbase-core/tests/compat_config.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/tests/compat_config.rs
+@@ -0,0 +1,134 @@
++use llmbase_core::LibraryConfig;
++use llmbase_core::compat_config::{self, Failure, MAX_CONFIG_BYTES, ReadStep};
++use std::fs;
++use std::path::PathBuf;
++use tempfile::tempdir;
++
++#[test]
++fn bounded_read_is_readonly_and_native_parser_keeps_its_contract() {
++    let dir = tempdir().unwrap();
++    assert!(compat_config::read_bytes(dir.path()).unwrap().is_none());
++    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
++    let path = dir.path().join("config.yaml");
++    fs::write(&path, "paths: {raw: custom}\nunknown: [kept, 7]\n").unwrap();
++    let cfg = LibraryConfig::load(dir.path(), "config-test").unwrap();
++    assert_eq!(cfg.raw, dir.path().join("custom"));
++    assert_eq!(cfg.concepts, dir.path().join("wiki/concepts"));
++    assert_eq!(cfg.settings["unknown"][1], 7);
++    assert!(!cfg.database().exists());
++    fs::write(&path, "[]").unwrap();
++    assert!(LibraryConfig::load(dir.path(), "config-test").is_err());
++    fs::write(&path, vec![b' '; MAX_CONFIG_BYTES]).unwrap();
++    assert_eq!(
++        compat_config::read_bytes(dir.path())
++            .unwrap()
++            .unwrap()
++            .len(),
++        MAX_CONFIG_BYTES
++    );
++    fs::write(&path, vec![b' '; MAX_CONFIG_BYTES + 1]).unwrap();
++    assert!(matches!(
++        compat_config::read_bytes(dir.path()),
++        Err(Failure::Invalid(_))
++    ));
++}
++
++#[test]
++fn native_defaults_and_host_steps_are_sequential() {
++    let dir = tempdir().unwrap();
++    let base = dir.path().join("missing/../library");
++    let paths = compat_config::default_paths(&base).unwrap();
++    assert_eq!(paths[0].1, dir.path().join("library/raw"));
++    assert!(!dir.path().join("library").exists());
++    let mut events = Vec::new();
++    let parsed = compat_config::read_with::<Failure>(&base, |step| {
++        events.push(match step {
++            ReadStep::Defaults => "defaults",
++            ReadStep::Base(_) => "base",
++            _ => panic!("unexpected existing step"),
++        });
++        Ok(None)
++    })
++    .unwrap();
++    assert!(!parsed);
++    assert_eq!(events, ["defaults", "base"]);
++
++    fs::write(dir.path().join("config.yaml"), "opaque bytes").unwrap();
++    events.clear();
++    assert!(
++        compat_config::read_with::<Failure>(dir.path(), |step| {
++            match step {
++                ReadStep::Decode(bytes) => {
++                    assert_eq!(bytes, b"opaque bytes");
++                    events.push("decode");
++                }
++                ReadStep::Path(key) => {
++                    events.push(key);
++                    return Ok((key == "raw").then(|| PathBuf::from("missing/../raw")));
++                }
++                ReadStep::ResolvedPath(key, path) => {
++                    assert_eq!(key, "raw");
++                    assert_eq!(path, dir.path().join("raw"));
++                    events.push("set-raw");
++                }
++                ReadStep::Base(path) => {
++                    assert_eq!(path, dir.path());
++                    events.push("base");
++                }
++                ReadStep::Defaults => panic!("not missing"),
++            }
++            Ok(None)
++        })
++        .unwrap()
++    );
++    assert_eq!(
++        events,
++        [
++            "decode", "raw", "set-raw", "wiki", "outputs", "meta", "concepts", "base"
++        ]
++    );
++}
++
++#[test]
++fn mkdir_failure_keeps_earlier_directories_and_stops_lookups() {
++    let dir = tempdir().unwrap();
++    fs::write(dir.path().join("wiki"), "file").unwrap();
++    let mut visited = Vec::new();
++    let error = compat_config::ensure_dirs_with::<Failure>(|key| {
++        visited.push(key);
++        Ok(dir.path().join(key))
++    })
++    .unwrap_err();
++    assert!(
++        matches!(error, Failure::Io { path, source } if path == dir.path().join("wiki") && source.kind() == std::io::ErrorKind::AlreadyExists)
++    );
++    assert_eq!(visited, ["raw", "wiki"]);
++    assert!(dir.path().join("raw").is_dir());
++    assert!(!dir.path().join("outputs").exists());
++}
++
++#[cfg(unix)]
++#[test]
++fn symlinks_resolve_before_parent_and_missing_components() {
++    use std::os::unix::fs::symlink;
++    let dir = tempdir().unwrap();
++    fs::create_dir_all(dir.path().join("target/deep")).unwrap();
++    symlink("target/deep", dir.path().join("alias")).unwrap();
++    symlink("not-here/deep", dir.path().join("dangling")).unwrap();
++    symlink("loop-b", dir.path().join("loop-a")).unwrap();
++    symlink("loop-a", dir.path().join("loop-b")).unwrap();
++    assert_eq!(
++        compat_config::resolve_path(&dir.path().join("alias/../missing/..")).unwrap(),
++        dir.path().join("target")
++    );
++    assert_eq!(
++        compat_config::resolve_path(&dir.path().join("dangling/..")).unwrap(),
++        dir.path().join("not-here")
++    );
++    assert!(matches!(
++        compat_config::resolve_path(&dir.path().join("loop-a")),
++        Err(Failure::SymlinkLoop(_))
++    ));
++    symlink("config.yaml", dir.path().join("config.yaml")).unwrap();
++    assert!(compat_config::read_bytes(dir.path()).unwrap().is_none());
++}
+diff --git a/crates/llmbase-python/src/config.rs b/crates/llmbase-python/src/config.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-python/src/config.rs
+@@ -0,0 +1,143 @@
++//! In-process config format host. Python documents never cross JSON: dates,
++//! arbitrary keys, shared mappings and recursive aliases retain their identity.
++use llmbase_core::compat_config::{self, Failure, ReadStep};
++use pyo3::exceptions::{PyOSError, PyRuntimeError, PyValueError};
++use pyo3::prelude::*;
++use pyo3::types::{PyBytes, PyDict};
++use serde_json::json;
++use std::path::PathBuf;
++
++enum BridgeError {
++    Native(Failure),
++    Python(PyErr),
++}
++impl From<Failure> for BridgeError {
++    fn from(value: Failure) -> Self {
++        Self::Native(value)
++    }
++}
++impl From<PyErr> for BridgeError {
++    fn from(value: PyErr) -> Self {
++        Self::Python(value)
++    }
++}
++impl BridgeError {
++    fn into_py(self) -> PyErr {
++        match self {
++            Self::Python(error) => error,
++            Self::Native(Failure::Io { path, source }) => PyOSError::new_err((
++                source.raw_os_error().unwrap_or(5),
++                source.to_string(),
++                path.into_os_string(),
++            )),
++            Self::Native(Failure::SymlinkLoop(path)) => {
++                PyRuntimeError::new_err(format!("Symlink loop from '{}'", path.display()))
++            }
++            Self::Native(Failure::Invalid(message)) => PyValueError::new_err(message),
++        }
++    }
++}
++fn native_error(error: Failure) -> PyErr {
++    BridgeError::Native(error).into_py()
++}
++
++#[pyfunction]
++fn config_read_run(
++    py: Python<'_>,
++    base: PathBuf,
++    decoder: Py<PyAny>,
++    defaults: Py<PyAny>,
++    path_coercer: Py<PyAny>,
++) -> PyResult<(Py<PyAny>, String)> {
++    py.detach(move || {
++        let mut document: Option<Py<PyAny>> = None;
++        let parsed = compat_config::read_with::<BridgeError>(&base, |step| {
++            Python::attach(|py| -> PyResult<Option<PathBuf>> {
++                match step {
++                    ReadStep::Defaults => document = Some(defaults.call0(py)?),
++                    ReadStep::Decode(bytes) => {
++                        document = Some(decoder.call1(py, (PyBytes::new(py, bytes),))?)
++                    }
++                    ReadStep::Path(key) => {
++                        let cfg = document.as_ref().expect("initialized document").bind(py);
++                        let paths = cfg.call_method1("get", ("paths", PyDict::new(py)))?;
++                        let path = paths.call_method1("get", (key,))?;
++                        if path.is_truthy()? {
++                            return Ok(Some(path_coercer.call1(py, (path,))?.extract(py)?));
++                        }
++                    }
++                    ReadStep::ResolvedPath(key, path) => {
++                        document
++                            .as_ref()
++                            .expect("initialized document")
++                            .bind(py)
++                            .get_item("paths")?
++                            .set_item(key, path.as_os_str())?;
++                    }
++                    ReadStep::Base(path) => {
++                        document
++                            .as_ref()
++                            .expect("initialized document")
++                            .bind(py)
++                            .set_item("base_dir", path.as_os_str())?;
++                    }
++                }
++                Ok(None)
++            })
++            .map_err(BridgeError::from)
++        })
++        .map_err(BridgeError::into_py)?;
++        Ok((
++            document.expect("successful read initialized document"),
++            json!({
++                "core":"rust", "operation":"config_read", "storage":"filesystem",
++                "adapter":"llmbase_core::compat_config::read_with",
++                "parser":if parsed {"python_yaml"} else {"defaults"}
++            })
++            .to_string(),
++        ))
++    })
++}
++
++#[pyfunction]
++fn config_default_paths(py: Python<'_>, base: PathBuf) -> PyResult<(Py<PyDict>, String)> {
++    let paths = py
++        .detach(move || compat_config::default_paths(&base))
++        .map_err(native_error)?;
++    let document = PyDict::new(py);
++    for (key, path) in paths {
++        document.set_item(key, path.as_os_str())?;
++    }
++    Ok((
++        document.unbind(),
++        json!({"core":"rust","operation":"config_default_paths",
++        "storage":"none","adapter":"llmbase_core::compat_config::default_paths"})
++        .to_string(),
++    ))
++}
++
++#[pyfunction]
++fn config_ensure_dirs(py: Python<'_>, cfg: Py<PyAny>, path_coercer: Py<PyAny>) -> PyResult<String> {
++    py.detach(move || {
++        compat_config::ensure_dirs_with::<BridgeError>(|key| {
++            Python::attach(|py| {
++                let path = cfg.bind(py).get_item("paths")?.get_item(key)?;
++                path_coercer.call1(py, (path,))?.extract::<PathBuf>(py)
++            })
++            .map_err(BridgeError::from)
++        })
++        .map_err(BridgeError::into_py)?;
++        Ok(
++            json!({"core":"rust","operation":"config_ensure_dirs","storage":"filesystem",
++            "adapter":"llmbase_core::compat_config::ensure_dirs_with"})
++            .to_string(),
++        )
++    })
++}
++
++pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
++    module.add_function(wrap_pyfunction!(config_read_run, module)?)?;
++    module.add_function(wrap_pyfunction!(config_default_paths, module)?)?;
++    module.add_function(wrap_pyfunction!(config_ensure_dirs, module)?)?;
++    Ok(())
++}
+diff --git a/crates/llmbase-python/src/lib.rs b/crates/llmbase-python/src/lib.rs
+--- a/crates/llmbase-python/src/lib.rs
++++ b/crates/llmbase-python/src/lib.rs
+@@ -1,5 +1,6 @@
+ //! Python transport only: every request enters the shared native application service.
+ mod compile;
++mod config;
+ mod fetch;
+ mod maintenance;
+ mod model;
+@@ -132,6 +133,7 @@
+     module.add_function(wrap_pyfunction!(with_writer, module)?)?;
+     model::register(module)?;
+     compile::register(module)?;
++    config::register(module)?;
+     pipeline::register(module)?;
+     query::register(module)?;
+     fetch::register(module)?;
+diff --git a/llmwiki/config.py b/llmwiki/config.py
+--- a/llmwiki/config.py
++++ b/llmwiki/config.py
+@@ -21,6 +21,38 @@
+     Internal helper for callers that only need effective configuration values:
+     registering an inferred root would pollute the library registry.
+     """
++    from . import _native
++    _native.clear_trace()
++    try:
++        if _native.available():
++            base = Path.cwd() if base_dir is None else base_dir
++            # Retain the Path-only public contract before crossing the ABI.
++            base / "config.yaml"
++            return _native.config_read_run(base, _decode_yaml,
++                                           lambda: _defaults(base), _path_value)
++        return _read_config_python(base_dir)
++    except BaseException:
++        _native.clear_trace()
++        raise
++
++
++def _decode_yaml(data: bytes):
++    # Explicit format plugin. Keep YAML types, alias identity and live safe_load;
++    # Rust owns reading/branching/path resolution, not this parser's semantics.
++    text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
++    return yaml.safe_load(text)
++
++
++def _path_value(value):
++    """Path coercion only; no filesystem operation or early batch validation."""
++    path = os.fspath(Path(value))
++    if "\0" in path:
++        raise ValueError("embedded null byte")
++    return path
++
++
++def _read_config_python(base_dir: Path | None = None) -> dict:
++    """Unbuilt checkout fallback; installed candidates fail closed."""
+     if base_dir is None:
+         base_dir = Path.cwd()
+     config_path = base_dir / "config.yaml"
+@@ -42,16 +74,31 @@
+ def _defaults(base_dir: Path | None = None) -> dict:
+     # Effective roots cross the native ABI as absolute paths. Keeping a relative
+     # base prefix here would make the native host join that prefix a second time.
+-    base = (Path(base_dir) if base_dir else Path.cwd()).resolve()
++    from . import _native
++    _native.clear_trace()
++    try:
++        base = Path(base_dir) if base_dir else Path.cwd()
++        if _native.available():
++            paths = _native.config_default_paths(base)
++        else:
++            base = base.resolve()
++            paths = {
++                "raw": str(base / "raw"), "wiki": str(base / "wiki"),
++                "outputs": str(base / "wiki" / "outputs"),
++                "meta": str(base / "wiki" / "_meta"),
++                "concepts": str(base / "wiki" / "concepts"),
++            }
++        return _default_policy(paths)
++    except BaseException:
++        _native.clear_trace()
++        raise
++
++
++def _default_policy(paths: dict) -> dict:
++    """Live Python profile policy; filesystem work belongs to the native core."""
+     return {
+         "llm": {"model": "claude-sonnet-4-6", "max_tokens": 16384},
+-        "paths": {
+-            "raw": str(base / "raw"),
+-            "wiki": str(base / "wiki"),
+-            "outputs": str(base / "wiki" / "outputs"),
+-            "meta": str(base / "wiki" / "_meta"),
+-            "concepts": str(base / "wiki" / "concepts"),
+-        },
++        "paths": paths,
+         "compile": {"batch_size": 10, "backlinks": True},
+         "search": {"port": 5555},
+         "lint": {"web_search": False},
+@@ -78,6 +125,19 @@
+ 
+ def ensure_dirs(cfg: dict):
+     """Create all configured directories if they don't exist."""
++    from . import _native
++    _native.clear_trace()
++    try:
++        if _native.available():
++            return _native.config_ensure_dirs(cfg, _path_value)
++        return _ensure_dirs_python(cfg)
++    except BaseException:
++        _native.clear_trace()
++        raise
++
++
++def _ensure_dirs_python(cfg: dict):
++    """Unbuilt checkout fallback."""
+     for key in ("raw", "wiki", "outputs", "meta", "concepts"):
+         Path(cfg["paths"][key]).mkdir(parents=True, exist_ok=True)
+ 
+diff --git a/llmwiki/_native.py b/llmwiki/_native.py
+--- a/llmwiki/_native.py
++++ b/llmwiki/_native.py
+@@ -104,6 +104,43 @@
+         action, json.dumps(args, ensure_ascii=False)))
+     _last_trace.set(result.get("trace"))
+     return result["value"]
++
++
++def config_read_run(base, decoder, defaults, path_coercer):
++    """Native IO/sequence, with an opaque live Python format document."""
++    clear_trace()
++    try:
++        value, receipt = _extension(required=True).config_read_run(
++            base, decoder, defaults, path_coercer)
++        trace = json.loads(receipt)
++    except BaseException:
++        clear_trace()
++        raise
++    _last_trace.set(trace)
++    return value
++
++
++def config_default_paths(base):
++    clear_trace()
++    try:
++        value, receipt = _extension(required=True).config_default_paths(base)
++        trace = json.loads(receipt)
++    except BaseException:
++        clear_trace()
++        raise
++    _last_trace.set(trace)
++    return value
++
++
++def config_ensure_dirs(cfg, path_coercer):
++    clear_trace()
++    try:
++        receipt = _extension(required=True).config_ensure_dirs(cfg, path_coercer)
++        trace = json.loads(receipt)
++    except BaseException:
++        clear_trace()
++        raise
++    _last_trace.set(trace)
+ 
+ 
+ def normalize_heads_run(body: str, callback=None):
+diff --git a/tests/rust_migration/test_native_config.py b/tests/rust_migration/test_native_config.py
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/test_native_config.py
+@@ -0,0 +1,204 @@
++"""Real config IO/ordering through the installed native candidate."""
++import builtins
++import os
++from pathlib import Path
++
++import pytest
++
++from llmwiki import _native, config
++
++pytestmark = pytest.mark.skipif(not _native.available(), reason="native candidate required")
++
++
++def test_native_read_and_mkdir_do_not_use_python_fallback_or_io(tmp_path, monkeypatch):
++    (tmp_path / "config.yaml").write_text("paths: {raw: raw, wiki: wiki, outputs: out, meta: meta, concepts: concepts}\nunknown: kept\n")
++    def poison(*args, **kwargs):
++        raise AssertionError("Python filesystem algorithm called")
++    with monkeypatch.context() as patch:
++        patch.setattr(config, "_read_config_python", poison)
++        patch.setattr(config, "_ensure_dirs_python", poison)
++        patch.setattr(builtins, "open", poison)
++        patch.setattr(Path, "mkdir", poison)
++        patch.setattr(Path, "resolve", poison)
++        cfg = config._read_config(tmp_path)
++        assert _native.last_trace()["operation"] == "config_read"
++        config.ensure_dirs(cfg)
++        assert _native.last_trace()["operation"] == "config_ensure_dirs"
++    assert cfg["unknown"] == "kept"
++    assert all(Path(p).is_dir() for p in cfg["paths"].values())
++    assert not list(tmp_path.rglob("*.sqlite3"))
++
++
++@pytest.mark.parametrize("document,kind", [
++    ("null", AttributeError), ("[]", AttributeError), ("42", AttributeError),
++    ("paths: null", AttributeError), ("paths: []", AttributeError),
++    ("paths: {raw: 42}", TypeError), ("paths: {raw: [bad]}", TypeError),
++    ("paths: {raw: 2024-01-02}", TypeError),
++])
++def test_invalid_document_order_and_no_success_trace(tmp_path, document, kind):
++    (tmp_path / "config.yaml").write_text(document)
++    config._defaults(tmp_path)
++    with pytest.raises(kind):
++        config._read_config(tmp_path)
++    assert _native.last_trace() is None
++    assert sorted(p.name for p in tmp_path.iterdir()) == ["config.yaml"]
++
++
++def test_live_parser_opaque_mapping_and_exact_mutation_order(tmp_path, monkeypatch):
++    (tmp_path / "config.yaml").write_bytes(b"ignored\r\nby parser\r")
++    events = []
++    class LivePath:
++        def __bool__(self):
++            events.append("truth")
++            return True
++        def __fspath__(self):
++            events.append("coerce")
++            return "raw"
++    class Paths(dict):
++        def get(self, key, default=None):
++            events.append(("get", key))
++            return super().get(key, default)
++        def __setitem__(self, key, value):
++            events.append(("set", key))
++            super().__setitem__(key, value)
++    paths = Paths(raw=LivePath(), wiki=None, outputs="", meta=False, concepts=0)
++    document = {"paths": paths, "same": paths}
++    document["self"] = document
++    def decode(text):
++        assert text == "ignored\nby parser\n"
++        return document
++    monkeypatch.setattr(config.yaml, "safe_load", decode)
++    assert config._read_config(tmp_path) is document
++    assert document["self"] is document and document["same"] is paths
++    assert events == [("get", "raw"), "truth", "coerce", ("set", "raw"),
++                      ("get", "wiki"), ("get", "outputs"), ("get", "meta"), ("get", "concepts")]
++
++
++@pytest.mark.parametrize("stage", ["parser", "defaults", "path", "mkdir"])
++def test_callback_exception_identity_and_nested_trace_cleanup(tmp_path, monkeypatch, stage):
++    marker = RuntimeError("original callback error")
++    def fail(*args):
++        _native.utility_transform("normalize_paragraphs", {"body": "", "terminators": ".", "wrappers": ""})
++        raise marker
++    if stage == "parser":
++        (tmp_path / "config.yaml").write_text("{}")
++        monkeypatch.setattr(config.yaml, "safe_load", fail)
++    elif stage == "defaults":
++        monkeypatch.setattr(config, "_defaults", fail)
++    elif stage == "path":
++        (tmp_path / "config.yaml").write_text("paths: {raw: raw}")
++        monkeypatch.setattr(config, "_path_value", fail)
++    else:
++        monkeypatch.setattr(config, "_path_value", fail)
++    with pytest.raises(RuntimeError) as caught:
++        if stage == "mkdir":
++            config.ensure_dirs({"paths": {"raw": "raw"}})
++        else:
++            config._read_config(tmp_path)
++    assert caught.value is marker
++    assert _native.last_trace() is None
++
++
++def test_live_defaults_are_only_called_for_missing_file_and_not_normalized(tmp_path, monkeypatch):
++    calls = []
++    document = {"paths": {"raw": "keep-relative"}, "opaque": object()}
++    def defaults(base):
++        calls.append(base)
++        return document
++    monkeypatch.setattr(config, "_defaults", defaults)
++    assert config._read_config(tmp_path) is document
++    assert calls == [tmp_path]
++    assert document["paths"]["raw"] == "keep-relative"
++    (tmp_path / "config.yaml").write_text("unknown: true")
++    assert config._read_config(tmp_path) == {"unknown": True, "base_dir": str(tmp_path)}
++    assert calls == [tmp_path]
++
++
++def test_native_io_retains_os_error_fields_and_partial_mkdir(tmp_path):
++    (tmp_path / "config.yaml").mkdir()
++    with pytest.raises(IsADirectoryError) as caught:
++        config._read_config(tmp_path)
++    assert caught.value.errno == 21
++    assert str(caught.value.filename) == str(tmp_path / "config.yaml")
++    assert isinstance(caught.value.filename, str)
++    cfg = {"paths": {"raw": str(tmp_path / "raw"), "wiki": str(tmp_path / "blocker"), "outputs": str(tmp_path / "later")}}
++    (tmp_path / "blocker").write_text("file")
++    with pytest.raises(FileExistsError) as caught:
++        config.ensure_dirs(cfg)
++    assert caught.value.errno == 17
++    assert str(caught.value.filename) == str(tmp_path / "blocker")
++    assert isinstance(caught.value.filename, str)
++    assert (tmp_path / "raw").is_dir() and not (tmp_path / "later").exists()
++    assert _native.last_trace() is None
++
++
++def test_native_reader_rejects_oversize_before_decoder(tmp_path, monkeypatch):
++    (tmp_path / "config.yaml").write_bytes(b" " * (16 * 1024 * 1024 + 1))
++    def decoder(_):
++        raise AssertionError("oversize reached decoder")
++    monkeypatch.setattr(config.yaml, "safe_load", decoder)
++    with pytest.raises(ValueError, match="16 MiB"):
++        config._read_config(tmp_path)
++    assert _native.last_trace() is None
++
++
++def test_load_registers_once_after_success_and_read_never_registers(tmp_path, monkeypatch):
++    calls = []
++    monkeypatch.setattr(_native, "register_config", lambda *args: calls.append(args))
++    config._read_config(tmp_path)
++    assert calls == []
++    cfg = config.load_config(tmp_path)
++    assert calls == [(cfg, tmp_path)]
++    (tmp_path / "config.yaml").write_text("null")
++    with pytest.raises(AttributeError):
++        config.load_config(tmp_path)
++    assert len(calls) == 1
++
++
++@pytest.mark.skipif(os.name != "posix", reason="POSIX surrogateescape filenames")
++def test_non_utf8_path_bytes_are_not_replaced(tmp_path):
++    base = tmp_path / os.fsdecode(b"library-\xff")
++    cfg = config._read_config(base)
++    assert cfg["base_dir"] == str(base)
++    assert cfg["paths"]["raw"] == str(base / "raw")
++    config.ensure_dirs(cfg)
++    (base / "config.yaml").write_text("paths: {raw: raw}\n")
++    assert config._read_config(base)["paths"]["raw"] == str(base / "raw")
++
++
++def test_embedded_null_path_fails_with_no_trace(tmp_path):
++    with pytest.raises(ValueError, match="null byte"):
++        config._read_config(tmp_path / "bad\0name")
++    assert _native.last_trace() is None
++
++
++def test_default_profile_failure_clears_nested_path_receipt(tmp_path, monkeypatch):
++    marker = RuntimeError("profile copy failed")
++    class BadProfile:
++        def __deepcopy__(self, memo):
++            raise marker
++    monkeypatch.setattr(config, "BUILTIN_LANGUAGES", BadProfile())
++    with pytest.raises(RuntimeError) as caught:
++        config._defaults(tmp_path)
++    assert caught.value is marker
++    assert _native.last_trace() is None
++
++
++@pytest.mark.parametrize("present", [False, True])
++def test_absolute_configuration_works_after_cwd_is_deleted(tmp_path, present):
++    base = tmp_path / "library"
++    base.mkdir()
++    if present:
++        (base / "config.yaml").write_text("paths: {raw: raw, wiki: wiki}\n")
++    previous = Path.cwd()
++    doomed = tmp_path / "cwd"
++    doomed.mkdir()
++    os.chdir(doomed)
++    doomed.rmdir()
++    try:
++        cfg = config._read_config(base)
++        assert cfg["base_dir"] == str(base)
++        assert cfg["paths"]["raw"] == str(base / "raw")
++        assert config._defaults(base)["paths"]["concepts"] == str(base / "wiki/concepts")
++    finally:
++        os.chdir(previous)
+diff --git a/docs/rust-migration/native-config.md b/docs/rust-migration/native-config.md
+new file mode 100644
+--- /dev/null
++++ b/docs/rust-migration/native-config.md
+@@ -0,0 +1,48 @@
++# Native configuration IO and format boundaries
++
++The Python `config._read_config` facade enters
++`llmbase_core::compat_config::read_with`. Rust reads `config.yaml`, chooses the
++missing/default or present/decoder branch, resolves configured paths one at a
++time, and assigns the final base directory. It never registers a library, creates
++directories or opens a database during a read. `load_config` explicitly publishes
++the completed config through the existing Python registry afterward.
++
++The native CLI's `LibraryConfig::load` shares the bounded file reader, then uses
++the existing Rust metadata parser, mapping validation and native defaults. It
++does not invoke Python. The Python facade uses an explicit PyYAML format plugin:
++UTF-8 and universal-newline decoding, followed by the current `yaml.safe_load`.
++Rich Python values, typed keys, shared aliases and recursive documents remain
++opaque Python objects; they are never flattened into JSON. A successful facade
++receipt reports `parser=python_yaml` or `parser=defaults`. This is not a claim
++that the Python format plugin has become native.
++
++`config._defaults` retains the live profile policy and language deepcopy in
++Python; its default path construction/resolution is native. A replaced defaults
++callable runs only for a missing file and receives the effective public base
++argument. Arbitrary paths returned by that override are not silently normalized
++or merged with defaults. Existing partial configuration remains partial.
++
++`ensure_dirs` delegates sequential lookup and directory creation to the core.
++The order is raw, wiki, outputs, meta, concepts. A failure preserves earlier
++directory creation and prevents later lookups/creation. The FFI retains Python
++callback exception identity, native OS error classes, errno and filename.
++Filesystem paths use OS strings, including POSIX surrogateescape round trips.
++
++Configuration resolution follows symlinks before parent components, permits
++missing suffixes and dangling targets, and fails explicitly for loops/resource
++limits. This config-specific resolver is not a scope/authorization primitive;
++the existing atomic-write and recovery guards are unchanged. Resolving a path
++does not authorize access to it. The native registry remains a separate local
++extension boundary.
++
++Reads are limited to 16 MiB of actual bytes, not just reported metadata size.
++Path resolution is bounded to 4096 components and 128 active symlinks; directory
++creation to 8192 attempts. Exceeding a bound produces a capability/validation
++failure, not partial success. A missing first existence observation chooses
++defaults; failures opening/reading an observed file propagate. Installed native
++candidates fail closed. Only an unbuilt source checkout may use the explicitly
++named Python read/mkdir fallback.
++
++For acceptance status and evidence, consult the
++[B16 checkpoint](checkpoints/native-config-2026-09-27/README.md), covering the
++fresh remote candidate, actual-old comparison and required checks.

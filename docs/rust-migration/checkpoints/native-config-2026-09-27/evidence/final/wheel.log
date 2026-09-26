@@ -1,0 +1,462 @@
+* Getting build dependencies for wheel...
+running egg_info
+writing llmwiki.egg-info/PKG-INFO
+writing dependency_links to llmwiki.egg-info/dependency_links.txt
+writing entry points to llmwiki.egg-info/entry_points.txt
+writing requirements to llmwiki.egg-info/requires.txt
+writing top-level names to llmwiki.egg-info/top_level.txt
+reading manifest file 'llmwiki.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE'
+writing manifest file 'llmwiki.egg-info/SOURCES.txt'
+WARNING Invalid dash-separated key 'index-url' in 'easy_install' (setup.cfg), please use the underscore name 'index_url' instead.
+!!
+
+        ********************************************************************************
+        Usage of dash-separated 'index-url' will not be supported in future
+        versions. Please use the underscore name 'index_url' instead.
+
+
+        Available configuration options are listed in:
+        https://setuptools.pypa.io/en/latest/userguide/declarative_config.html
+
+        This deprecation is overdue, please update your project and remove deprecated
+        calls to avoid build errors in the future.
+
+        See https://github.com/pypa/setuptools/discussions/5011 for details.
+        ********************************************************************************
+
+!!
+WARNING `project.license` as a TOML table is deprecated
+!!
+
+        ********************************************************************************
+        Please use a simple string containing a SPDX expression for `project.license`. You can also use `project.license-files`. (Both options available on setuptools>=77.0.0).
+
+        By 2027-Feb-18, you need to update your project and remove deprecated calls
+        or your builds will no longer be supported.
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+WARNING License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+WARNING License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+* Building wheel...
+running bdist_wheel
+running build
+running build_py
+running egg_info
+writing llmwiki.egg-info/PKG-INFO
+writing dependency_links to llmwiki.egg-info/dependency_links.txt
+writing entry points to llmwiki.egg-info/entry_points.txt
+writing requirements to llmwiki.egg-info/requires.txt
+writing top-level names to llmwiki.egg-info/top_level.txt
+reading manifest file 'llmwiki.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE'
+writing manifest file 'llmwiki.egg-info/SOURCES.txt'
+running build_ext
+running build_rust
+cargo rustc --lib --message-format=json-render-diagnostics --manifest-path crates/llmbase-python/Cargo.toml --release -v --features extension-module pyo3/extension-module pyo3/abi3-py311 --crate-type cdylib
+       Fresh unicode-ident v1.0.26
+       Fresh proc-macro2 v1.0.107
+       Fresh quote v1.0.47
+       Fresh syn v3.0.6
+       Fresh jobserver v0.1.35
+       Fresh find-msvc-tools v0.1.13
+       Fresh shlex v2.0.1
+       Fresh cc v1.4.7
+       Fresh libc v0.2.189
+       Fresh pkg-config v0.3.34
+       Fresh synstructure v0.14.0
+       Fresh smallvec v1.16.1
+       Fresh zerofrom-derive v0.1.8
+       Fresh yoke-derive v0.8.3
+       Fresh zerofrom v0.1.8
+       Fresh stable_deref_trait v1.2.1
+       Fresh yoke v0.8.3
+       Fresh target-lexicon v0.13.5
+       Fresh zerovec-derive v0.11.6
+       Fresh zerovec v0.11.8
+       Fresh displaydoc v0.2.7
+       Fresh pin-project-lite v0.2.17
+       Fresh bytes v1.12.1
+       Fresh futures-core v0.3.34
+       Fresh scopeguard v1.2.0
+       Fresh lock_api v0.4.14
+       Fresh pyo3-build-config v0.27.2
+       Fresh parking_lot_core v0.9.12
+       Fresh errno v0.3.14
+       Fresh signal-hook-registry v1.4.8
+       Fresh parking_lot v0.12.5
+       Fresh tinystr v0.8.4
+       Fresh mio v1.2.3
+       Fresh socket2 v0.6.5
+       Fresh serde_derive v1.0.229
+       Fresh tokio-macros v2.7.2
+       Fresh writeable v0.6.4
+       Fresh litemap v0.8.3
+       Fresh icu_locale_core v2.1.1
+       Fresh tokio v1.53.1
+       Fresh zerotrie v0.2.5
+       Fresh potential_utf v0.1.6
+       Fresh syn v2.0.119
+       Fresh foldhash v0.2.0
+       Fresh autocfg v1.5.1
+       Fresh fastrand v2.5.0
+       Fresh icu_collections v2.1.1
+       Fresh icu_provider v2.1.1
+       Fresh serde_core v1.0.229
+       Fresh http v1.5.0
+       Fresh futures-macro v0.3.34
+       Fresh utf8parse v0.2.2
+       Fresh virtue v0.0.18
+       Fresh percent-encoding v2.3.2
+       Fresh zeroize v1.9.0
+       Fresh slab v0.4.12
+       Fresh futures-task v0.3.34
+       Fresh version_check v0.9.5
+       Fresh futures-util v0.3.34
+       Fresh rustls-pki-types v1.15.1
+       Fresh anstyle-parse v1.0.0
+       Fresh bincode_derive v2.0.1
+       Fresh http-body v1.1.0
+       Fresh icu_normalizer_data v2.1.1
+       Fresh icu_properties_data v2.1.2
+       Fresh getrandom v0.2.17
+       Fresh is_terminal_polyfill v1.70.2
+       Fresh heck v0.5.0
+       Fresh anstyle-query v1.1.5
+       Fresh colorchoice v1.0.5
+       Fresh untrusted v0.9.0
+       Fresh anstyle v1.0.14
+       Fresh anstream v1.0.0
+       Fresh ring v0.17.14
+       Fresh icu_properties v2.1.2
+       Fresh icu_normalizer v2.1.1
+       Fresh phf_generator v0.13.1
+       Fresh typenum v1.20.1
+       Fresh cfg-if v1.0.5
+       Fresh linux-raw-sys v0.12.1
+       Fresh clap_lex v1.1.1
+       Fresh winnow v1.0.4
+       Fresh tower-service v0.3.3
+       Fresh try-lock v0.2.5
+       Fresh strsim v0.11.1
+       Fresh want v0.3.1
+       Fresh clap_builder v4.6.7
+       Fresh toml_parser v1.1.3+spec-1.1.0
+       Fresh rustix v1.1.5
+       Fresh generic-array v0.14.7
+       Fresh idna_adapter v1.2.1
+       Fresh httparse v1.10.1
+       Fresh rustls-webpki v0.103.15
+       Fresh form_urlencoded v1.2.2
+       Fresh tracing-core v0.1.36
+       Fresh serde_spanned v1.1.1
+       Fresh toml_datetime v0.7.5+spec-1.1.0
+       Fresh futures-channel v0.3.34
+       Fresh utf8_iter v1.0.4
+       Fresh hashbrown v0.17.1
+       Fresh subtle v2.6.1
+       Fresh itoa v1.0.18
+       Fresh atomic-waker v1.1.2
+       Fresh equivalent v1.0.2
+       Fresh winnow v0.7.15
+       Fresh memchr v2.8.3
+       Fresh once_cell v1.21.4
+       Fresh tempfile v3.27.0
+       Fresh toml v0.9.12+spec-1.1.0
+       Fresh indexmap v2.14.2
+       Fresh hyper v1.11.1
+       Fresh rustls v0.23.45
+       Fresh idna v1.1.0
+       Fresh zmij v1.0.23
+       Fresh tracing v0.1.44
+       Fresh serde v1.0.229
+       Fresh clap v4.6.7
+       Fresh zstd-sys v2.1.0+zstd.1.5.7
+       Fresh sync_wrapper v1.0.2
+       Fresh vcpkg v0.2.15
+       Fresh ipnet v2.12.2
+       Fresh ryu v1.0.23
+       Fresh bitflags v2.13.2
+       Fresh tower-layer v0.3.3
+       Fresh base64 v0.22.1
+       Fresh hyper-util v0.1.20
+       Fresh cbindgen v0.29.4
+       Fresh tower v0.5.3
+       Fresh zstd-safe v7.3.0
+       Fresh serde_json v1.0.151
+       Fresh url v2.5.8
+       Fresh tokio-rustls v0.26.5
+       Fresh block-buffer v0.10.4
+       Fresh crypto-common v0.1.7
+       Fresh phf_codegen v0.13.1
+       Fresh webpki-roots v1.0.9
+       Fresh thiserror-impl v2.0.20
+       Fresh futures-sink v0.3.34
+       Fresh foldhash v0.1.5
+       Fresh unty v0.0.4
+       Fresh siphasher v1.0.3
+       Fresh bincode v2.0.1
+       Fresh phf_shared v0.13.1
+       Fresh hashbrown v0.15.5
+       Fresh tokio-util v0.7.19
+       Fresh thiserror v2.0.20
+       Fresh fst v0.4.7
+       Fresh hyper-rustls v0.27.9
+       Fresh anyhow v1.0.104
+       Fresh digest v0.10.7
+       Fresh tower-http v0.6.11
+       Fresh zstd v0.13.3
+       Fresh num-traits v0.2.19
+       Fresh serde_urlencoded v0.7.1
+       Fresh phf_macros v0.13.1
+       Fresh aho-corasick v1.1.5
+       Fresh http-body-util v0.1.5
+       Fresh cpufeatures v0.2.17
+       Fresh regex-syntax v0.8.11
+       Fresh log v0.4.34
+       Fresh reqwest v0.12.28
+       Fresh regex-automata v0.4.18
+       Fresh getrandom v0.4.3
+       Fresh phf v0.13.1
+       Fresh libsqlite3-sys v0.35.0
+       Fresh num-integer v0.1.47
+       Fresh ferrous-opencc-compiler v0.3.0
+       Fresh pyo3-macros-backend v0.27.2
+       Fresh hashlink v0.10.0
+       Fresh hashlink v0.12.2
+       Fresh tinyvec v1.13.3
+       Fresh httpdate v1.0.3
+       Fresh arraydeque v0.5.1
+       Fresh unsafe-libyaml v0.2.11
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh same-file v1.0.6
+       Fresh fallible-iterator v0.3.0
+       Fresh walkdir v2.5.0
+       Fresh rusqlite v0.37.0
+       Fresh yaml-rust2 v0.13.0
+       Fresh serde_yaml v0.9.34+deprecated
+       Fresh unicode-normalization v0.1.25
+       Fresh llmbase-model v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-model)
+       Fresh pyo3-macros v0.27.2
+       Fresh ferrous-opencc v0.3.1
+       Fresh num-bigint v0.4.8
+       Fresh uuid v1.26.1
+       Fresh unicode-case-mapping v1.0.0
+       Fresh memoffset v0.9.1
+       Fresh regex v1.13.1
+       Fresh sha1 v0.10.7
+       Fresh sha2 v0.10.9
+       Fresh pyo3-ffi v0.27.2
+       Fresh fs2 v0.4.3
+       Fresh indoc v2.0.7
+       Fresh unindent v0.2.4
+       Fresh pyo3 v0.27.2
+       Dirty llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-core): the file `crates/llmbase-core/src/compat_config.rs` has changed (1790454496.000000000s, 46m 47s after last build at 1790451689.046699665s)
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-core)
+     Running `/root/llmbase-rust-migration-20260920/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin/rustc --crate-name llmbase_core --edition=2024 crates/llmbase-core/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C opt-level=3 -C embed-bitcode=no --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=9498b53288e56a67 -C extra-filename=-d31f0dababedebae --out-dir /root/llmbase-rust-migration-20260920/source/target/release/deps -C strip=debuginfo -L dependency=/root/llmbase-rust-migration-20260920/source/target/release/deps --extern ferrous_opencc=/root/llmbase-rust-migration-20260920/source/target/release/deps/libferrous_opencc-a62eab76d0e9165c.rlib --extern fs2=/root/llmbase-rust-migration-20260920/source/target/release/deps/libfs2-787d10364dd7ba6b.rmeta --extern llmbase_model=/root/llmbase-rust-migration-20260920/source/target/release/deps/libllmbase_model-5b2516944b95d6a9.rmeta --extern num_bigint=/root/llmbase-rust-migration-20260920/source/target/release/deps/libnum_bigint-6b3b0d54d61b417b.rmeta --extern regex=/root/llmbase-rust-migration-20260920/source/target/release/deps/libregex-1b7c79ee1fca7cac.rmeta --extern reqwest=/root/llmbase-rust-migration-20260920/source/target/release/deps/libreqwest-9a0a8c32daf1ad20.rmeta --extern rusqlite=/root/llmbase-rust-migration-20260920/source/target/release/deps/librusqlite-b2285d0db59e9c39.rmeta --extern serde=/root/llmbase-rust-migration-20260920/source/target/release/deps/libserde-90d17f1323a5c338.rmeta --extern serde_json=/root/llmbase-rust-migration-20260920/source/target/release/deps/libserde_json-97db81cb80613075.rmeta --extern serde_yaml=/root/llmbase-rust-migration-20260920/source/target/release/deps/libserde_yaml-ccbe8f1008901f9e.rmeta --extern sha1=/root/llmbase-rust-migration-20260920/source/target/release/deps/libsha1-802b333eeba3ba7e.rmeta --extern sha2=/root/llmbase-rust-migration-20260920/source/target/release/deps/libsha2-4a5afce12bb52a25.rmeta --extern thiserror=/root/llmbase-rust-migration-20260920/source/target/release/deps/libthiserror-c888cc66568caf7b.rmeta --extern tokio=/root/llmbase-rust-migration-20260920/source/target/release/deps/libtokio-53520b62e8b237c1.rmeta --extern tokio_util=/root/llmbase-rust-migration-20260920/source/target/release/deps/libtokio_util-389f7d64df3a6a89.rmeta --extern unicode_case_mapping=/root/llmbase-rust-migration-20260920/source/target/release/deps/libunicode_case_mapping-9bab59dc50a97961.rmeta --extern unicode_normalization=/root/llmbase-rust-migration-20260920/source/target/release/deps/libunicode_normalization-aaea7381dd19e6a6.rmeta --extern uuid=/root/llmbase-rust-migration-20260920/source/target/release/deps/libuuid-57cbc32605e32374.rmeta --extern walkdir=/root/llmbase-rust-migration-20260920/source/target/release/deps/libwalkdir-7905677f597ec379.rmeta --extern yaml_rust2=/root/llmbase-rust-migration-20260920/source/target/release/deps/libyaml_rust2-f3f4b44cbf9d1eef.rmeta -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/zstd-sys-77d7dfb9249584e4/out -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/ring-745a540daae5bf64/out -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/libsqlite3-sys-5bbf7b5c7c576b03/out`
+       Dirty llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-python): the dependency `llmbase-core` was rebuilt
+   Compiling llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-python)
+     Running `/root/llmbase-rust-migration-20260920/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin/rustc --crate-name _core --edition=2024 crates/llmbase-python/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type cdylib --emit=dep-info,link -C opt-level=3 -C embed-bitcode=no --cfg 'feature="extension-module"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("extension-module"))' -C metadata=444a0d5cdb9ff476 --out-dir /root/llmbase-rust-migration-20260920/source/target/release/deps -C strip=debuginfo -L dependency=/root/llmbase-rust-migration-20260920/source/target/release/deps --extern llmbase_core=/root/llmbase-rust-migration-20260920/source/target/release/deps/libllmbase_core-d31f0dababedebae.rlib --extern llmbase_model=/root/llmbase-rust-migration-20260920/source/target/release/deps/libllmbase_model-5b2516944b95d6a9.rlib --extern pyo3=/root/llmbase-rust-migration-20260920/source/target/release/deps/libpyo3-bab967aeec1d128d.rlib --extern serde=/root/llmbase-rust-migration-20260920/source/target/release/deps/libserde-90d17f1323a5c338.rlib --extern serde_json=/root/llmbase-rust-migration-20260920/source/target/release/deps/libserde_json-97db81cb80613075.rlib --extern tokio=/root/llmbase-rust-migration-20260920/source/target/release/deps/libtokio-53520b62e8b237c1.rlib -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/zstd-sys-77d7dfb9249584e4/out -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/ring-745a540daae5bf64/out -L native=/root/llmbase-rust-migration-20260920/source/target/release/build/libsqlite3-sys-5bbf7b5c7c576b03/out`
+    Finished `release` profile [optimized] target(s) in 40.59s
+Copying rust artifact from /root/llmbase-rust-migration-20260920/source/target/release/lib_core.so to build/lib.linux-x86_64-cpython-312/llmwiki/_core.abi3.so
+installing to build/bdist.linux-x86_64/wheel
+running install
+running install_lib
+creating build/bdist.linux-x86_64/wheel
+creating build/bdist.linux-x86_64/wheel/llmwiki
+creating build/bdist.linux-x86_64/wheel/llmwiki/refs
+copying build/lib.linux-x86_64-cpython-312/llmwiki/refs/wikisource.py -> build/bdist.linux-x86_64/wheel/./llmwiki/refs
+copying build/lib.linux-x86_64-cpython-312/llmwiki/refs/ctext.py -> build/bdist.linux-x86_64/wheel/./llmwiki/refs
+copying build/lib.linux-x86_64-cpython-312/llmwiki/refs/cbeta.py -> build/bdist.linux-x86_64/wheel/./llmwiki/refs
+copying build/lib.linux-x86_64-cpython-312/llmwiki/refs/__init__.py -> build/bdist.linux-x86_64/wheel/./llmwiki/refs
+copying build/lib.linux-x86_64-cpython-312/llmwiki/resolve.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/ingest.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/sections.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/entities.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+creating build/bdist.linux-x86_64/wheel/llmwiki/lint
+copying build/lib.linux-x86_64-cpython-312/llmwiki/lint/fixes.py -> build/bdist.linux-x86_64/wheel/./llmwiki/lint
+copying build/lib.linux-x86_64-cpython-312/llmwiki/lint/dedup.py -> build/bdist.linux-x86_64/wheel/./llmwiki/lint
+copying build/lib.linux-x86_64-cpython-312/llmwiki/lint/__init__.py -> build/bdist.linux-x86_64/wheel/./llmwiki/lint
+copying build/lib.linux-x86_64-cpython-312/llmwiki/lint/checks.py -> build/bdist.linux-x86_64/wheel/./llmwiki/lint
+copying build/lib.linux-x86_64-cpython-312/llmwiki/mcp_server.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/chunk_cache.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/_core.abi3.so -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/cli.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/wikisource.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/process_adapter.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/search.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/agent_api.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/split.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/query.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/taxonomy.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/llm.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/compile.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/sync.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/web.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/export.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/ctext.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/cbeta.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+creating build/bdist.linux-x86_64/wheel/llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pipeline/lock.py -> build/bdist.linux-x86_64/wheel/./llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pipeline/state.py -> build/bdist.linux-x86_64/wheel/./llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pipeline/__init__.py -> build/bdist.linux-x86_64/wheel/./llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pipeline/driver.py -> build/bdist.linux-x86_64/wheel/./llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pipeline/log.py -> build/bdist.linux-x86_64/wheel/./llmwiki/pipeline
+copying build/lib.linux-x86_64-cpython-312/llmwiki/worker.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/browser.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/atomic.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/anchor.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/__init__.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/http_auth.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/operations.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/normalize.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/config.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/pdf.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/hooks.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/__main__.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/xici.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+copying build/lib.linux-x86_64-cpython-312/llmwiki/_native.py -> build/bdist.linux-x86_64/wheel/./llmwiki
+running install_egg_info
+Copying llmwiki.egg-info to build/bdist.linux-x86_64/wheel/./llmwiki-0.9.0-py3.12.egg-info
+running install_scripts
+creating build/bdist.linux-x86_64/wheel/llmwiki-0.9.0.dist-info/WHEEL
+creating '/root/llmbase-rust-migration-20260920/b16-native-config/wheels-v2/.tmp-j5bpbk8y/llmwiki-0.9.0-cp311-abi3-linux_x86_64.whl' and adding 'build/bdist.linux-x86_64/wheel' to it
+adding 'llmwiki/__init__.py'
+adding 'llmwiki/__main__.py'
+adding 'llmwiki/_core.abi3.so'
+adding 'llmwiki/_native.py'
+adding 'llmwiki/agent_api.py'
+adding 'llmwiki/anchor.py'
+adding 'llmwiki/atomic.py'
+adding 'llmwiki/browser.py'
+adding 'llmwiki/cbeta.py'
+adding 'llmwiki/chunk_cache.py'
+adding 'llmwiki/cli.py'
+adding 'llmwiki/compile.py'
+adding 'llmwiki/config.py'
+adding 'llmwiki/ctext.py'
+adding 'llmwiki/entities.py'
+adding 'llmwiki/export.py'
+adding 'llmwiki/hooks.py'
+adding 'llmwiki/http_auth.py'
+adding 'llmwiki/ingest.py'
+adding 'llmwiki/llm.py'
+adding 'llmwiki/mcp_server.py'
+adding 'llmwiki/normalize.py'
+adding 'llmwiki/operations.py'
+adding 'llmwiki/pdf.py'
+adding 'llmwiki/process_adapter.py'
+adding 'llmwiki/query.py'
+adding 'llmwiki/resolve.py'
+adding 'llmwiki/search.py'
+adding 'llmwiki/sections.py'
+adding 'llmwiki/split.py'
+adding 'llmwiki/sync.py'
+adding 'llmwiki/taxonomy.py'
+adding 'llmwiki/web.py'
+adding 'llmwiki/wikisource.py'
+adding 'llmwiki/worker.py'
+adding 'llmwiki/xici.py'
+adding 'llmwiki/lint/__init__.py'
+adding 'llmwiki/lint/checks.py'
+adding 'llmwiki/lint/dedup.py'
+adding 'llmwiki/lint/fixes.py'
+adding 'llmwiki/pipeline/__init__.py'
+adding 'llmwiki/pipeline/driver.py'
+adding 'llmwiki/pipeline/lock.py'
+adding 'llmwiki/pipeline/log.py'
+adding 'llmwiki/pipeline/state.py'
+adding 'llmwiki/refs/__init__.py'
+adding 'llmwiki/refs/cbeta.py'
+adding 'llmwiki/refs/ctext.py'
+adding 'llmwiki/refs/wikisource.py'
+adding 'llmwiki-0.9.0.dist-info/licenses/LICENSE'
+adding 'llmwiki-0.9.0.dist-info/METADATA'
+adding 'llmwiki-0.9.0.dist-info/WHEEL'
+adding 'llmwiki-0.9.0.dist-info/entry_points.txt'
+adding 'llmwiki-0.9.0.dist-info/top_level.txt'
+adding 'llmwiki-0.9.0.dist-info/RECORD'
+removing build/bdist.linux-x86_64/wheel
+WARNING Invalid dash-separated key 'index-url' in 'easy_install' (setup.cfg), please use the underscore name 'index_url' instead.
+!!
+
+        ********************************************************************************
+        Usage of dash-separated 'index-url' will not be supported in future
+        versions. Please use the underscore name 'index_url' instead.
+
+
+        Available configuration options are listed in:
+        https://setuptools.pypa.io/en/latest/userguide/declarative_config.html
+
+        This deprecation is overdue, please update your project and remove deprecated
+        calls to avoid build errors in the future.
+
+        See https://github.com/pypa/setuptools/discussions/5011 for details.
+        ********************************************************************************
+
+!!
+WARNING `project.license` as a TOML table is deprecated
+!!
+
+        ********************************************************************************
+        Please use a simple string containing a SPDX expression for `project.license`. You can also use `project.license-files`. (Both options available on setuptools>=77.0.0).
+
+        By 2027-Feb-18, you need to update your project and remove deprecated calls
+        or your builds will no longer be supported.
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+WARNING License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+WARNING License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+Successfully built llmwiki-0.9.0-cp311-abi3-linux_x86_64.whl

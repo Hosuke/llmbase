@@ -1,0 +1,17 @@
+{
+  "source_files": 229,
+  "changed": [
+    "crates/llmbase-core/src/config.rs",
+    "crates/llmbase-core/src/lib.rs",
+    "crates/llmbase-python/src/lib.rs",
+    "llmwiki/_native.py",
+    "llmwiki/config.py"
+  ],
+  "new": [
+    "crates/llmbase-core/src/compat_config.rs",
+    "crates/llmbase-core/tests/compat_config.rs",
+    "crates/llmbase-python/src/config.rs",
+    "tests/rust_migration/test_native_config.py"
+  ],
+  "unchanged_predecessor_inputs": 220
+}

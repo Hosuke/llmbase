@@ -1,0 +1,11 @@
+{
+  "reviewer": "primary agent",
+  "authorization": "user explicitly permits primary review",
+  "staged_paths": 84,
+  "scope": "docs/rust-migration/checkpoints/native-config-2026-09-27/",
+  "tree_before_review_receipt": "2dded6913aff9ed7e67c22e64b473ec5b590bfa3",
+  "source_delta_files": 10,
+  "verdict": "LGTM",
+  "high_findings": [],
+  "closed_finding": "absolute path / deleted cwd: actual-old red baseline, repaired candidate-v2 and two new regressions pass"
+}

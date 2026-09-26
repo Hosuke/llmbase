@@ -1,0 +1,1 @@
+B16 config acceptance passed: rich YAML graph/type parity; 7 pathlib edge cases; ensure_dirs partial-error ordering and success trace; no config registration

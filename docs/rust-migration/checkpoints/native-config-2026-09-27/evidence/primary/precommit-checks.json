@@ -1,0 +1,5 @@
+{
+  "typescript": {"command": "node node_modules/typescript/bin/tsc --noEmit", "cwd": "frontend", "exit": 0},
+  "python_import": {"command": "python -c \"from llmwiki.lint import lint; print('OK')\"", "exit": 0, "output": "OK"},
+  "staged_before_task": []
+}
