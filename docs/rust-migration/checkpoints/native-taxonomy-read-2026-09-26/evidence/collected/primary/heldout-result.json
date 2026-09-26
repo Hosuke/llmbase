@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "counts": {
+    "fallback": 180,
+    "localize_title": 77,
+    "localize_tree": 100
+  },
+  "seed": 913721,
+  "corpus_sha256": "87e7c232909a3f8d3201366ed9a43932a01780f85d60c1e5f3fc3bb8936ae6f7",
+  "legacy_source_sha256": "082c894d50cb1baa2a972f502a2a73f7121a8024cc8ca59e277c37bb72713aa7",
+  "extension": "/root/llmbase-rust-migration-20260920/b13-taxonomy-read/candidate-v2/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "8bb7d1c85ef2ef19f50df6fce8a20fc1bd233333aec096fb277f2f2a03b174f4",
+  "no_library_registration": true,
+  "input_values_unchanged": true
+}

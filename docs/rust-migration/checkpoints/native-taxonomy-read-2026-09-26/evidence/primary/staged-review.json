@@ -1,0 +1,21 @@
+{
+  "result": "LGTM",
+  "reviewer": "primary agent, explicitly authorized by user",
+  "scope": "B13 staged recovery bundle and its exact applied source",
+  "high_findings_remaining": 0,
+  "staged_files": 66,
+  "source_files": 11,
+  "scope_and_index_bytes_verified": true,
+  "secret_pattern_scan_passed": true,
+  "exact_replay_verified": true,
+  "precommit_checks": {
+    "typescript_noEmit": 0,
+    "python_lint_import": 0
+  },
+  "resolved_findings": [
+    "malformed-file-tag panic",
+    "aggregate read budget",
+    "stale config-error trace",
+    "recursive live helper wrapper bypass"
+  ]
+}

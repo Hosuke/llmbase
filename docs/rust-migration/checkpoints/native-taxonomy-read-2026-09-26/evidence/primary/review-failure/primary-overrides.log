@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/root/llmbase-rust-migration-20260920/b13-taxonomy-read/primary/verify-overrides.py", line 66, in <module>
+    assert counts[0] and counts[0] == counts[1], (name, counts)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('_localize_tree', [[('list', 'str', 'dict'), ('list', 'str', 'dict'), ('list', 'str', 'dict')], [('list', 'str', 'dict')]])

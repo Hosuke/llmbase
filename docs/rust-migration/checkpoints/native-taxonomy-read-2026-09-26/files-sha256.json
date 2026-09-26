@@ -1,0 +1,46 @@
+{
+  "Cargo.lock": {
+    "before": "8e7c29adb6e283f1a5388eb4480ba7b3c30eca64317ad14340adc1a6cea3c12d",
+    "after": "0a50cac5e4ffe04cec6e2b2472b743f17fa225b493fe55279a73018c74543f7a"
+  },
+  "crates/llmbase-core/Cargo.toml": {
+    "before": "e51d4c00fc3b5e3ebf7304f7cf51bc914af18199d37eb33dad211c8a5499e511",
+    "after": "6e3a6c6e89b1c8b34a96ae750a88a073f9f88c6bb81931698064af8ca697369b"
+  },
+  "crates/llmbase-core/src/lib.rs": {
+    "before": "1b284d9bf8995d516d619e1a9ed84dfed8fc701ad4f3d7296d5a98a32a22bf1d",
+    "after": "09efc434fb147c7750a75908159241d167778a66f9ebde1f222709012a332f75"
+  },
+  "crates/llmbase-core/src/compat_taxonomy.rs": {
+    "before": null,
+    "after": "1377acb491ed04bbc18cbb8b494c1c9c726e8ac70598a97aaa5e80927521ecb9"
+  },
+  "crates/llmbase-core/tests/compat_taxonomy.rs": {
+    "before": null,
+    "after": "07364becddc2c976205636148c357606c76f5e6a1cbca2a8535be380b5ad6f10"
+  },
+  "crates/llmbase-python/src/lib.rs": {
+    "before": "d9b90b502bc8fa4c07cda9faa679a95beaf08a8c06b415aa1dc8151d1302e4c8",
+    "after": "32ccdffe28390be72af416c7fd6ae2e8dc9da79666eaf4ee431b259fc72d3e92"
+  },
+  "crates/llmbase-python/src/taxonomy.rs": {
+    "before": null,
+    "after": "781064d45cda33de23bd6eb0c1b113ef8ced1df1d7b9ef1201a2875f34412d96"
+  },
+  "llmwiki/_native.py": {
+    "before": "ec6b9e900b2e6dcb945620127e47782f7cb58f131830c164bd33d2c783a07fbe",
+    "after": "6eeca45056c528d4002aee41835f91f7c777e8fafd92a24a118c2094ac09e8d4"
+  },
+  "llmwiki/taxonomy.py": {
+    "before": "082c894d50cb1baa2a972f502a2a73f7121a8024cc8ca59e277c37bb72713aa7",
+    "after": "a1a9bbb0e458b4e1538446f34d0573847fd292b19afa7c9145e6cfe6285bcdc2"
+  },
+  "tests/rust_migration/test_native_taxonomy_read.py": {
+    "before": null,
+    "after": "6b070c30786f0591a904dbcfdda8f7c5f6760c336b652bd327e4e9c77ba25fa7"
+  },
+  "tests/rust_migration/fixtures/taxonomy-read.json": {
+    "before": null,
+    "after": "7b87573b4007fa8eba04cbfc553b5f30d3e6077eb9d22cb2c2b1908ba790d5e6"
+  }
+}

@@ -1,0 +1,4034 @@
+diff --git a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1066,6 +1066,7 @@
+  "thiserror",
+  "tokio",
+  "tokio-util",
++ "unicode-case-mapping",
+  "unicode-normalization",
+  "uuid",
+  "walkdir",
+@@ -2237,6 +2238,12 @@
+ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+ 
+ [[package]]
++name = "unicode-case-mapping"
++version = "1.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4e9026503b74f3207a4c04e6bf4ea735daa8edf6c0bbfa044cae597bb947a9db"
++
++[[package]]
+ name = "unicode-ident"
+ version = "1.0.26"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+diff --git a/crates/llmbase-core/Cargo.toml b/crates/llmbase-core/Cargo.toml
+--- a/crates/llmbase-core/Cargo.toml
++++ b/crates/llmbase-core/Cargo.toml
+@@ -19,6 +19,7 @@
+ unicode-normalization.workspace = true
+ ferrous-opencc.workspace = true
+ regex = "1"
++unicode-case-mapping = "=1.0.0"
+ llmbase-model = { path = "../llmbase-model" }
+ tokio-util = { version = "0.7", features = ["rt"] }
+ tokio = { version = "1", features = ["full"] }
+diff --git a/crates/llmbase-core/src/lib.rs b/crates/llmbase-core/src/lib.rs
+--- a/crates/llmbase-core/src/lib.rs
++++ b/crates/llmbase-core/src/lib.rs
+@@ -11,6 +11,7 @@
+ pub mod compat_query;
+ pub mod compat_resolve;
+ pub mod compat_search;
++pub mod compat_taxonomy;
+ pub mod compat_util;
+ pub mod compat_workflows;
+ pub mod compat_yaml;
+diff --git a/crates/llmbase-core/src/compat_taxonomy.rs b/crates/llmbase-core/src/compat_taxonomy.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/src/compat_taxonomy.rs
+@@ -0,0 +1,610 @@
++//! Trusted local taxonomy read/value helpers for the established Python facade.
++//! These actions read only caller-selected local directories; they never open or
++//! infer a library, write files, or select remote/HTTP paths.
++use crate::{Error, Result, compat_kb, document::Document};
++use regex::Regex;
++use serde_json::{Value, json};
++use std::{
++    collections::{HashMap, HashSet},
++    io::Read,
++    path::Path,
++    sync::LazyLock,
++};
++
++const MAX_TREE_DEPTH: usize = 64;
++const MAX_ARTICLES: usize = 20_000;
++const MAX_CACHE_BYTES: u64 = 4 * 1024 * 1024;
++const MAX_READ_BYTES: u64 = 64 * 1024 * 1024;
++
++static LOWERCASE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\p{Lowercase}$").unwrap());
++static CASED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\p{Cased}$").unwrap());
++static CASE_IGNORABLE: LazyLock<Regex> =
++    LazyLock::new(|| Regex::new(r"^\p{Case_Ignorable}$").unwrap());
++
++fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
++    args.get(key)
++        .and_then(Value::as_str)
++        .ok_or_else(|| Error::Invalid(format!("{key} must be a string")))
++}
++
++fn is(re: &LazyLock<Regex>, ch: char) -> bool {
++    let mut buf = [0u8; 4];
++    re.is_match(ch.encode_utf8(&mut buf))
++}
++
++fn push_mapped(out: &mut String, mapped: &[u32], original: char) {
++    if mapped.iter().all(|&unit| unit == 0) {
++        out.push(original);
++        return;
++    }
++    for &unit in mapped {
++        if unit == 0 {
++            break;
++        }
++        match char::from_u32(unit) {
++            Some(mapped) => out.push(mapped),
++            None => return,
++        }
++    }
++}
++
++/// Python str.lower(): full mappings plus the contextual Greek final sigma.
++fn python_lower(text: &str) -> String {
++    let chars: Vec<char> = text.chars().collect();
++    let mut out = String::with_capacity(text.len());
++    for (index, &ch) in chars.iter().enumerate() {
++        if ch == '\u{3a3}' {
++            let before = chars[..index]
++                .iter()
++                .rev()
++                .find(|c| !is(&CASE_IGNORABLE, **c))
++                .is_some_and(|c| is(&CASED, *c));
++            let after = chars[index + 1..]
++                .iter()
++                .find(|c| !is(&CASE_IGNORABLE, **c))
++                .is_some_and(|c| is(&CASED, *c));
++            out.push(if before && !after {
++                '\u{3c2}'
++            } else {
++                '\u{3c3}'
++            });
++        } else {
++            push_mapped(&mut out, &unicode_case_mapping::to_lowercase(ch), ch);
++        }
++    }
++    out
++}
++
++/// Python str.title(): titlecase the first cased letter of each uncased-separated
++/// run with full (possibly multi-character) mappings, lowercase later cased ones.
++fn python_title(text: &str) -> String {
++    let mut out = String::with_capacity(text.len());
++    let mut previous_is_cased = false;
++    for ch in text.chars() {
++        let lower = is(&LOWERCASE, ch);
++        let cased = is(&CASED, ch);
++        if lower {
++            if !previous_is_cased {
++                push_mapped(&mut out, &unicode_case_mapping::to_titlecase(ch), ch);
++            } else {
++                out.push(ch);
++            }
++        } else if cased {
++            if previous_is_cased {
++                push_mapped(&mut out, &unicode_case_mapping::to_lowercase(ch), ch);
++            } else {
++                out.push(ch);
++            }
++        } else {
++            out.push(ch);
++        }
++        previous_is_cased = cased;
++    }
++    out
++}
++
++fn slug(path: &Path) -> Result<&str> {
++    path.file_stem()
++        .and_then(|s| s.to_str())
++        .ok_or_else(|| Error::Invalid("article name must be UTF-8".into()))
++}
++
++fn read_bytes(path: &Path, consumed: &mut u64, limit: u64, limit_error: &str) -> Result<Vec<u8>> {
++    let remaining = MAX_READ_BYTES.saturating_sub(*consumed);
++    let cap = remaining.min(limit);
++    let error = || {
++        Error::Invalid(if remaining < limit {
++            "taxonomy aggregate reads exceed 64 MiB".into()
++        } else {
++            limit_error.into()
++        })
++    };
++    let file = std::fs::File::open(path)?;
++    if file.metadata()?.len() > cap {
++        return Err(error());
++    }
++    let mut bytes = Vec::new();
++    file.take(cap + 1).read_to_end(&mut bytes)?;
++    if bytes.len() as u64 > cap {
++        return Err(error());
++    }
++    *consumed += bytes.len() as u64;
++    Ok(bytes)
++}
++
++fn read_document(path: &Path, consumed: &mut u64) -> Result<Document> {
++    // The same parser as compat_kb::read, with an action-wide allocation bound.
++    Document::parse(read_bytes(
++        path,
++        consumed,
++        MAX_READ_BYTES,
++        "taxonomy document exceeds 64 MiB",
++    )?)
++}
++
++fn read_articles(concepts_dir: &Path, consumed: &mut u64) -> Result<Vec<Value>> {
++    let files = compat_kb::markdown_files(concepts_dir, true)?;
++    if files.len() > MAX_ARTICLES {
++        return Err(Error::Invalid(
++            "taxonomy article load exceeds 20000 articles".into(),
++        ));
++    }
++    let mut articles = Vec::with_capacity(files.len());
++    for path in files {
++        let doc = read_document(&path, consumed)?;
++        let slug = slug(&path)?;
++        // Defaults apply only to missing fields; explicit null and unknown
++        // value types are preserved exactly as the legacy facade returned them.
++        articles.push(json!({
++            "slug": slug,
++            "title": doc.metadata.get("title").cloned().unwrap_or(json!(slug)),
++            "tags": doc.metadata.get("tags").cloned().unwrap_or(json!([])),
++            "summary": doc.metadata.get("summary").cloned().unwrap_or(json!("")),
++        }));
++    }
++    Ok(articles)
++}
++
++fn read_title_pairs(concepts_dir: &Path, consumed: &mut u64) -> Result<Value> {
++    let files = compat_kb::markdown_files(concepts_dir, false)?;
++    if files.len() > MAX_ARTICLES {
++        return Err(Error::Invalid(
++            "taxonomy title map exceeds 20000 articles".into(),
++        ));
++    }
++    let mut pairs = Vec::with_capacity(files.len());
++    for path in files {
++        let doc = read_document(&path, consumed)?;
++        let slug = slug(&path)?;
++        let title = doc.metadata.get("title").cloned().unwrap_or(json!(slug));
++        pairs.push(json!([slug, title]));
++    }
++    Ok(json!(pairs))
++}
++
++fn read_cache(path: &Path, consumed: &mut u64) -> Result<Value> {
++    let bytes = read_bytes(
++        path,
++        consumed,
++        MAX_CACHE_BYTES,
++        "taxonomy cache exceeds 4 MiB",
++    )?;
++    Ok(serde_json::from_slice(&bytes)?)
++}
++
++fn load(meta_dir: &Path) -> Result<Value> {
++    let path = meta_dir.join("taxonomy.json");
++    if !path.exists() {
++        return Ok(json!({"categories": []}));
++    }
++    read_cache(&path, &mut 0)
++}
++
++fn articles_arg(args: &Value) -> Result<&[Value]> {
++    args.get("articles")
++        .and_then(Value::as_array)
++        .ok_or_else(|| Error::Invalid("articles must be an array".into()))
++        .map(|articles| articles.as_slice())
++}
++
++fn validate_articles(articles: &[Value]) -> Result<()> {
++    if articles.len() > MAX_ARTICLES {
++        return Err(Error::Invalid(
++            "taxonomy fallback exceeds 20000 articles".into(),
++        ));
++    }
++    for article in articles {
++        let object = article
++            .as_object()
++            .ok_or_else(|| Error::Invalid("article must be an object".into()))?;
++        if !object.get("slug").is_some_and(|s| s.is_string()) {
++            return Err(Error::Invalid("article slug must be a string".into()));
++        }
++        match object.get("tags") {
++            None => {}
++            Some(Value::Array(tags)) => {
++                if !tags.iter().all(|t| t.is_string()) {
++                    return Err(Error::Invalid("article tags must be strings".into()));
++                }
++            }
++            _ => return Err(Error::Invalid("article tags must be an array".into())),
++        }
++    }
++    Ok(())
++}
++
++/// Exact _fallback_taxonomy: stable first-seen tie order, top-10 then count>=2,
++/// duplicate slugs keep the last tag list for membership, each slug assigned once.
++fn fallback(articles: &[Value]) -> Result<Value> {
++    validate_articles(articles)?;
++    if articles.is_empty() {
++        return Ok(json!([]));
++    }
++    let mut counts: HashMap<String, usize> = HashMap::new();
++    let mut order: Vec<String> = Vec::new();
++    let mut article_tags: HashMap<String, Vec<String>> = HashMap::new();
++    for article in articles {
++        let slug = article["slug"].as_str().unwrap();
++        let tags: Vec<String> = article
++            .get("tags")
++            .and_then(Value::as_array)
++            .map(|tags| {
++                tags.iter()
++                    .map(|t| python_lower(t.as_str().unwrap()).replace(' ', "-"))
++                    .collect()
++            })
++            .unwrap_or_default();
++        for tag in &tags {
++            match counts.get_mut(tag.as_str()) {
++                Some(count) => *count += 1,
++                None => {
++                    order.push(tag.clone());
++                    counts.insert(tag.clone(), 1);
++                }
++            }
++        }
++        article_tags.insert(slug.to_owned(), tags);
++    }
++    let mut ranked: Vec<(String, usize)> = order
++        .into_iter()
++        .map(|tag| {
++            let count = counts[tag.as_str()];
++            (tag, count)
++        })
++        .collect();
++    ranked.sort_by_key(|a| std::cmp::Reverse(a.1));
++    let top: Vec<String> = ranked
++        .into_iter()
++        .take(10)
++        .filter(|(_, count)| *count >= 2)
++        .map(|(tag, _)| tag)
++        .collect();
++    if top.is_empty() {
++        return Ok(json!([{
++            "id": "all",
++            "label": {"en": "All Articles", "zh": "全部文章", "ja": "全記事"},
++            "children": [],
++            "article_slugs": articles.iter().map(|a| a["slug"].clone()).collect::<Vec<_>>(),
++        }]));
++    }
++    let mut assigned: HashSet<&str> = HashSet::new();
++    let mut categories = Vec::new();
++    for tag in top {
++        let mut slugs = Vec::new();
++        for article in articles {
++            let slug = article["slug"].as_str().unwrap();
++            if assigned.contains(slug) {
++                continue;
++            }
++            if article_tags
++                .get(slug)
++                .is_some_and(|tags| tags.iter().any(|t| t == &tag))
++            {
++                slugs.push(json!(slug));
++                assigned.insert(slug);
++            }
++        }
++        if !slugs.is_empty() {
++            categories.push(json!({
++                "id": tag,
++                "label": {"en": python_title(&tag.replace('-', " ")), "zh": tag, "ja": tag},
++                "children": [],
++                "article_slugs": slugs,
++            }));
++        }
++    }
++    let unassigned: Vec<Value> = articles
++        .iter()
++        .map(|a| a["slug"].as_str().unwrap())
++        .filter(|slug| !assigned.contains(slug))
++        .map(|slug| json!(slug))
++        .collect();
++    if !unassigned.is_empty() {
++        categories.push(json!({
++            "id": "other",
++            "label": {"en": "Other", "zh": "其他", "ja": "その他"},
++            "children": [],
++            "article_slugs": unassigned,
++        }));
++    }
++    Ok(json!(categories))
++}
++
++fn python_strip(text: &str) -> &str {
++    text.trim_matches(|c: char| c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}'))
++}
++
++fn has_cjk(text: &str) -> bool {
++    text.chars().any(|c| {
++        matches!(c, '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{3040}'..='\u{309f}' | '\u{30a0}'..='\u{30ff}')
++    })
++}
++
++fn localize_title_str(title: &str, lang: &str) -> Value {
++    if title.is_empty() || !title.contains('/') || lang == "zh-en" {
++        return json!(title);
++    }
++    let parts: Vec<&str> = title
++        .split('/')
++        .map(python_strip)
++        .filter(|part| !part.is_empty())
++        .collect();
++    if parts.len() < 2 {
++        return json!(title);
++    }
++    if lang == "zh" || lang == "ja" {
++        json!(
++            parts
++                .iter()
++                .find(|part| has_cjk(part))
++                .copied()
++                .unwrap_or(parts[parts.len() - 1])
++        )
++    } else {
++        json!(
++            parts
++                .iter()
++                .find(|part| !has_cjk(part))
++                .copied()
++                .unwrap_or(parts[0])
++        )
++    }
++}
++
++/// Falsy values pass through unchanged, exactly like the legacy helper; truthy
++/// non-strings are rejected instead of silently coerced.
++fn localize_title_value(title: &Value, lang: &str) -> Result<Value> {
++    let falsy = match title {
++        Value::Null => true,
++        Value::Bool(value) => !value,
++        Value::Number(number) => number.as_f64() == Some(0.0),
++        Value::String(text) => text.is_empty(),
++        Value::Array(values) => values.is_empty(),
++        Value::Object(entries) => entries.is_empty(),
++    };
++    if falsy {
++        return Ok(title.clone());
++    }
++    match title.as_str() {
++        Some(text) => Ok(localize_title_str(text, lang)),
++        None => Err(Error::Invalid("title must be a string".into())),
++    }
++}
++
++fn tree_nodes(args: &Value) -> Result<&[Value]> {
++    args.get("tree")
++        .and_then(Value::as_array)
++        .map(Vec::as_slice)
++        .ok_or_else(|| Error::Invalid("tree must be an array".into()))
++}
++
++/// Iterative shape/depth validation before any recursive processing, so a deep
++/// or malformed tree fails with a clear error instead of panicking.
++fn validate_tree(nodes: &[Value]) -> Result<()> {
++    let mut articles = 0usize;
++    let mut stack: Vec<(&Value, usize)> = nodes.iter().map(|node| (node, 1)).collect();
++    while let Some((node, depth)) = stack.pop() {
++        if depth > MAX_TREE_DEPTH {
++            return Err(Error::Invalid("taxonomy tree exceeds depth 64".into()));
++        }
++        let object = node
++            .as_object()
++            .ok_or_else(|| Error::Invalid("taxonomy node must be an object".into()))?;
++        if !object.contains_key("id") {
++            return Err(Error::Invalid("taxonomy node requires an id".into()));
++        }
++        match object.get("label") {
++            None | Some(Value::String(_)) | Some(Value::Object(_)) => {}
++            _ => {
++                return Err(Error::Invalid(
++                    "taxonomy label must be a string or object".into(),
++                ));
++            }
++        }
++        match object.get("article_slugs") {
++            None => {}
++            Some(Value::Array(slugs)) => {
++                articles += slugs.len();
++                if articles > MAX_ARTICLES {
++                    return Err(Error::Invalid(
++                        "taxonomy tree exceeds 20000 articles".into(),
++                    ));
++                }
++                if !slugs.iter().all(|s| s.is_string()) {
++                    return Err(Error::Invalid(
++                        "taxonomy article_slugs must be strings".into(),
++                    ));
++                }
++            }
++            _ => {
++                return Err(Error::Invalid(
++                    "taxonomy article_slugs must be an array".into(),
++                ));
++            }
++        }
++        match object.get("children") {
++            None => {}
++            Some(Value::Array(children)) => {
++                stack.extend(children.iter().map(|child| (child, depth + 1)));
++            }
++            _ => return Err(Error::Invalid("taxonomy children must be an array".into())),
++        }
++    }
++    Ok(())
++}
++
++/// Child-first global slug dedup, exactly like the legacy build orchestration.
++fn dedup_nodes(nodes: &mut [Value], seen: &mut HashSet<String>) {
++    for node in nodes {
++        if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {
++            dedup_nodes(children, seen);
++        }
++        if let Some(slugs) = node.get_mut("article_slugs").and_then(Value::as_array_mut) {
++            let mut unique = Vec::with_capacity(slugs.len());
++            for slug in slugs.iter() {
++                let text = slug.as_str().unwrap();
++                if seen.insert(text.to_owned()) {
++                    unique.push(json!(text));
++                }
++            }
++            *slugs = unique;
++        }
++    }
++}
++
++fn display_label(node: &Value, lang: &str) -> Value {
++    match node.get("label") {
++        Some(Value::String(label)) => json!(label),
++        Some(Value::Object(label)) => [lang, "en", "zh"]
++            .iter()
++            .find_map(|key| label.get(*key))
++            .cloned()
++            .unwrap_or_else(|| node["id"].clone()),
++        // A missing label behaves like the legacy default {}; invalid shapes
++        // were already rejected by validate_tree.
++        _ => node["id"].clone(),
++    }
++}
++
++fn localize_nodes(nodes: &[Value], lang: &str, titles: &Value) -> Result<Vec<Value>> {
++    let mut result = Vec::with_capacity(nodes.len());
++    for node in nodes {
++        let empty = Vec::new();
++        let slugs = node
++            .get("article_slugs")
++            .and_then(Value::as_array)
++            .unwrap_or(&empty);
++        let mut articles = Vec::with_capacity(slugs.len());
++        for slug in slugs {
++            let slug = slug.as_str().unwrap();
++            let title = titles.get(slug).cloned().unwrap_or(json!(slug));
++            articles.push(json!({"slug": slug, "title": localize_title_value(&title, lang)?}));
++        }
++        let children = match node.get("children").and_then(Value::as_array) {
++            Some(children) => localize_nodes(children, lang, titles)?,
++            None => Vec::new(),
++        };
++        let child_count: u64 = children.iter().map(|c| c["total"].as_u64().unwrap()).sum();
++        let count = articles.len() as u64;
++        result.push(json!({
++            "id": node["id"].clone(),
++            "label": display_label(node, lang),
++            "count": count,
++            "total": count + child_count,
++            "articles": articles,
++            "children": children,
++        }));
++    }
++    Ok(result)
++}
++
++fn localize_tree(args: &Value) -> Result<Value> {
++    let nodes = tree_nodes(args)?;
++    let lang = text(args, "lang")?;
++    let titles = args
++        .get("titles")
++        .ok_or_else(|| Error::Invalid("titles is required".into()))?;
++    if !titles.is_object() {
++        return Err(Error::Invalid("titles must be an object".into()));
++    }
++    validate_tree(nodes)?;
++    Ok(json!(localize_nodes(nodes, lang, titles)?))
++}
++
++fn build(args: &Value) -> Result<Value> {
++    let concepts_dir = Path::new(text(args, "concepts_dir")?);
++    let meta_dir = Path::new(text(args, "meta_dir")?);
++    let lang = text(args, "lang")?;
++    let cache = meta_dir.join("taxonomy.json");
++    let mut consumed = 0;
++    let mut titles = None;
++    let mut raw_tree: Vec<Value> = if cache.exists() {
++        let cached = read_cache(&cache, &mut consumed)?;
++        let object = cached
++            .as_object()
++            .ok_or_else(|| Error::Invalid("taxonomy cache must be an object".into()))?;
++        match object.get("categories") {
++            None => Vec::new(),
++            Some(Value::Array(categories)) => categories.clone(),
++            _ => {
++                return Err(Error::Invalid(
++                    "taxonomy categories must be an array".into(),
++                ));
++            }
++        }
++    } else {
++        let articles = read_articles(concepts_dir, &mut consumed)?;
++        let tree = fallback(&articles)?;
++        titles = Some(
++            articles
++                .iter()
++                .map(|article| {
++                    (
++                        article["slug"].as_str().unwrap().to_owned(),
++                        article["title"].clone(),
++                    )
++                })
++                .collect::<serde_json::Map<String, Value>>(),
++        );
++        tree.as_array().map(|a| a.to_vec()).unwrap_or_default()
++    };
++    validate_tree(&raw_tree)?;
++    let mut seen = HashSet::new();
++    dedup_nodes(&mut raw_tree, &mut seen);
++    let titles = match titles {
++        Some(titles) => titles,
++        None => {
++            let pairs = read_title_pairs(concepts_dir, &mut consumed)?;
++            pairs
++                .as_array()
++                .unwrap()
++                .iter()
++                .map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].clone()))
++                .collect()
++        }
++    };
++    Ok(json!(localize_nodes(&raw_tree, lang, &json!(titles))?))
++}
++
++/// Filesystem actions are exposed only through the trusted local Python ABI,
++/// never generic HTTP operation dispatch or a caller-selected remote path.
++pub fn transform(action: &str, args: &Value) -> Result<Value> {
++    match action {
++        "load_articles" => Ok(json!(read_articles(
++            Path::new(text(args, "concepts_dir")?),
++            &mut 0
++        )?)),
++        "title_map" => read_title_pairs(Path::new(text(args, "concepts_dir")?), &mut 0),
++        "load" => load(Path::new(text(args, "meta_dir")?)),
++        "fallback" => fallback(articles_arg(args)?),
++        "localize_title" => {
++            let title = args
++                .get("title")
++                .ok_or_else(|| Error::Invalid("title is required".into()))?;
++            localize_title_value(title, text(args, "lang")?)
++        }
++        "localize_tree" => localize_tree(args),
++        "build" => build(args),
++        _ => Err(Error::Capability("unknown local taxonomy helper".into())),
++    }
++}
+diff --git a/crates/llmbase-core/tests/compat_taxonomy.rs b/crates/llmbase-core/tests/compat_taxonomy.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-core/tests/compat_taxonomy.rs
+@@ -0,0 +1,444 @@
++use llmbase_core::compat_taxonomy::transform;
++use serde_json::{Value, json};
++use sha2::{Digest, Sha256};
++use std::collections::BTreeMap;
++use std::fs;
++use std::path::{Path, PathBuf};
++
++fn oracle() -> Value {
++    serde_json::from_str(include_str!(
++        "../../../tests/rust_migration/fixtures/taxonomy-read.json"
++    ))
++    .unwrap()
++}
++
++#[test]
++fn frozen_pure_cases_execute_in_rust() {
++    let oracle = oracle();
++    let cases = oracle["pure"].as_array().unwrap();
++    assert_eq!(cases.len(), 76);
++    for case in cases {
++        let result = transform(case["action"].as_str().unwrap(), &case["args"])
++            .unwrap_or_else(|e| panic!("{} failed: {e}", case["action"].as_str().unwrap()));
++        assert_eq!(result, case["expected"], "{}", case["args"]);
++    }
++}
++
++fn write_library(base: &Path, files: &Value) {
++    for (relative, data) in files.as_object().unwrap() {
++        let path = base.join(relative);
++        fs::create_dir_all(path.parent().unwrap()).unwrap();
++        fs::write(&path, data.as_str().unwrap()).unwrap();
++    }
++}
++
++fn inventory(base: &Path) -> (BTreeMap<String, String>, Vec<PathBuf>) {
++    let mut files = BTreeMap::new();
++    let mut dirs = Vec::new();
++    let mut stack = vec![base.to_path_buf()];
++    while let Some(dir) = stack.pop() {
++        for entry in fs::read_dir(&dir).unwrap() {
++            let path = entry.unwrap().path();
++            if path.is_dir() {
++                dirs.push(path.clone());
++                stack.push(path);
++            } else {
++                let relative = path
++                    .strip_prefix(base)
++                    .unwrap()
++                    .to_str()
++                    .unwrap()
++                    .replace('\\', "/");
++                files.insert(
++                    relative,
++                    format!("{:x}", Sha256::digest(fs::read(&path).unwrap())),
++                );
++            }
++        }
++    }
++    (files, dirs)
++}
++
++#[test]
++fn frozen_libraries_execute_without_writes() {
++    let oracle = oracle();
++    let libraries = oracle["libraries"].as_array().unwrap();
++    assert_eq!(libraries.len(), 3);
++    for library in libraries {
++        let temp = tempfile::tempdir().unwrap();
++        let base = temp.path();
++        write_library(base, &library["files"]);
++        let concepts = base.join("knowledge/entries");
++        let meta = base.join("knowledge/metadata");
++        let results = &library["results"];
++        let load = transform("load", &json!({"meta_dir": meta.to_str().unwrap()})).unwrap();
++        assert_eq!(&load, &results["load"], "{} load", library["name"]);
++        let articles = transform(
++            "load_articles",
++            &json!({"concepts_dir": concepts.to_str().unwrap()}),
++        )
++        .unwrap();
++        assert_eq!(
++            &articles, &results["articles"],
++            "{} articles",
++            library["name"]
++        );
++        let pairs = transform(
++            "title_map",
++            &json!({"concepts_dir": concepts.to_str().unwrap()}),
++        )
++        .unwrap();
++        let titles: serde_json::Map<String, Value> = pairs
++            .as_array()
++            .unwrap()
++            .iter()
++            .map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].clone()))
++            .collect();
++        assert_eq!(
++            &Value::Object(titles),
++            &results["titles"],
++            "{} titles",
++            library["name"]
++        );
++        for (lang, expected) in results["build"].as_object().unwrap() {
++            let build = transform(
++                "build",
++                &json!({"concepts_dir": concepts.to_str().unwrap(),
++                    "meta_dir": meta.to_str().unwrap(), "lang": lang}),
++            )
++            .unwrap();
++            assert_eq!(&build, expected, "{} build {lang}", library["name"]);
++        }
++        // Reads leave the original byte inventory untouched: no new files or
++        // directories, no rewrites of the cache, articles, or config.
++        let (files, dirs) = inventory(base);
++        let expected: BTreeMap<String, String> = library["inventory"]
++            .as_object()
++            .unwrap()
++            .iter()
++            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
++            .collect();
++        assert_eq!(files, expected, "{} inventory", library["name"]);
++        for dir in dirs {
++            let relative = dir
++                .strip_prefix(base)
++                .unwrap()
++                .to_str()
++                .unwrap()
++                .replace('\\', "/");
++            assert!(
++                expected
++                    .keys()
++                    .any(|f| f.starts_with(&format!("{relative}/"))),
++                "{} unexpected empty directory {relative}",
++                library["name"]
++            );
++        }
++    }
++}
++
++#[test]
++fn cache_means_no_fallback_and_invalid_cache_fails_unchanged() {
++    let temp = tempfile::tempdir().unwrap();
++    let base = temp.path();
++    let concepts = base.join("entries");
++    let meta = base.join("meta");
++    fs::create_dir_all(&concepts).unwrap();
++    fs::create_dir_all(&meta).unwrap();
++    fs::write(
++        concepts.join("a.md"),
++        "---\ntitle: A / 甲\ntags: [shared]\n---\nbody\n",
++    )
++    .unwrap();
++    fs::write(
++        concepts.join("b.md"),
++        "---\ntitle: B / 乙\ntags: [shared]\n---\nbody\n",
++    )
++    .unwrap();
++    // An empty cached tree wins over the non-empty tag fallback.
++    fs::write(meta.join("taxonomy.json"), "{\"categories\": []}").unwrap();
++    let build = transform(
++        "build",
++        &json!({"concepts_dir": concepts.to_str().unwrap(),
++            "meta_dir": meta.to_str().unwrap(), "lang": "en"}),
++    )
++    .unwrap();
++    assert_eq!(build, json!([]));
++    // An invalid cache fails clearly and keeps its original bytes.
++    fs::write(meta.join("taxonomy.json"), "not json {").unwrap();
++    for action in ["build", "load"] {
++        let args = if action == "build" {
++            json!({"concepts_dir": concepts.to_str().unwrap(),
++                "meta_dir": meta.to_str().unwrap(), "lang": "en"})
++        } else {
++            json!({"meta_dir": meta.to_str().unwrap()})
++        };
++        assert!(transform(action, &args).is_err(), "{action} must fail");
++    }
++    assert_eq!(
++        fs::read_to_string(meta.join("taxonomy.json")).unwrap(),
++        "not json {"
++    );
++    // A cache beyond the bound fails before parsing.
++    fs::write(meta.join("taxonomy.json"), " ".repeat(4 * 1024 * 1024 + 8)).unwrap();
++    assert!(transform("load", &json!({"meta_dir": meta.to_str().unwrap()})).is_err());
++}
++
++#[test]
++fn missing_directories_return_empty_values() {
++    let temp = tempfile::tempdir().unwrap();
++    let base = temp.path();
++    let missing = base.join("absent");
++    assert_eq!(
++        transform(
++            "load_articles",
++            &json!({"concepts_dir": missing.to_str().unwrap()})
++        )
++        .unwrap(),
++        json!([])
++    );
++    assert_eq!(
++        transform(
++            "title_map",
++            &json!({"concepts_dir": missing.to_str().unwrap()})
++        )
++        .unwrap(),
++        json!([])
++    );
++    assert_eq!(
++        transform("load", &json!({"meta_dir": missing.to_str().unwrap()})).unwrap(),
++        json!({"categories": []})
++    );
++    assert_eq!(
++        transform(
++            "build",
++            &json!({"concepts_dir": missing.to_str().unwrap(),
++                "meta_dir": missing.to_str().unwrap(), "lang": "zh"})
++        )
++        .unwrap(),
++        json!([])
++    );
++    assert!(!missing.exists());
++}
++
++#[test]
++fn explicit_null_and_missing_titles_are_preserved() {
++    let temp = tempfile::tempdir().unwrap();
++    let concepts = temp.path().join("entries");
++    fs::create_dir_all(&concepts).unwrap();
++    fs::write(
++        concepts.join("null-title.md"),
++        "---\ntitle:\ntags: []\n---\nx\n",
++    )
++    .unwrap();
++    fs::write(concepts.join("missing-title.md"), "---\ntags: []\n---\nx\n").unwrap();
++    let pairs = transform(
++        "title_map",
++        &json!({"concepts_dir": concepts.to_str().unwrap()}),
++    )
++    .unwrap();
++    let titles: serde_json::Map<String, Value> = pairs
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].clone()))
++        .collect();
++    assert_eq!(
++        Value::Object(titles),
++        json!({"null-title": null, "missing-title": "missing-title"})
++    );
++    let articles = transform(
++        "load_articles",
++        &json!({"concepts_dir": concepts.to_str().unwrap()}),
++    )
++    .unwrap();
++    assert_eq!(
++        articles,
++        json!([
++            {"slug": "missing-title", "title": "missing-title", "tags": [], "summary": ""},
++            {"slug": "null-title", "title": null, "tags": [], "summary": ""},
++        ])
++    );
++}
++
++fn deep_tree(depth: usize) -> Value {
++    let mut node = json!({"id": "leaf"});
++    for _ in 1..depth {
++        node = json!({"id": "n", "children": [node]});
++    }
++    node
++}
++
++#[test]
++fn deep_and_malformed_trees_fail_clearly_without_panic() {
++    let args = |node| json!({"tree": [node], "lang": "en", "titles": {}});
++    assert!(transform("localize_tree", &args(deep_tree(64))).is_ok());
++    let err = transform("localize_tree", &args(deep_tree(65))).unwrap_err();
++    assert!(err.to_string().contains("depth"), "{err}");
++    assert!(transform("localize_tree", &args(deep_tree(400))).is_err());
++    assert!(transform(
++        "build",
++        &json!({"concepts_dir": "/nonexistent-b13", "meta_dir": "/nonexistent-b13", "lang": "en"})
++    )
++    .is_ok());
++}
++
++#[test]
++fn invalid_arguments_and_unknown_action_fail() {
++    assert!(transform("fallback", &json!({})).is_err());
++    assert!(transform("fallback", &json!({"articles": {}})).is_err());
++    assert!(transform("fallback", &json!({"articles": [null]})).is_err());
++    assert!(transform("fallback", &json!({"articles": [{"tags": []}]})).is_err());
++    assert!(transform("fallback", &json!({"articles": [{"slug": 1, "tags": []}]})).is_err());
++    assert!(
++        transform(
++            "fallback",
++            &json!({"articles": [{"slug": "a", "tags": "x"}]})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "fallback",
++            &json!({"articles": [{"slug": "a", "tags": null}]})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "fallback",
++            &json!({"articles": [{"slug": "a", "tags": [1]}]})
++        )
++        .is_err()
++    );
++    let many: Vec<Value> = (0..20_001)
++        .map(|i| json!({"slug": format!("s{i}")}))
++        .collect();
++    assert!(transform("fallback", &json!({"articles": many})).is_err());
++
++    let tree = json!([{"id": "n", "article_slugs": ["a"]}]);
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": {}, "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++    assert!(transform("localize_tree", &json!({"tree": tree, "lang": "en"})).is_err());
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": tree, "lang": "en", "titles": []})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": [null], "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": [{"label": "x"}], "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": [{"id": "n", "label": 1}], "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": [{"id": "n", "article_slugs": "a"}], "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++    assert!(
++        transform(
++            "localize_tree",
++            &json!({"tree": [{"id": "n", "children": {}}], "lang": "en", "titles": {}})
++        )
++        .is_err()
++    );
++
++    assert!(transform("localize_title", &json!({"lang": "en"})).is_err());
++    assert!(transform("localize_title", &json!({"title": 5, "lang": "en"})).is_err());
++    assert!(transform("localize_title", &json!({"title": "a / b"})).is_err());
++    assert_eq!(
++        transform("localize_title", &json!({"title": null, "lang": "en"})).unwrap(),
++        json!(null)
++    );
++    assert_eq!(
++        transform("localize_title", &json!({"title": 0, "lang": "en"})).unwrap(),
++        json!(0)
++    );
++
++    assert!(transform("load", &json!({})).is_err());
++    assert!(transform("load_articles", &json!({"concepts_dir": 1})).is_err());
++    assert!(transform("unknown", &json!({})).is_err());
++}
++
++#[test]
++fn uncached_build_rejects_malformed_file_tags_without_panic_or_writes() {
++    let temp = tempfile::tempdir().unwrap();
++    let concepts = temp.path().join("entries");
++    let meta = temp.path().join("meta");
++    fs::create_dir_all(&concepts).unwrap();
++    for tags in [json!([42]), Value::Null, json!({"bad": true}), json!(7)] {
++        let source = format!("---\n{}\n---\n原文\n", json!({"tags": tags}));
++        let path = concepts.join("a.md");
++        fs::write(&path, &source).unwrap();
++        let loaded = transform("load_articles", &json!({"concepts_dir": concepts})).unwrap();
++        assert_eq!(
++            loaded[0]["tags"], tags,
++            "read DTO preserves original metadata"
++        );
++        let result = std::panic::catch_unwind(|| {
++            transform(
++                "build",
++                &json!({"concepts_dir": concepts, "meta_dir": meta, "lang": "en"}),
++            )
++        });
++        assert!(result.is_ok(), "malformed tags must not panic: {tags}");
++        let error = result
++            .unwrap()
++            .expect_err("malformed tags must fail clearly");
++        assert!(error.to_string().contains("tags"), "{error}");
++        assert_eq!(fs::read(&path).unwrap(), source.as_bytes());
++        assert!(!meta.exists());
++    }
++}
++
++#[test]
++fn aggregate_article_read_budget_applies_to_every_filesystem_action() {
++    use std::io::Write;
++    let temp = tempfile::tempdir().unwrap();
++    let concepts = temp.path().join("entries");
++    let meta = temp.path().join("meta");
++    fs::create_dir_all(&concepts).unwrap();
++    let chunk = vec![b'x'; 1024 * 1024];
++    for name in ["a.md", "b.md"] {
++        let mut file = fs::File::create(concepts.join(name)).unwrap();
++        file.write_all(b"---\n{\"tags\":[\"shared\"]}\n---\n")
++            .unwrap();
++        for _ in 0..33 {
++            file.write_all(&chunk).unwrap();
++        }
++    }
++    for action in ["load_articles", "title_map", "build"] {
++        let error = transform(
++            action,
++            &json!({"concepts_dir": concepts, "meta_dir": meta, "lang": "en"}),
++        )
++        .expect_err("aggregate document reads must be bounded");
++        assert!(error.to_string().contains("64 MiB"), "{error}");
++    }
++    assert!(!meta.exists());
++}
+diff --git a/crates/llmbase-python/src/lib.rs b/crates/llmbase-python/src/lib.rs
+--- a/crates/llmbase-python/src/lib.rs
++++ b/crates/llmbase-python/src/lib.rs
+@@ -6,6 +6,7 @@
+ mod pipeline;
+ mod query;
+ mod resolve;
++mod taxonomy;
+ mod util;
+ use llmbase_core::application::{Application, Principal, Request};
+ use llmbase_core::{Error, LibraryConfig};
+@@ -137,5 +138,6 @@
+     maintenance::register(module)?;
+     util::register(module)?;
+     resolve::register(module)?;
++    taxonomy::register(module)?;
+     Ok(())
+ }
+diff --git a/crates/llmbase-python/src/taxonomy.rs b/crates/llmbase-python/src/taxonomy.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/llmbase-python/src/taxonomy.rs
+@@ -0,0 +1,20 @@
++//! Trusted local Python taxonomy ABI; no remote path selection is exposed here.
++use llmbase_core::compat_taxonomy;
++use pyo3::{exceptions::PyValueError, prelude::*};
++use serde_json::{Value, json};
++
++#[pyfunction]
++fn taxonomy_transform(py: Python<'_>, action: String, args_json: String) -> PyResult<String> {
++    if args_json.len() > 16 * 1024 * 1024 {
++        return Err(PyValueError::new_err("taxonomy helper exceeds 16 MiB"));
++    }
++    py.detach(move || {
++        let args: Value = serde_json::from_str(&args_json).map_err(|_| PyValueError::new_err("invalid taxonomy arguments"))?;
++        let value = compat_taxonomy::transform(&action, &args).map_err(crate::python_error)?;
++        Ok(json!({"value":value,"trace":{"core":"rust","operation":"taxonomy_transform","action":action,"storage":if matches!(action.as_str(),"load_articles"|"title_map"|"load"|"build"){ "read_only_filesystem" }else{ "none" }}}).to_string())
++    })
++}
++pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
++    module.add_function(wrap_pyfunction!(taxonomy_transform, module)?)?;
++    Ok(())
++}
+diff --git a/llmwiki/_native.py b/llmwiki/_native.py
+--- a/llmwiki/_native.py
++++ b/llmwiki/_native.py
+@@ -101,6 +101,15 @@
+ def resolve_transform(action: str, args: dict):
+     clear_trace()
+     result = json.loads(_extension(required=True).resolve_transform(
++        action, json.dumps(args, ensure_ascii=False)))
++    _last_trace.set(result.get("trace"))
++    return result["value"]
++
++
++def taxonomy_transform(action: str, args: dict) -> Any:
++    """Run a trusted local taxonomy read/value helper; no library is opened."""
++    clear_trace()
++    result = json.loads(_extension(required=True).taxonomy_transform(
+         action, json.dumps(args, ensure_ascii=False)))
+     _last_trace.set(result.get("trace"))
+     return result["value"]
+diff --git a/llmwiki/taxonomy.py b/llmwiki/taxonomy.py
+--- a/llmwiki/taxonomy.py
++++ b/llmwiki/taxonomy.py
+@@ -403,12 +403,7 @@
+     article_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+ 
+ 
+-def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
+-    """Read cached taxonomy and return localized tree for the web API.
+-
+-    This is fast (no LLM call). If no cache exists, generates a simple
+-    tag-based fallback synchronously.
+-    """
++def _legacy_build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
+     cfg = load_config(base_dir)
+     meta_dir = Path(cfg["paths"]["meta"])
+     concepts_dir = Path(cfg["paths"]["concepts"])
+@@ -428,6 +423,40 @@
+     # Localize labels and resolve article_slugs → {slug, title}
+     title_map = _build_title_map(concepts_dir)
+     return _localize_tree(raw_tree, lang, title_map)
++
++
++def build_taxonomy(base_dir: Path | None = None, lang: str = "zh") -> list[dict]:
++    """Read cached taxonomy and return localized tree for the web API.
++
++    This is fast (no LLM call). If no cache exists, generates a simple
++    tag-based fallback synchronously.
++    """
++    from . import _native
++    _native.clear_trace()
++    if (_native.available()
++            and _load_articles is _DEFAULT_LOAD_ARTICLES
++            and _fallback_taxonomy is _DEFAULT_FALLBACK_TAXONOMY
++            and _dedup_tree is _DEFAULT_DEDUP_TREE
++            and _build_title_map is _DEFAULT_BUILD_TITLE_MAP
++            and _localize_tree is _DEFAULT_LOCALIZE_TREE
++            and _localize_title is _DEFAULT_LOCALIZE_TITLE):
++        cfg = load_config(base_dir)
++        return _native.taxonomy_transform("build", {
++            "concepts_dir": str(Path(cfg["paths"]["concepts"])),
++            "meta_dir": str(Path(cfg["paths"]["meta"])),
++            "lang": lang})
++    if not _native.available():
++        return _legacy_build_taxonomy(base_dir, lang)
++    # A live helper override runs the established Python orchestration against
++    # the real replacements; the callback work is not attributed to Rust.
++    _native.clear_trace()
++    try:
++        result = _legacy_build_taxonomy(base_dir, lang)
++    except BaseException:
++        _native.clear_trace()
++        raise
++    _native.python_boundary("build_taxonomy", "live taxonomy helper override")
++    return result
+ 
+ 
+ def _dedup_tree(nodes: list[dict], seen: set | None = None):
+@@ -544,14 +573,23 @@
+     })
+ 
+ 
+-def load_taxonomy(base_dir: Path | None = None) -> dict:
+-    """Load cached taxonomy (raw, not localized)."""
++def _legacy_load_taxonomy(base_dir: Path | None = None) -> dict:
+     cfg = load_config(base_dir)
+     meta_dir = Path(cfg["paths"]["meta"])
+     path = meta_dir / "taxonomy.json"
+     if path.exists():
+         return json.loads(path.read_text())
+     return {"categories": []}
++
++
++def load_taxonomy(base_dir: Path | None = None) -> dict:
++    """Load cached taxonomy (raw, not localized)."""
++    from . import _native
++    _native.clear_trace()
++    if _native.available():
++        cfg = load_config(base_dir)
++        return _native.taxonomy_transform("load", {"meta_dir": str(Path(cfg["paths"]["meta"]))})
++    return _legacy_load_taxonomy(base_dir)
+ 
+ 
+ # ─── Internal helpers ─────────────────────────────────────────────
+@@ -676,11 +714,7 @@
+     return tree
+ 
+ 
+-def _fallback_taxonomy(articles: list[dict]) -> list[dict]:
+-    """Tag-frequency-based taxonomy when LLM is unavailable.
+-
+-    Groups articles by their most common tags. No hardcoded domains.
+-    """
++def _legacy_fallback_taxonomy(articles: list[dict]) -> list[dict]:
+     from collections import Counter
+ 
+     if not articles:
+@@ -740,14 +774,18 @@
+     return categories
+ 
+ 
+-def _localize_title(title: str, lang: str) -> str:
+-    """Extract the language-specific part of a bilingual title.
+-
+-    "Mencius / 孟子" + lang=zh → "孟子"
+-    "Mencius / 孟子" + lang=en → "Mencius"
+-    "Mencius / 孟子" + lang=zh-en → "Mencius / 孟子"
+-    "some-slug-only" → "some-slug-only" (no change)
++def _fallback_taxonomy(articles: list[dict]) -> list[dict]:
++    """Tag-frequency-based taxonomy when LLM is unavailable.
++
++    Groups articles by their most common tags. No hardcoded domains.
+     """
++    from . import _native
++    if _native.available():
++        return _native.taxonomy_transform("fallback", {"articles": articles})
++    return _legacy_fallback_taxonomy(articles)
++
++
++def _legacy_localize_title(title: str, lang: str) -> str:
+     import re
+     if not title or "/" not in title:
+         return title
+@@ -768,12 +806,21 @@
+         return en or parts[0]
+ 
+ 
+-def _localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
+-    """Convert raw taxonomy tree to the format the web API expects.
+-
+-    Resolves article_slugs to {slug, title} objects. Both category labels
+-    AND article titles are localized to the requested language.
++def _localize_title(title: str, lang: str) -> str:
++    """Extract the language-specific part of a bilingual title.
++
++    "Mencius / 孟子" + lang=zh → "孟子"
++    "Mencius / 孟子" + lang=en → "Mencius"
++    "Mencius / 孟子" + lang=zh-en → "Mencius / 孟子"
++    "some-slug-only" → "some-slug-only" (no change)
+     """
++    from . import _native
++    if _native.available():
++        return _native.taxonomy_transform("localize_title", {"title": title, "lang": lang})
++    return _legacy_localize_title(title, lang)
++
++
++def _legacy_localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
+     result = []
+     for node in tree:
+         slugs = node.get("article_slugs", [])
+@@ -800,8 +847,32 @@
+     return result
+ 
+ 
+-def _load_articles(concepts_dir: Path) -> list[dict]:
+-    """Load article metadata from disk."""
++def _localize_tree(tree: list[dict], lang: str, title_map: dict[str, str]) -> list[dict]:
++    """Convert raw taxonomy tree to the format the web API expects.
++
++    Resolves article_slugs to {slug, title} objects. Both category labels
++    AND article titles are localized to the requested language.
++    """
++    from . import _native
++    if (_native.available()
++            and _localize_title is _DEFAULT_LOCALIZE_TITLE
++            and _localize_tree is _DEFAULT_LOCALIZE_TREE):
++        return _native.taxonomy_transform("localize_tree",
++            {"tree": tree, "lang": lang, "titles": title_map})
++    if not _native.available():
++        return _legacy_localize_tree(tree, lang, title_map)
++    # A replaced _localize_title is honored through the real legacy recursion.
++    _native.clear_trace()
++    try:
++        result = _legacy_localize_tree(tree, lang, title_map)
++    except BaseException:
++        _native.clear_trace()
++        raise
++    _native.python_boundary("localize_tree", "live _localize_title override")
++    return result
++
++
++def _legacy_load_articles(concepts_dir: Path) -> list[dict]:
+     articles = []
+     if not concepts_dir.exists():
+         return articles
+@@ -816,8 +887,15 @@
+     return articles
+ 
+ 
+-def _build_title_map(concepts_dir: Path) -> dict[str, str]:
+-    """Build slug → title mapping."""
++def _load_articles(concepts_dir: Path) -> list[dict]:
++    """Load article metadata from disk."""
++    from . import _native
++    if _native.available():
++        return _native.taxonomy_transform("load_articles", {"concepts_dir": str(concepts_dir)})
++    return _legacy_load_articles(concepts_dir)
++
++
++def _legacy_build_title_map(concepts_dir: Path) -> dict[str, str]:
+     title_map = {}
+     if not concepts_dir.exists():
+         return title_map
+@@ -825,3 +903,22 @@
+         post = frontmatter.load(str(md_file))
+         title_map[md_file.stem] = post.metadata.get("title", md_file.stem)
+     return title_map
++
++
++def _build_title_map(concepts_dir: Path) -> dict[str, str]:
++    """Build slug → title mapping."""
++    from . import _native
++    if _native.available():
++        pairs = _native.taxonomy_transform("title_map", {"concepts_dir": str(concepts_dir)})
++        return {slug: title for slug, title in pairs}
++    return _legacy_build_title_map(concepts_dir)
++
++
++# Default helper identities captured after definition; live replacements are
++# honored through the established extension path (see llmwiki/sections.py).
++_DEFAULT_LOAD_ARTICLES = _load_articles
++_DEFAULT_FALLBACK_TAXONOMY = _fallback_taxonomy
++_DEFAULT_DEDUP_TREE = _dedup_tree
++_DEFAULT_BUILD_TITLE_MAP = _build_title_map
++_DEFAULT_LOCALIZE_TREE = _localize_tree
++_DEFAULT_LOCALIZE_TITLE = _localize_title
+diff --git a/tests/rust_migration/test_native_taxonomy_read.py b/tests/rust_migration/test_native_taxonomy_read.py
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/test_native_taxonomy_read.py
+@@ -0,0 +1,224 @@
++"""Actual installed native taxonomy read/value helpers and live facade contracts."""
++import hashlib
++import json
++from pathlib import Path
++
++import pytest
++
++from llmwiki import _native, taxonomy
++
++pytestmark = pytest.mark.skipif(not _native.available(), reason="native candidate required")
++
++ORACLE = json.loads((Path(__file__).parent / 'fixtures/taxonomy-read.json').read_text())
++
++
++def write_library(base, files):
++    for relative, data in files.items():
++        path = base / relative
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(data, encoding='utf-8')
++
++
++def inventory(base):
++    return {p.relative_to(base).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
++            for p in base.rglob('*') if p.is_file()}
++
++
++def test_frozen_pure_cases_execute_in_rust_without_python_algorithm():
++    assert len(ORACLE['pure']) == 76
++    for case in ORACLE['pure']:
++        args = case['args']
++        if case['action'] == 'fallback':
++            result = taxonomy._fallback_taxonomy(args['articles'])
++        elif case['action'] == 'localize_title':
++            result = taxonomy._localize_title(args['title'], args['lang'])
++        else:
++            result = taxonomy._localize_tree(args['tree'], args['lang'], args['titles'])
++        assert result == case['expected'], case
++        trace = _native.last_trace()
++        assert trace == {'core': 'rust', 'operation': 'taxonomy_transform',
++                         'action': case['action'], 'storage': 'none'}
++
++
++def test_frozen_libraries_and_poisoned_python_algorithms(monkeypatch, tmp_path):
++    def forbidden(*args, **kwargs):
++        raise AssertionError('legacy Python taxonomy algorithm executed')
++    for name in ['_legacy_load_articles', '_legacy_fallback_taxonomy', '_legacy_build_title_map',
++                 '_legacy_localize_tree', '_legacy_localize_title', '_legacy_build_taxonomy',
++                 '_legacy_load_taxonomy']:
++        monkeypatch.setattr(taxonomy, name, forbidden)
++    monkeypatch.setattr(taxonomy.frontmatter, 'load', forbidden)
++    before = {key: dict(record) for key, record in _native._configured_roots.items()}
++    for library in ORACLE['libraries']:
++        base = tmp_path / library['name']
++        write_library(base, library['files'])
++        snapshot = inventory(base)
++        assert taxonomy.load_taxonomy(base) == library['results']['load']
++        assert _native.last_trace()['action'] == 'load'
++        concepts = base / 'knowledge/entries'
++        assert taxonomy._load_articles(concepts) == library['results']['articles']
++        assert taxonomy._build_title_map(concepts) == library['results']['titles']
++        for lang, expected in library['results']['build'].items():
++            assert taxonomy.build_taxonomy(base, lang) == expected
++            trace = _native.last_trace()
++            assert trace == {'core': 'rust', 'operation': 'taxonomy_transform',
++                             'action': 'build', 'storage': 'read_only_filesystem'}
++        assert inventory(base) == snapshot == library['inventory']
++    # Only the explicit config loads registered roots; earlier entries are unchanged.
++    for key, record in before.items():
++        assert key in _native._configured_roots
++        assert _native._configured_roots[key] == record
++
++
++def test_libraries_with_same_slugs_remain_separate(tmp_path):
++    cached, uncached = ORACLE['libraries'][0], ORACLE['libraries'][1]
++    bases = []
++    for library in (cached, uncached):
++        base = tmp_path / library['name']
++        write_library(base, library['files'])
++        bases.append(base)
++    assert cached['files']['knowledge/entries/alpha.md'] != ''
++    # Both libraries contain the same slugs with different cached state.
++    for library, base in zip((cached, uncached), bases):
++        for lang, expected in library['results']['build'].items():
++            assert taxonomy.build_taxonomy(base, lang) == expected
++    assert taxonomy.build_taxonomy(bases[0], 'en') == cached['results']['build']['en']
++    assert taxonomy.build_taxonomy(bases[1], 'en') == uncached['results']['build']['en']
++    assert taxonomy.build_taxonomy(bases[0], 'en') == cached['results']['build']['en']
++
++
++def test_live_helper_replacement_receives_real_path_and_dicts(monkeypatch, tmp_path):
++    library = ORACLE['libraries'][1]  # uncached
++    base = tmp_path / 'uncached'
++    write_library(base, library['files'])
++    assert taxonomy.build_taxonomy(base, 'en') == library['results']['build']['en']
++    assert _native.last_trace()['action'] == 'build'
++    real_articles = taxonomy._legacy_load_articles(base / 'knowledge/entries')
++    calls = []
++
++    def replacement(concepts_dir):
++        calls.append(concepts_dir)
++        assert isinstance(concepts_dir, Path)
++        return [dict(article) for article in real_articles]
++
++    monkeypatch.setattr(taxonomy, '_load_articles', replacement)
++    result = taxonomy.build_taxonomy(base, 'en')
++    assert calls == [base / 'knowledge/entries']  # exactly one actual callback invocation
++    assert result == library['results']['build']['en']
++    trace = _native.last_trace()
++    assert trace['core'] == 'python' and trace['operation'] == 'build_taxonomy'
++    # Restoring returns to the native default branch.
++    monkeypatch.undo()
++    assert taxonomy.build_taxonomy(base, 'en') == library['results']['build']['en']
++    assert _native.last_trace()['action'] == 'build'
++
++
++def test_callback_typeerror_identity_no_retry_no_stale_trace(monkeypatch, tmp_path):
++    library = ORACLE['libraries'][1]
++    base = tmp_path / 'uncached'
++    write_library(base, library['files'])
++    assert taxonomy.build_taxonomy(base, 'en') == library['results']['build']['en']
++    assert _native.last_trace()['core'] == 'rust'  # a real prior success receipt
++    expected = TypeError('callback failure identity')
++    calls = []
++
++    def broken(concepts_dir):
++        calls.append(concepts_dir)
++        raise expected
++
++    monkeypatch.setattr(taxonomy, '_load_articles', broken)
++    with pytest.raises(TypeError) as caught:
++        taxonomy.build_taxonomy(base, 'en')
++    assert caught.value is expected
++    assert len(calls) == 1  # no retry
++    assert _native.last_trace() is None  # no stale success trace
++
++
++def test_replaced_localize_title_is_honored_through_tree_and_build(monkeypatch, tmp_path):
++    library = ORACLE['libraries'][0]  # cached
++    base = tmp_path / 'cached'
++    write_library(base, library['files'])
++    calls = []
++
++    def replacement(title, lang):
++        calls.append((title, lang))
++        return f'X{title}X' if isinstance(title, str) else title
++
++    monkeypatch.setattr(taxonomy, '_localize_title', replacement)
++    case = next(c for c in ORACLE['pure']
++                if c['action'] == 'localize_tree' and c['args']['lang'] == 'en')
++    result = taxonomy._localize_tree(case['args']['tree'], 'en', case['args']['titles'])
++    assert calls  # the real replacement was actually invoked
++    assert result[0]['articles'][0] == {'slug': 'alpha', 'title': 'XAlpha / 學X'}
++    trace = _native.last_trace()
++    assert trace['core'] == 'python' and trace['operation'] == 'localize_tree'
++    calls.clear()
++    built = taxonomy.build_taxonomy(base, 'en')
++    assert calls  # honored through the build orchestration as well
++    titles = library['results']['titles']
++
++    def wrap(node):
++        node = dict(node)
++        node['articles'] = [dict(a, title=f"X{titles.get(a['slug'], a['slug'])}X")
++                            for a in node['articles']]
++        node['children'] = [wrap(c) for c in node['children']]
++        return node
++
++    assert built == [wrap(n) for n in library['results']['build']['en']]
++
++
++def test_explicit_unbuilt_development_fallback(monkeypatch, tmp_path):
++    monkeypatch.setattr(_native, 'available', lambda: False)
++
++    def forbidden(*args, **kwargs):
++        raise AssertionError('development fallback entered native transport')
++
++    monkeypatch.setattr(_native, 'taxonomy_transform', forbidden)
++    library = ORACLE['libraries'][1]
++    base = tmp_path / 'uncached'
++    write_library(base, library['files'])
++    assert taxonomy.build_taxonomy(base, 'zh') == library['results']['build']['zh']
++    assert taxonomy.load_taxonomy(base) == library['results']['load']
++    case = next(c for c in ORACLE['pure']
++                if c['action'] == 'fallback' and len(c['args']['articles']) == 3)
++    assert taxonomy._fallback_taxonomy(case['args']['articles']) == case['expected']
++    title_case = next(c for c in ORACLE['pure']
++                      if c['action'] == 'localize_title' and c['args']['title'] == 'Mencius / 孟子'
++                      and c['args']['lang'] == 'zh')
++    assert taxonomy._localize_title('Mencius / 孟子', 'zh') == title_case['expected']
++
++
++def test_missing_required_native_failure_is_not_swallowed(monkeypatch, tmp_path):
++    expected = _native.NativeCapabilityError('required extension absent')
++
++    def unavailable():
++        raise expected
++
++    monkeypatch.setattr(_native, 'available', unavailable)
++    with pytest.raises(_native.NativeCapabilityError) as caught:
++        taxonomy.build_taxonomy(tmp_path)
++    assert caught.value is expected
++    with pytest.raises(_native.NativeCapabilityError) as caught:
++        taxonomy.load_taxonomy(tmp_path)
++    assert caught.value is expected
++    with pytest.raises(_native.NativeCapabilityError) as caught:
++        taxonomy._fallback_taxonomy([])
++    assert caught.value is expected
++
++
++def test_wrapped_localize_tree_keeps_live_recursive_calls(monkeypatch):
++    original = taxonomy._localize_tree
++    calls = []
++
++    def wrapper(tree, lang, titles):
++        calls.append(len(tree))
++        return original(tree, lang, titles)
++
++    monkeypatch.setattr(taxonomy, '_localize_tree', wrapper)
++    tree = [{'id': 'root', 'article_slugs': ['a'], 'children': [{'id': 'child'}]}]
++    result = wrapper(tree, 'en', {'a': 'Alpha / 學'})
++    assert calls == [1, 1, 0]
++    assert result[0]['articles'] == [{'slug': 'a', 'title': 'Alpha'}]
++    assert result[0]['total'] == 1
++    assert result[0]['children'][0]['id'] == 'child'
++    assert _native.last_trace()['core'] == 'python'
+diff --git a/tests/rust_migration/fixtures/taxonomy-read.json b/tests/rust_migration/fixtures/taxonomy-read.json
+new file mode 100644
+--- /dev/null
++++ b/tests/rust_migration/fixtures/taxonomy-read.json
+@@ -0,0 +1,2402 @@
++{
++  "schema": 1,
++  "baseline_commit": "a7c4d9da764462e09c0769ecd8ba548a46d27e83",
++  "source_sha256": "082c894d50cb1baa2a972f502a2a73f7121a8024cc8ca59e277c37bb72713aa7",
++  "pure": [
++    {
++      "action": "fallback",
++      "args": {
++        "articles": []
++      },
++      "expected": []
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "alpha",
++            "tags": []
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "all",
++          "label": {
++            "en": "All Articles",
++            "zh": "全部文章",
++            "ja": "全記事"
++          },
++          "children": [],
++          "article_slugs": [
++            "alpha"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "Mixed Topic"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "mixed topic"
++            ]
++          },
++          {
++            "slug": "c",
++            "tags": [
++              "single"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "mixed-topic",
++          "label": {
++            "en": "Mixed Topic",
++            "zh": "mixed-topic",
++            "ja": "mixed-topic"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        },
++        {
++          "id": "other",
++          "label": {
++            "en": "Other",
++            "zh": "其他",
++            "ja": "その他"
++          },
++          "children": [],
++          "article_slugs": [
++            "c"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "same",
++              "tie"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "tie",
++              "same"
++            ]
++          },
++          {
++            "slug": "c",
++            "tags": []
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "same",
++          "label": {
++            "en": "Same",
++            "zh": "same",
++            "ja": "same"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        },
++        {
++          "id": "other",
++          "label": {
++            "en": "Other",
++            "zh": "其他",
++            "ja": "その他"
++          },
++          "children": [],
++          "article_slugs": [
++            "c"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "dup",
++            "tags": [
++              "old"
++            ]
++          },
++          {
++            "slug": "dup",
++            "tags": [
++              "new"
++            ]
++          },
++          {
++            "slug": "other",
++            "tags": [
++              "new"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "new",
++          "label": {
++            "en": "New",
++            "zh": "new",
++            "ja": "new"
++          },
++          "children": [],
++          "article_slugs": [
++            "dup",
++            "other"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "s0",
++            "tags": [
++              "tag 0",
++              "common"
++            ]
++          },
++          {
++            "slug": "s1",
++            "tags": [
++              "tag 0",
++              "common"
++            ]
++          },
++          {
++            "slug": "s2",
++            "tags": [
++              "tag 1",
++              "common"
++            ]
++          },
++          {
++            "slug": "s3",
++            "tags": [
++              "tag 1",
++              "common"
++            ]
++          },
++          {
++            "slug": "s4",
++            "tags": [
++              "tag 2",
++              "common"
++            ]
++          },
++          {
++            "slug": "s5",
++            "tags": [
++              "tag 2",
++              "common"
++            ]
++          },
++          {
++            "slug": "s6",
++            "tags": [
++              "tag 3",
++              "common"
++            ]
++          },
++          {
++            "slug": "s7",
++            "tags": [
++              "tag 3",
++              "common"
++            ]
++          },
++          {
++            "slug": "s8",
++            "tags": [
++              "tag 4",
++              "common"
++            ]
++          },
++          {
++            "slug": "s9",
++            "tags": [
++              "tag 4",
++              "common"
++            ]
++          },
++          {
++            "slug": "s10",
++            "tags": [
++              "tag 5",
++              "common"
++            ]
++          },
++          {
++            "slug": "s11",
++            "tags": [
++              "tag 5",
++              "common"
++            ]
++          },
++          {
++            "slug": "s12",
++            "tags": [
++              "tag 6",
++              "common"
++            ]
++          },
++          {
++            "slug": "s13",
++            "tags": [
++              "tag 6",
++              "common"
++            ]
++          },
++          {
++            "slug": "s14",
++            "tags": [
++              "tag 7",
++              "common"
++            ]
++          },
++          {
++            "slug": "s15",
++            "tags": [
++              "tag 7",
++              "common"
++            ]
++          },
++          {
++            "slug": "s16",
++            "tags": [
++              "tag 8",
++              "common"
++            ]
++          },
++          {
++            "slug": "s17",
++            "tags": [
++              "tag 8",
++              "common"
++            ]
++          },
++          {
++            "slug": "s18",
++            "tags": [
++              "tag 9",
++              "common"
++            ]
++          },
++          {
++            "slug": "s19",
++            "tags": [
++              "tag 9",
++              "common"
++            ]
++          },
++          {
++            "slug": "s20",
++            "tags": [
++              "tag 10",
++              "common"
++            ]
++          },
++          {
++            "slug": "s21",
++            "tags": [
++              "tag 10",
++              "common"
++            ]
++          },
++          {
++            "slug": "s22",
++            "tags": [
++              "tag 11",
++              "common"
++            ]
++          },
++          {
++            "slug": "s23",
++            "tags": [
++              "tag 11",
++              "common"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "common",
++          "label": {
++            "en": "Common",
++            "zh": "common",
++            "ja": "common"
++          },
++          "children": [],
++          "article_slugs": [
++            "s0",
++            "s1",
++            "s2",
++            "s3",
++            "s4",
++            "s5",
++            "s6",
++            "s7",
++            "s8",
++            "s9",
++            "s10",
++            "s11",
++            "s12",
++            "s13",
++            "s14",
++            "s15",
++            "s16",
++            "s17",
++            "s18",
++            "s19",
++            "s20",
++            "s21",
++            "s22",
++            "s23"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "ßtest"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "ßtest"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "ßtest",
++          "label": {
++            "en": "Sstest",
++            "zh": "ßtest",
++            "ja": "ßtest"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "ǳabc"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "ǳabc"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "ǳabc",
++          "label": {
++            "en": "ǲabc",
++            "zh": "ǳabc",
++            "ja": "ǳabc"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "ᾀabc"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "ᾀabc"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "ᾀabc",
++          "label": {
++            "en": "ᾈabc",
++            "zh": "ᾀabc",
++            "ja": "ᾀabc"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "ქართული"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "ქართული"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "ქართული",
++          "label": {
++            "en": "ქართული",
++            "zh": "ქართული",
++            "ja": "ქართული"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "中a 國b"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "中a 國b"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "中a-國b",
++          "label": {
++            "en": "中A 國B",
++            "zh": "中a-國b",
++            "ja": "中a-國b"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "don't stop"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "don't stop"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "don't-stop",
++          "label": {
++            "en": "Don'T Stop",
++            "zh": "don't-stop",
++            "ja": "don't-stop"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "école"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "école"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "école",
++          "label": {
++            "en": "ÉCole",
++            "zh": "école",
++            "ja": "école"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "ΟΣ"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "ΟΣ"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "ος",
++          "label": {
++            "en": "Ος",
++            "zh": "ος",
++            "ja": "ος"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "𠮷 topic"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "𠮷 topic"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "𠮷-topic",
++          "label": {
++            "en": "𠮷 Topic",
++            "zh": "𠮷-topic",
++            "ja": "𠮷-topic"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "fallback",
++      "args": {
++        "articles": [
++          {
++            "slug": "a",
++            "tags": [
++              "category:經/史"
++            ]
++          },
++          {
++            "slug": "b",
++            "tags": [
++              "category:經/史"
++            ]
++          }
++        ]
++      },
++      "expected": [
++        {
++          "id": "category:經/史",
++          "label": {
++            "en": "Category:經/史",
++            "zh": "category:經/史",
++            "ja": "category:經/史"
++          },
++          "children": [],
++          "article_slugs": [
++            "a",
++            "b"
++          ]
++        }
++      ]
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "en"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "zh"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "ja"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "zh-en"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "文言"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "",
++        "lang": "unknown"
++      },
++      "expected": ""
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "en"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "zh"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "ja"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "zh-en"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "文言"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": null,
++        "lang": "unknown"
++      },
++      "expected": null
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "en"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "zh"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "ja"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "zh-en"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "文言"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "plain",
++        "lang": "unknown"
++      },
++      "expected": "plain"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "en"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "zh"
++      },
++      "expected": "孟子"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "ja"
++      },
++      "expected": "孟子"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "zh-en"
++      },
++      "expected": "Mencius / 孟子"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "文言"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "Mencius / 孟子",
++        "lang": "unknown"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "en"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "zh"
++      },
++      "expected": "孟子"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "ja"
++      },
++      "expected": "孟子"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "zh-en"
++      },
++      "expected": "孟子 / Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "文言"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "孟子 / Mencius",
++        "lang": "unknown"
++      },
++      "expected": "Mencius"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "en"
++      },
++      "expected": "𠮷"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "zh"
++      },
++      "expected": "英語"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "ja"
++      },
++      "expected": "英語"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "zh-en"
++      },
++      "expected": "𠮷 / 英語"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "文言"
++      },
++      "expected": "𠮷"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "𠮷 / 英語",
++        "lang": "unknown"
++      },
++      "expected": "𠮷"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "en"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "zh"
++      },
++      "expected": "ひらがな"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "ja"
++      },
++      "expected": "ひらがな"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "zh-en"
++      },
++      "expected": "ひらがな / English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "文言"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "ひらがな / English",
++        "lang": "unknown"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "en"
++      },
++      "expected": "甲"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "zh"
++      },
++      "expected": "甲"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "ja"
++      },
++      "expected": "甲"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "zh-en"
++      },
++      "expected": " / 甲 / 乙 / "
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "文言"
++      },
++      "expected": "甲"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": " / 甲 / 乙 / ",
++        "lang": "unknown"
++      },
++      "expected": "甲"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "en"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "zh"
++      },
++      "expected": "日本語"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "ja"
++      },
++      "expected": "日本語"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "zh-en"
++      },
++      "expected": "English / 日本語 / 中文"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "文言"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_title",
++      "args": {
++        "title": "English / 日本語 / 中文",
++        "lang": "unknown"
++      },
++      "expected": "English"
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "en",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "Root",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "Beta"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "zh",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "根",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "學"
++            },
++            {
++              "slug": "alpha",
++              "title": "學"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "𠮷"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "𠮷"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "ja",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "Root",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "學"
++            },
++            {
++              "slug": "alpha",
++              "title": "學"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "𠮷"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "𠮷"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "zh-en",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "Root",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "Alpha / 學"
++            },
++            {
++              "slug": "alpha",
++              "title": "Alpha / 學"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha / 學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta / 𠮷"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "Beta / 𠮷"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "文言",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "Root",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "Beta"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    },
++    {
++      "action": "localize_tree",
++      "args": {
++        "tree": [
++          {
++            "id": "root",
++            "label": {
++              "en": "Root",
++              "zh": "根",
++              "custom": "另"
++            },
++            "article_slugs": [
++              "alpha",
++              "alpha",
++              "missing"
++            ],
++            "unknown": {
++              "keep": [
++                1,
++                true
++              ]
++            },
++            "children": [
++              {
++                "id": "child",
++                "label": "古書",
++                "article_slugs": [
++                  "alpha",
++                  "beta"
++                ],
++                "children": []
++              }
++            ]
++          },
++          {
++            "id": "later",
++            "label": {},
++            "article_slugs": [
++              "beta",
++              "gamma"
++            ],
++            "children": []
++          }
++        ],
++        "lang": "custom",
++        "titles": {
++          "alpha": "Alpha / 學",
++          "beta": "Beta / 𠮷",
++          "gamma": "Plain"
++        }
++      },
++      "expected": [
++        {
++          "id": "root",
++          "label": "另",
++          "count": 3,
++          "total": 5,
++          "articles": [
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "alpha",
++              "title": "Alpha"
++            },
++            {
++              "slug": "missing",
++              "title": "missing"
++            }
++          ],
++          "children": [
++            {
++              "id": "child",
++              "label": "古書",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta"
++                }
++              ],
++              "children": []
++            }
++          ]
++        },
++        {
++          "id": "later",
++          "label": "later",
++          "count": 2,
++          "total": 2,
++          "articles": [
++            {
++              "slug": "beta",
++              "title": "Beta"
++            },
++            {
++              "slug": "gamma",
++              "title": "Plain"
++            }
++          ],
++          "children": []
++        }
++      ]
++    }
++  ],
++  "libraries": [
++    {
++      "name": "cached",
++      "files": {
++        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n",
++        "knowledge/entries/alpha.md": "---\ntitle: Alpha / 學\ntags: [Mixed Topic, tie]\nsummary: 原義\neditorial_extension: {keep: [1, true]}\n---\n文言𠮷正文。\n",
++        "knowledge/entries/beta.md": "---\ntitle: Beta / 𠮷\ntags: [mixed topic, tie]\nsummary: 義\nprivate: true\n---\n私記不改。\n",
++        "knowledge/entries/gamma.md": "---\ntags: []\n---\n無題亦保。\n",
++        "knowledge/entries/ignore.txt": "not an article\n",
++        "knowledge/entries/nested/hidden.md": "---\ntitle: Nested\n---\nnot shallow\n",
++        "knowledge/metadata/taxonomy.json": "{\"categories\": [{\"id\": \"root\", \"label\": {\"en\": \"Root\", \"zh\": \"根\", \"custom\": \"另\"}, \"article_slugs\": [\"alpha\", \"alpha\", \"missing\"], \"unknown\": {\"keep\": [1, true]}, \"children\": [{\"id\": \"child\", \"label\": \"古書\", \"article_slugs\": [\"alpha\", \"beta\"], \"children\": []}]}, {\"id\": \"later\", \"label\": {}, \"article_slugs\": [\"beta\", \"gamma\"], \"children\": []}], \"locked\": true, \"unknown\": {\"original\": \"保留\"}}"
++      },
++      "results": {
++        "load": {
++          "categories": [
++            {
++              "id": "root",
++              "label": {
++                "en": "Root",
++                "zh": "根",
++                "custom": "另"
++              },
++              "article_slugs": [
++                "alpha",
++                "alpha",
++                "missing"
++              ],
++              "unknown": {
++                "keep": [
++                  1,
++                  true
++                ]
++              },
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "article_slugs": [
++                    "alpha",
++                    "beta"
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": {},
++              "article_slugs": [
++                "beta",
++                "gamma"
++              ],
++              "children": []
++            }
++          ],
++          "locked": true,
++          "unknown": {
++            "original": "保留"
++          }
++        },
++        "articles": [
++          {
++            "slug": "alpha",
++            "title": "Alpha / 學",
++            "tags": [
++              "Mixed Topic",
++              "tie"
++            ],
++            "summary": "原義"
++          },
++          {
++            "slug": "beta",
++            "title": "Beta / 𠮷",
++            "tags": [
++              "mixed topic",
++              "tie"
++            ],
++            "summary": "義"
++          },
++          {
++            "slug": "gamma",
++            "title": "gamma",
++            "tags": [],
++            "summary": ""
++          }
++        ],
++        "titles": {
++          "alpha": "Alpha / 學",
++          "gamma": "gamma",
++          "beta": "Beta / 𠮷"
++        },
++        "build": {
++          "en": [
++            {
++              "id": "root",
++              "label": "Root",
++              "count": 1,
++              "total": 3,
++              "articles": [
++                {
++                  "slug": "missing",
++                  "title": "missing"
++                }
++              ],
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "count": 2,
++                  "total": 2,
++                  "articles": [
++                    {
++                      "slug": "alpha",
++                      "title": "Alpha"
++                    },
++                    {
++                      "slug": "beta",
++                      "title": "Beta"
++                    }
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": "later",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "zh": [
++            {
++              "id": "root",
++              "label": "根",
++              "count": 1,
++              "total": 3,
++              "articles": [
++                {
++                  "slug": "missing",
++                  "title": "missing"
++                }
++              ],
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "count": 2,
++                  "total": 2,
++                  "articles": [
++                    {
++                      "slug": "alpha",
++                      "title": "學"
++                    },
++                    {
++                      "slug": "beta",
++                      "title": "𠮷"
++                    }
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": "later",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "ja": [
++            {
++              "id": "root",
++              "label": "Root",
++              "count": 1,
++              "total": 3,
++              "articles": [
++                {
++                  "slug": "missing",
++                  "title": "missing"
++                }
++              ],
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "count": 2,
++                  "total": 2,
++                  "articles": [
++                    {
++                      "slug": "alpha",
++                      "title": "學"
++                    },
++                    {
++                      "slug": "beta",
++                      "title": "𠮷"
++                    }
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": "later",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "zh-en": [
++            {
++              "id": "root",
++              "label": "Root",
++              "count": 1,
++              "total": 3,
++              "articles": [
++                {
++                  "slug": "missing",
++                  "title": "missing"
++                }
++              ],
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "count": 2,
++                  "total": 2,
++                  "articles": [
++                    {
++                      "slug": "alpha",
++                      "title": "Alpha / 學"
++                    },
++                    {
++                      "slug": "beta",
++                      "title": "Beta / 𠮷"
++                    }
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": "later",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "文言": [
++            {
++              "id": "root",
++              "label": "Root",
++              "count": 1,
++              "total": 3,
++              "articles": [
++                {
++                  "slug": "missing",
++                  "title": "missing"
++                }
++              ],
++              "children": [
++                {
++                  "id": "child",
++                  "label": "古書",
++                  "count": 2,
++                  "total": 2,
++                  "articles": [
++                    {
++                      "slug": "alpha",
++                      "title": "Alpha"
++                    },
++                    {
++                      "slug": "beta",
++                      "title": "Beta"
++                    }
++                  ],
++                  "children": []
++                }
++              ]
++            },
++            {
++              "id": "later",
++              "label": "later",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ]
++        }
++      },
++      "inventory": {
++        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80",
++        "knowledge/entries/alpha.md": "9048c2c00eaaeee95573441944645903ec929fe94eea0364a56f68e067482a1a",
++        "knowledge/entries/gamma.md": "4ecabaddc5cff3a11a227b7d9e606b651e90084c89588facc6dc239c78f4e372",
++        "knowledge/entries/ignore.txt": "21ebae58d40628d6595344dde96db4da51df402ab05887568e9aac82c2abd188",
++        "knowledge/entries/beta.md": "08ff01cebe62a601fc6f09431ce9404d28c71c55f07106e5436497e37b51367e",
++        "knowledge/metadata/taxonomy.json": "19f5a18bd2b62b641b732cc1d8076328e5b438b49fe01615965cbbd5cc0df182",
++        "knowledge/entries/nested/hidden.md": "0c32ce5d492e2f51fada3477aebeb1d744e54dd4e303812696efc5c5a38a9260"
++      }
++    },
++    {
++      "name": "uncached",
++      "files": {
++        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n",
++        "knowledge/entries/alpha.md": "---\ntitle: Alpha / 學\ntags: [Mixed Topic, tie]\nsummary: 原義\neditorial_extension: {keep: [1, true]}\n---\n文言𠮷正文。\n",
++        "knowledge/entries/beta.md": "---\ntitle: Beta / 𠮷\ntags: [mixed topic, tie]\nsummary: 義\nprivate: true\n---\n私記不改。\n",
++        "knowledge/entries/gamma.md": "---\ntags: []\n---\n無題亦保。\n",
++        "knowledge/entries/ignore.txt": "not an article\n",
++        "knowledge/entries/nested/hidden.md": "---\ntitle: Nested\n---\nnot shallow\n"
++      },
++      "results": {
++        "load": {
++          "categories": []
++        },
++        "articles": [
++          {
++            "slug": "alpha",
++            "title": "Alpha / 學",
++            "tags": [
++              "Mixed Topic",
++              "tie"
++            ],
++            "summary": "原義"
++          },
++          {
++            "slug": "beta",
++            "title": "Beta / 𠮷",
++            "tags": [
++              "mixed topic",
++              "tie"
++            ],
++            "summary": "義"
++          },
++          {
++            "slug": "gamma",
++            "title": "gamma",
++            "tags": [],
++            "summary": ""
++          }
++        ],
++        "titles": {
++          "alpha": "Alpha / 學",
++          "gamma": "gamma",
++          "beta": "Beta / 𠮷"
++        },
++        "build": {
++          "en": [
++            {
++              "id": "mixed-topic",
++              "label": "Mixed Topic",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta"
++                }
++              ],
++              "children": []
++            },
++            {
++              "id": "other",
++              "label": "Other",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "zh": [
++            {
++              "id": "mixed-topic",
++              "label": "mixed-topic",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "𠮷"
++                }
++              ],
++              "children": []
++            },
++            {
++              "id": "other",
++              "label": "其他",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "ja": [
++            {
++              "id": "mixed-topic",
++              "label": "mixed-topic",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "𠮷"
++                }
++              ],
++              "children": []
++            },
++            {
++              "id": "other",
++              "label": "その他",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "zh-en": [
++            {
++              "id": "mixed-topic",
++              "label": "Mixed Topic",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha / 學"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta / 𠮷"
++                }
++              ],
++              "children": []
++            },
++            {
++              "id": "other",
++              "label": "Other",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ],
++          "文言": [
++            {
++              "id": "mixed-topic",
++              "label": "Mixed Topic",
++              "count": 2,
++              "total": 2,
++              "articles": [
++                {
++                  "slug": "alpha",
++                  "title": "Alpha"
++                },
++                {
++                  "slug": "beta",
++                  "title": "Beta"
++                }
++              ],
++              "children": []
++            },
++            {
++              "id": "other",
++              "label": "Other",
++              "count": 1,
++              "total": 1,
++              "articles": [
++                {
++                  "slug": "gamma",
++                  "title": "gamma"
++                }
++              ],
++              "children": []
++            }
++          ]
++        }
++      },
++      "inventory": {
++        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80",
++        "knowledge/entries/alpha.md": "9048c2c00eaaeee95573441944645903ec929fe94eea0364a56f68e067482a1a",
++        "knowledge/entries/gamma.md": "4ecabaddc5cff3a11a227b7d9e606b651e90084c89588facc6dc239c78f4e372",
++        "knowledge/entries/ignore.txt": "21ebae58d40628d6595344dde96db4da51df402ab05887568e9aac82c2abd188",
++        "knowledge/entries/beta.md": "08ff01cebe62a601fc6f09431ce9404d28c71c55f07106e5436497e37b51367e",
++        "knowledge/entries/nested/hidden.md": "0c32ce5d492e2f51fada3477aebeb1d744e54dd4e303812696efc5c5a38a9260"
++      }
++    },
++    {
++      "name": "missing-concepts",
++      "files": {
++        "config.yaml": "paths:\n  concepts: knowledge/entries\n  meta: knowledge/metadata\n  raw: sources\n  outputs: knowledge/outputs\n"
++      },
++      "results": {
++        "load": {
++          "categories": []
++        },
++        "articles": [],
++        "titles": {},
++        "build": {
++          "en": [],
++          "zh": [],
++          "ja": [],
++          "zh-en": [],
++          "文言": []
++        }
++      },
++      "inventory": {
++        "config.yaml": "2ef92ab9f0ef6bd551505f06ca17803e93c1402ac3056738704e59a390812e80"
++      }
++    }
++  ]
++}

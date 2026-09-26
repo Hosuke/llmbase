@@ -1,0 +1,17 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b13-taxonomy-read/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.72s
+     Running tests/compat_taxonomy.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_taxonomy-851a6048108fa04c)
+
+running 9 tests
+test explicit_null_and_missing_titles_are_preserved ... ok
+test cache_means_no_fallback_and_invalid_cache_fails_unchanged ... ok
+test frozen_libraries_execute_without_writes ... ok
+test frozen_pure_cases_execute_in_rust ... ok
+test missing_directories_return_empty_values ... ok
+test uncached_build_rejects_malformed_file_tags_without_panic_or_writes ... ok
+test invalid_arguments_and_unknown_action_fail ... ok
+test deep_and_malformed_trees_fail_clearly_without_panic ... ok
+test aggregate_article_read_budget_applies_to_every_filesystem_action ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.23s
+

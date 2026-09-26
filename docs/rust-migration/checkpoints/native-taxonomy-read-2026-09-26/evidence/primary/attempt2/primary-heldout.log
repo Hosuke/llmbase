@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/root/llmbase-rust-migration-20260920/b13-taxonomy-read/primary/verify-heldout.py", line 44, in <module>
+    compare('fallback', articles)
+  File "/root/llmbase-rust-migration-20260920/b13-taxonomy-read/primary/verify-heldout.py", line 27, in compare
+    expected = getattr(legacy, '_' + name)(*copy.deepcopy(args))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'llmwiki._taxonomy_legacy_oracle' has no attribute '_fallback'

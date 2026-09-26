@@ -1,0 +1,43 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded unicode-case-mapping v1.0.0
+   Compiling unicode-case-mapping v1.0.0
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b13-taxonomy-read/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.96s
+     Running tests/compat_taxonomy.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_taxonomy-851a6048108fa04c)
+
+running 9 tests
+test explicit_null_and_missing_titles_are_preserved ... ok
+test cache_means_no_fallback_and_invalid_cache_fails_unchanged ... ok
+test frozen_libraries_execute_without_writes ... ok
+test frozen_pure_cases_execute_in_rust ... ok
+test missing_directories_return_empty_values ... ok
+test uncached_build_rejects_malformed_file_tags_without_panic_or_writes ... FAILED
+test invalid_arguments_and_unknown_action_fail ... ok
+test deep_and_malformed_trees_fail_clearly_without_panic ... ok
+test aggregate_article_read_budget_applies_to_every_filesystem_action ... FAILED
+
+failures:
+
+---- uncached_build_rejects_malformed_file_tags_without_panic_or_writes stdout ----
+
+thread 'uncached_build_rejects_malformed_file_tags_without_panic_or_writes' (223554) panicked at crates/llmbase-core/src/compat_taxonomy.rs:214:54:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'uncached_build_rejects_malformed_file_tags_without_panic_or_writes' (223554) panicked at crates/llmbase-core/tests/compat_taxonomy.rs:290:9:
+malformed tags must not panic: [42]
+
+---- aggregate_article_read_budget_applies_to_every_filesystem_action stdout ----
+
+thread 'aggregate_article_read_budget_applies_to_every_filesystem_action' (223546) panicked at crates/llmbase-core/tests/compat_taxonomy.rs:315:14:
+aggregate document reads must be bounded: Array [Object {"slug": String("a"), "title": String("a"), "tags": Array [String("shared")], "summary": String("")}, Object {"slug": String("b"), "title": String("b"), "tags": Array [String("shared")], "summary": String("")}]
+
+
+failures:
+    aggregate_article_read_budget_applies_to_every_filesystem_action
+    uncached_build_rejects_malformed_file_tags_without_panic_or_writes
+
+test result: FAILED. 7 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s
+
+error: test failed, to rerun pass `-p llmbase-core --test compat_taxonomy`

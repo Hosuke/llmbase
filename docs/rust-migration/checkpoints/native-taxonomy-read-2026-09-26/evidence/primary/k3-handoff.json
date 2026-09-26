@@ -1,0 +1,18 @@
+{
+  "agent_pid": 25272,
+  "agent_exit": "124",
+  "process_absent": true,
+  "files": {
+    "Cargo.lock": "0a50cac5e4ffe04cec6e2b2472b743f17fa225b493fe55279a73018c74543f7a",
+    "crates/llmbase-core/Cargo.toml": "6e3a6c6e89b1c8b34a96ae750a88a073f9f88c6bb81931698064af8ca697369b",
+    "crates/llmbase-core/src/lib.rs": "09efc434fb147c7750a75908159241d167778a66f9ebde1f222709012a332f75",
+    "crates/llmbase-core/src/compat_taxonomy.rs": "71c27499a0f5a08c6ce21f34afbadd74f2d879ef85d0de79290d530bfcb09d63",
+    "crates/llmbase-core/tests/compat_taxonomy.rs": "da6c16cda4b2d9af3c2bbbcbcb04ad1aecc3acde75c156ccc409527461eab275",
+    "crates/llmbase-python/src/lib.rs": "32ccdffe28390be72af416c7fd6ae2e8dc9da79666eaf4ee431b259fc72d3e92",
+    "crates/llmbase-python/src/taxonomy.rs": "781064d45cda33de23bd6eb0c1b113ef8ced1df1d7b9ef1201a2875f34412d96",
+    "llmwiki/_native.py": "6eeca45056c528d4002aee41835f91f7c777e8fafd92a24a118c2094ac09e8d4",
+    "llmwiki/taxonomy.py": "7d4b65fafda1d29fa7ea6c1822cda029c39b26f42b470705276623f2a35fdbaa",
+    "tests/rust_migration/test_native_taxonomy_read.py": "0bd2c8fe41b0d81275f258dee08ceb691a54fa153d15f835d7bd9a75cb49ec10",
+    "tests/rust_migration/fixtures/taxonomy-read.json": "7b87573b4007fa8eba04cbfc553b5f30d3e6077eb9d22cb2c2b1908ba790d5e6"
+  }
+}

@@ -1,0 +1,21 @@
+    Checking unicode-case-mapping v1.0.0
+   Compiling llmbase-python v0.1.0 (/root/llmbase-rust-migration-20260920/b13-taxonomy-read/source/crates/llmbase-python)
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b13-taxonomy-read/source/crates/llmbase-core)
+error: consider using `sort_by_key`
+   --> crates/llmbase-core/src/compat_taxonomy.rs:275:5
+    |
+275 |     ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#unnecessary_sort_by
+    = note: `-D clippy::unnecessary-sort-by` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_sort_by)]`
+help: try
+    |
+275 -     ranked.sort_by(|a, b| b.1.cmp(&a.1));
+275 +     ranked.sort_by_key(|a| std::cmp::Reverse(a.1));
+    |
+
+error: could not compile `llmbase-core` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `llmbase-core` (lib test) due to 1 previous error
