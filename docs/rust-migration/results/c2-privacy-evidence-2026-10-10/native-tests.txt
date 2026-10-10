@@ -1,0 +1,29 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/b16-native-config/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.66s
+     Running tests/library.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/library-0c2cdcbe2b6cb7a3)
+
+running 11 tests
+test accepted_metadata_preserves_nested_numbers_without_serializer_markers ... ok
+test cross_process_lock_is_not_a_pid_file_and_survives_stale_contents ... ok
+test application_denies_scope_and_capabilities_before_core_execution ... ok
+test custom_data_roots_and_index_fingerprint_only_rebuild_affected_sources ... ok
+test explicit_python_writer_session_allows_nested_native_work_but_excludes_other_threads ... ok
+test index_failure_does_not_publish_partial_changes_or_deletions ... ok
+test old_revision_keeps_its_title_and_privacy_after_publication_and_rename ... ok
+test unicode_offsets_and_chunk_boundaries_are_original_bytes ... ok
+test original_revision_evidence_survives_update_move_and_deletion ... ok
+test unsynced_private_metadata_blocks_public_reads_and_writes_across_native_operations ... ok
+test scope_alias_visibility_and_forged_citation_boundaries ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/web_read.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/web_read-dade228a6351c619)
+
+running 5 tests
+test public_trails_returns_only_true_empty_and_never_withholds_nonempty_as_empty ... ok
+test web_reads_fail_closed_after_unindexed_private_edit_and_filter_private_caches ... ok
+test web_config_whitelists_secrets_preserves_legacy_defaults_and_custom_language_views ... ok
+test web_source_literal_yaml_cap_loads_integer_and_preserves_raw_bytes ... ok
+test web_article_pagination_sections_raw_and_statistics_follow_real_content ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s

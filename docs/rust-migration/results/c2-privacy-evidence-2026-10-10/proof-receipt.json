@@ -1,0 +1,395 @@
+{
+  "schema_version": 1,
+  "status": "contract_failures",
+  "sites": {
+    "siwen": {
+      "http": {
+        "/api/articles": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/sources": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/classics": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "positive_control": true,
+          "status": "failed"
+        },
+        "/api/articles/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/sources/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/articles/private-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/sources/private-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/classics/private-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/api/classics/private-proof/sections": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/classics/private-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        }
+      },
+      "evidence": {
+        "status": "passed",
+        "principal": "privileged local FFI",
+        "original": {
+          "library_id": "siwen",
+          "source_id": "7c1ff30a-f184-49d5-911d-604a0eb8c2b7",
+          "revision": 1,
+          "content_hash": "bb160a9ccbbc00fc4d8cedd2376207a713a98ac79b06125e69f2ebe26b1ab2df",
+          "passage_id": "c93c4f1d1e8a3b20822a87116f040e654a3a8ee877594af656aeb1de5c19707d",
+          "start": 215,
+          "end": 312,
+          "offset_unit": "utf8_byte",
+          "exact_quote": "\r\n# C2SIWENPUBLICSENTINEL\r\n學而時習之。𠀀 é。 C2SIWENPUBLICSENTINEL original revision.",
+          "source_url": null,
+          "locator": null
+        },
+        "byte_span_exact": true,
+        "content_hash_exact": true,
+        "cross_library_denial": {
+          "type": "PermissionError",
+          "message": "library scope denied"
+        },
+        "forged_quote_denial": {
+          "type": "RuntimeError",
+          "message": "conflict: citation does not match original revision"
+        },
+        "historical_revision_exact": true,
+        "current_revision": 2
+      },
+      "bake": {
+        "status": "failed",
+        "public_output_controls": {
+          "api/classics.json": true,
+          "api/classics/public-proof.json": true,
+          "classics/public-proof/index.html": true
+        },
+        "leaked_files": {
+          "api/classics.json": [
+            "C2SIWENPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "api/classics/private-proof.json": [
+            "C2SIWENPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "classics/private-proof/index.html": [
+            "C2SIWENPRIVATESENTINEL",
+            "private-proof"
+          ]
+        },
+        "downstream_validator": {
+          "accepted": true
+        },
+        "scope": "3 classic JSON requests + 2 classic HTML requests; historical assets",
+        "json_count": 3,
+        "html_count": 2,
+        "skipped": []
+      },
+      "read_only_document_hashes": {
+        "raw/private-proof/index.md": "b1b2367b21d5ec94b99f79769e5467a750b5bbd1ea9c75f487b9755d0a6cc7ec",
+        "raw/public-proof/index.md": "bb160a9ccbbc00fc4d8cedd2376207a713a98ac79b06125e69f2ebe26b1ab2df",
+        "wiki/concepts/chuci-lisao.md": "8ac6406a9c292ea5d7bca32071f19f6d5f6e4c5309011ae3a72316b1b46517ed",
+        "wiki/concepts/laozi-daojing.md": "dfc51dfd17e25551a97e66c8db2a34fc5675a5d429fe71e5e76c2014bc9b8736",
+        "wiki/concepts/lunyu-xueer.md": "174849c5171ac876e581bdfdec61c58df24a4721f91f51c34abf00d1d9a820a2",
+        "wiki/concepts/private-proof.md": "654f212732d3be12fc5f4d194ae127ba21583f428e6de0e004c7a60b31d21c7a",
+        "wiki/concepts/public-proof.md": "bb485cd8c532766020f90f87e8e40a299bf510ac6ceac4d36a6340a2a26132a1",
+        "wiki/concepts/shiji-xiangyu.md": "83c970285ee740f14f533b31f8dfb276914b19547d70d4c37426693cfe8232ee"
+      },
+      "revocation": {
+        "/api/articles/public-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/sources/public-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPUBLICSENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2SIWENPUBLICSENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        }
+      },
+      "intentional_fixture_changes": {
+        "raw/public-proof/index.md": {
+          "before": "bb160a9ccbbc00fc4d8cedd2376207a713a98ac79b06125e69f2ebe26b1ab2df",
+          "after": "b2cd5887f03eab2be3b8f2d61349c5aac863febe92e87987fc52067eef333fd7"
+        },
+        "wiki/concepts/public-proof.md": {
+          "before": "bb485cd8c532766020f90f87e8e40a299bf510ac6ceac4d36a6340a2a26132a1",
+          "after": "fc0b1eacd41fdb32ae9de70a7536b7fd13eca3b3e8137bfcd0eaeebf5ec22faf"
+        }
+      }
+    },
+    "taixu": {
+      "http": {
+        "/api/articles": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/sources": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/classics": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "positive_control": true,
+          "status": "failed"
+        },
+        "/api/articles/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/sources/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [],
+          "positive_control": true,
+          "status": "passed"
+        },
+        "/api/articles/private-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/sources/private-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/classics/private-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/api/classics/private-proof/sections": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/classics/private-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPRIVATESENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        }
+      },
+      "evidence": {
+        "status": "passed",
+        "principal": "privileged local FFI",
+        "original": {
+          "library_id": "taixu",
+          "source_id": "ab72bf0f-52de-4378-aee8-622979f380de",
+          "revision": 1,
+          "content_hash": "f94bc4a682296ba8f46eb7574c35d70bb2821b204a3b7b17442ad7a13d1cdcd0",
+          "passage_id": "50db422edc3873d6b465dc48a589b558bc3c37bad3fdd9de223ae50493c80e42",
+          "start": 215,
+          "end": 312,
+          "offset_unit": "utf8_byte",
+          "exact_quote": "\r\n# C2TAIXUPUBLICSENTINEL\r\n學而時習之。𠀀 é。 C2TAIXUPUBLICSENTINEL original revision.",
+          "source_url": null,
+          "locator": null
+        },
+        "byte_span_exact": true,
+        "content_hash_exact": true,
+        "cross_library_denial": {
+          "type": "PermissionError",
+          "message": "library scope denied"
+        },
+        "forged_quote_denial": {
+          "type": "RuntimeError",
+          "message": "conflict: citation does not match original revision"
+        },
+        "historical_revision_exact": true,
+        "current_revision": 2
+      },
+      "bake": {
+        "status": "failed",
+        "public_output_controls": {
+          "api/classics.json": true,
+          "api/classics/public-proof.json": true,
+          "classics/public-proof/index.html": true
+        },
+        "leaked_files": {
+          "api/classics.json": [
+            "C2TAIXUPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "api/classics/private-proof.json": [
+            "C2TAIXUPRIVATESENTINEL",
+            "private-proof"
+          ],
+          "classics/private-proof/index.html": [
+            "C2TAIXUPRIVATESENTINEL",
+            "private-proof"
+          ]
+        },
+        "downstream_validator": {
+          "accepted": true
+        },
+        "scope": "3 classic JSON requests + 2 classic HTML requests; historical assets",
+        "json_count": 3,
+        "html_count": 2,
+        "skipped": []
+      },
+      "read_only_document_hashes": {
+        "raw/private-proof/index.md": "67375ab0621c6ec5bb332d7b3eac7e1714c38096c5df3ad67514199e740f7e5b",
+        "raw/public-proof/index.md": "f94bc4a682296ba8f46eb7574c35d70bb2821b204a3b7b17442ad7a13d1cdcd0",
+        "wiki/concepts/chuci-lisao.md": "8ac6406a9c292ea5d7bca32071f19f6d5f6e4c5309011ae3a72316b1b46517ed",
+        "wiki/concepts/laozi-daojing.md": "dfc51dfd17e25551a97e66c8db2a34fc5675a5d429fe71e5e76c2014bc9b8736",
+        "wiki/concepts/lunyu-xueer.md": "174849c5171ac876e581bdfdec61c58df24a4721f91f51c34abf00d1d9a820a2",
+        "wiki/concepts/private-proof.md": "f2c91b7102d67f0f56093d272dc898796039c227a08924106184d80808fe8f0d",
+        "wiki/concepts/public-proof.md": "763a349bb363b7f332ac3750b8bdd7cd277049ff5b3db7a8746cb43efaf82852",
+        "wiki/concepts/shiji-xiangyu.md": "83c970285ee740f14f533b31f8dfb276914b19547d70d4c37426693cfe8232ee"
+      },
+      "revocation": {
+        "/api/articles/public-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/sources/public-proof": {
+          "http_status": 404,
+          "leaked_markers": [],
+          "positive_control": null,
+          "status": "passed"
+        },
+        "/api/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPUBLICSENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        },
+        "/classics/public-proof": {
+          "http_status": 200,
+          "leaked_markers": [
+            "C2TAIXUPUBLICSENTINEL"
+          ],
+          "positive_control": null,
+          "status": "failed"
+        }
+      },
+      "intentional_fixture_changes": {
+        "raw/public-proof/index.md": {
+          "before": "f94bc4a682296ba8f46eb7574c35d70bb2821b204a3b7b17442ad7a13d1cdcd0",
+          "after": "4de1d4168bc9b87f622966841d79230e22839546cc5a88486746f49443b1b068"
+        },
+        "wiki/concepts/public-proof.md": {
+          "before": "763a349bb363b7f332ac3750b8bdd7cd277049ff5b3db7a8746cb43efaf82852",
+          "after": "db09fc234ceb9a0103467dbe499d26b6a8137778cd10fdcd9acbd42393d159b1"
+        }
+      }
+    }
+  },
+  "boundary": "Sequential synthetic fixtures, frozen downstream code; no production or public evidence API acceptance.",
+  "passed_checks": 22,
+  "failed_checks": 14
+}

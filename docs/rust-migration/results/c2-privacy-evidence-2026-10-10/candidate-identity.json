@@ -1,0 +1,21 @@
+{
+  "matching_runtime_inputs": 166,
+  "matching_python_files": 48,
+  "wheel_sha256": "9206384f0b203440146e2ebae3885724eefa6a72a8dd8f5b0b2b91aed79066bc",
+  "extension_sha256": "e65792c0ea141b6e18111dfcb4c079c83aefd514a24a114921afb35d98cf5b6b",
+  "snapshot": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/siwen-snapshot",
+  "matching_snapshot_files": 60,
+  "downstream_head": "cb7ccbb21bfca9a0be78ab290b12b55dea62503d",
+  "downstream_dirty_snapshot": true,
+  "assets": "historical B5, reused from C1; current frontend not accepted",
+  "scripts": {
+    "prove_dual_site_candidate.py": "15804e3433385e411990a1a9e5c6ec858472142e88f5a8679f22354f242e0405",
+    "prove_site_privacy_evidence.py": "9b51519e85eb920142cfdd9e7b45a53faef4ccd417e161380d6912cde6d4d10a",
+    "recheck.sh": "d80036716c32770e3c395809d205472f1e59ae49a83d7eca3ab9f55b9160c00a",
+    "remote-run.sh": "47058c6745a55a506d85f6872bf1571e3efcf18a558f25a3da6f01ddda727863",
+    "run_probe.py": "6a79f8f782ce9b26c3728a338c341ef74997f2fc80e76353741946dc9cd5abb8"
+  },
+  "source_and_installation_unchanged_after": true,
+  "diagnostic_exit": 2,
+  "proof_directory": "proof-v2"
+}

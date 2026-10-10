@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "task": "C2 private data and evidence diagnostic",
+  "issues": [10, 19],
+  "result": "diagnostic_completed_with_downstream_blocker",
+  "full_issue_accepted": false,
+  "production_adoption_accepted": false,
+  "base_commit": "7b79d5fe31a6d6eb0d57ee09bc7fe743931cc68b",
+  "runtime_changed": false,
+  "downstream_head": "cb7ccbb21bfca9a0be78ab290b12b55dea62503d",
+  "downstream_dirty_snapshot": true,
+  "latest_downstream_worktree_accepted": false,
+  "contracts": [
+    {"surface": "installed Rust evidence bytes/hash, cross-library and forged quote denial, historical revision", "status": "passed", "limit": "privileged local FFI; not public evidence authentication", "evidence": "proof-receipt.json"},
+    {"surface": "native library and web_read contracts", "status": "passed", "tests": 16, "evidence": "native-tests.txt"},
+    {"surface": "visitor article/source privacy and unindexed revocation", "status": "passed_fixture_subset", "evidence": "proof-receipt.json"},
+    {"surface": "downstream classic list/detail/sections and HTML privacy", "status": "failed", "next_issue": 19},
+    {"surface": "downstream classic API and HTML unindexed revocation", "status": "failed", "next_issue": 19},
+    {"surface": "downstream classic BakeRun private content exclusion", "status": "failed", "next_issue": 19},
+    {"surface": "public JSON and HTML positive controls", "status": "passed_fixture_subset"},
+    {"surface": "read-only fixture preservation and frozen source provenance", "status": "passed", "limit": "intentional fixture updates separately recorded"},
+    {"surface": "public evidence transport and browser integration", "status": "not_verified", "next_issue": 19},
+    {"surface": "English versus wenyan full site profile comparison", "status": "not_verified", "next_issue": 10}
+  ],
+  "diagnostic": {"exit": 2, "status": "contract_failures", "passed_checks": 22, "failed_checks": 14},
+  "local_verifier_tests": 16,
+  "native_tests": 16,
+  "native_tests_exit": 0,
+  "task_processes_running": false,
+  "production_changed": false,
+  "goal": "paused"
+}
