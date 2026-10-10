@@ -1,4 +1,18 @@
-# Status — 2026-09-27
+# Status — 2026-10-10
+
+C1, the library-identity slice of issue #10, is accepted. The verifier now
+selects and checks real `siwen`/`taixu` IDs instead of certifying `default` rows.
+Six regressions and independent installed-candidate identity/denial checks pass;
+the frozen downstream copy passes 24 Flask routes and 159 JSON / 135 HTML per
+site. All 166 engine inputs/48 installed Python files match B16, so no Rust
+rebuild was needed. Original downstream files changed concurrently; no acceptance
+of those later changes is claimed. Full issue #10 and release remain open.
+See [C1 evidence and limits](results/c1-dual-identity-2026-10-10/README.md).
+The user authorized one block only: save it and stop; no next task or long test
+is running. Goal scheduling remains paused. Earlier stop/resume notes below
+are historical and do not override this bounded acceptance.
+
+## Historical status — 2026-09-27
 
 Not complete. This is an implementation log, not a claim of parity.
 

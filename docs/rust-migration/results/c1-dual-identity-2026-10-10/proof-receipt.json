@@ -1,0 +1,275 @@
+{
+  "llmwiki_version": "0.9.0",
+  "siwen_version": "0.1.0",
+  "siwen_version_source": "copied source pyproject.toml; not installed distribution metadata",
+  "llmwiki_module": "/root/llmbase-rust-migration-20260920/b16-native-config/candidate-v2/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "siwen_module": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/siwen-snapshot/siwen/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/b16-native-config/candidate-v2/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "extension_sha256": "e65792c0ea141b6e18111dfcb4c079c83aefd514a24a114921afb35d98cf5b6b",
+  "wheel_sha256": "9206384f0b203440146e2ebae3885724eefa6a72a8dd8f5b0b2b91aed79066bc",
+  "external_network": "blocked",
+  "model_transport": "explicit offline Python callback",
+  "source_and_accepted_documents_unchanged": true,
+  "libraries": [
+    {
+      "key": "siwen",
+      "library_id": "siwen",
+      "base": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/proof/library-siwen",
+      "branding": "斯文",
+      "canonical_origin": "https://siwen.example.test",
+      "shared_slug": "gong-mu"
+    },
+    {
+      "key": "taixu",
+      "library_id": "taixu",
+      "base": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/proof/library-taixu",
+      "branding": "太虛間",
+      "canonical_origin": "https://taixu.example.test",
+      "shared_slug": "gong-mu"
+    }
+  ],
+  "receipts": {
+    "native": {
+      "rebuild_index": {
+        "siwen": {
+          "core": "rust",
+          "operation": "compat_compile_rebuild",
+          "storage": "native_document_and_journal"
+        },
+        "taixu": {
+          "core": "rust",
+          "operation": "compat_compile_rebuild",
+          "storage": "native_document_and_journal"
+        }
+      },
+      "identity": {
+        "siwen": {
+          "library_id": "siwen",
+          "core": "rust",
+          "schema_version": 1,
+          "fts5": true,
+          "embedding": "unconfigured"
+        },
+        "taixu": {
+          "library_id": "taixu",
+          "core": "rust",
+          "schema_version": 1,
+          "fts5": true,
+          "embedding": "unconfigured"
+        }
+      },
+      "ask": {
+        "siwen": [
+          {
+            "answer": "斯文本密語𠮷之對。",
+            "trace_core": "rust"
+          },
+          {
+            "answer": "斯文本密語𠮷之對。",
+            "trace_core": "rust"
+          }
+        ],
+        "taixu": [
+          {
+            "answer": "太虛本密語𠀀之對。",
+            "trace_core": "rust"
+          },
+          {
+            "answer": "太虛本密語𠀀之對。",
+            "trace_core": "rust"
+          }
+        ]
+      }
+    },
+    "flask": {
+      "siwen": {
+        "branding": {
+          "features": {},
+          "motto": null,
+          "name": "斯文",
+          "nameShort": "斯",
+          "navItems": null,
+          "poweredBy": {
+            "label": "Powered by LLMBase",
+            "url": "https://github.com/Hosuke/llmbase"
+          },
+          "tagline": "以古法治今器",
+          "theme": null
+        },
+        "shared_slug_title": "共目·斯文庫",
+        "article_count": 6,
+        "required_status": {
+          "/api/branding": 200,
+          "/api/languages": 200,
+          "/api/stats": 200,
+          "/api/collections": 200,
+          "/api/aliases": 200,
+          "/api/entities": 200,
+          "/api/tones": 200,
+          "/api/healthz": 200,
+          "/api/articles": 200,
+          "/api/articles/lite": 200,
+          "/api/sources": 200,
+          "/api/trails": 200,
+          "/api/classics": 200,
+          "/api/kepan": 200,
+          "/api/masters": 200,
+          "/api/lineages": 200,
+          "/api/chuandeng": 200,
+          "/api/chuandeng/bios": 200,
+          "/api/schools": 200,
+          "/api/persons": 200,
+          "/api/books": 200,
+          "/api/outputs": 200,
+          "/api/taxonomy?lang=zh": 200,
+          "/api/xici?lang=zh": 200
+        },
+        "origin_in_page": true
+      },
+      "taixu": {
+        "branding": {
+          "features": {},
+          "motto": null,
+          "name": "太虛間",
+          "nameShort": "太",
+          "navItems": null,
+          "poweredBy": {
+            "label": "Powered by LLMBase",
+            "url": "https://github.com/Hosuke/llmbase"
+          },
+          "tagline": "虛以納八宗，間以安一心。",
+          "theme": null
+        },
+        "shared_slug_title": "共目·太虛庫",
+        "article_count": 6,
+        "required_status": {
+          "/api/branding": 200,
+          "/api/languages": 200,
+          "/api/stats": 200,
+          "/api/collections": 200,
+          "/api/aliases": 200,
+          "/api/entities": 200,
+          "/api/tones": 200,
+          "/api/healthz": 200,
+          "/api/articles": 200,
+          "/api/articles/lite": 200,
+          "/api/sources": 200,
+          "/api/trails": 200,
+          "/api/classics": 200,
+          "/api/kepan": 200,
+          "/api/masters": 200,
+          "/api/lineages": 200,
+          "/api/chuandeng": 200,
+          "/api/chuandeng/bios": 200,
+          "/api/schools": 200,
+          "/api/persons": 200,
+          "/api/books": 200,
+          "/api/outputs": 200,
+          "/api/taxonomy?lang=zh": 200,
+          "/api/xici?lang=zh": 200
+        },
+        "origin_in_page": true
+      }
+    },
+    "journal": {
+      "standalone": {
+        "coordination": "standalone_file_lock",
+        "bytes_exact": true
+      },
+      "siwen": {
+        "db": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/proof/library-siwen/wiki/_meta/llmbase.sqlite3",
+        "rows": [
+          [
+            "716588e3-1358-4be0-8e1f-0d781b4258a4",
+            "siwen",
+            "dual-proof.json",
+            null,
+            "9f1409117e0d0779a2de1eae573d78d25316f293f08ba75961e1e8692449688c",
+            null,
+            28,
+            "applied"
+          ],
+          [
+            "f35c0513-d82c-4464-8b4b-e4b2fbf3d15e",
+            "siwen",
+            "dual-proof.json",
+            "9f1409117e0d0779a2de1eae573d78d25316f293f08ba75961e1e8692449688c",
+            "51a670fd01a1eccef3cd7bd2a68a93f57e5ac4c70b15e6d1050767fa2bb3bb7c",
+            28,
+            28,
+            "applied"
+          ]
+        ],
+        "applied_ids_distinct": true,
+        "after_hashes_match": true,
+        "library_id_mode": "explicit selected ID verified in durable journal rows"
+      },
+      "taixu_untouched": {
+        "dual_proof_rows": 0,
+        "file_absent": true,
+        "db_sha256": "70e73a1070abc28f4258012e749bf506a9705ade2c3dc16e5bc97ce4fbd6222b"
+      },
+      "taixu": {
+        "db": "/root/llmbase-rust-migration-20260920/c1-dual-identity-20261010/proof/library-taixu/wiki/_meta/llmbase.sqlite3",
+        "rows": [
+          [
+            "683e96f7-60fb-483d-9c4c-2465b791f8d3",
+            "taixu",
+            "dual-proof.json",
+            null,
+            "2eed09a1a53c301f3d31142c212fe0f3c6a1df6dec97ed622438369838535559",
+            null,
+            31,
+            "applied"
+          ]
+        ],
+        "first_library_unchanged": true
+      }
+    },
+    "bake": {
+      "siwen": {
+        "json_count": 159,
+        "html_count": 135,
+        "skipped": [
+          "/api/classics/論語·為政/pages (HTTP 404 optional)",
+          "/api/classics/public-siwen/pages (HTTP 404 optional)"
+        ],
+        "article_count": 6,
+        "classic_count": 2,
+        "verified_clean": true,
+        "own_sentinel_present": true,
+        "other_sentinel_absent": true,
+        "branding_present": true
+      },
+      "taixu": {
+        "json_count": 159,
+        "html_count": 135,
+        "skipped": [
+          "/api/classics/金剛經·般若/pages (HTTP 404 optional)",
+          "/api/classics/public-taixu/pages (HTTP 404 optional)"
+        ],
+        "article_count": 6,
+        "classic_count": 2,
+        "verified_clean": true,
+        "own_sentinel_present": true,
+        "other_sentinel_absent": true,
+        "branding_present": true
+      }
+    },
+    "private": {
+      "siwen": {
+        "articles_exclude_private": true,
+        "classics_exclude_private": true,
+        "sources_lists_private_raw": true,
+        "baked_content_trees_exclude_private": true
+      },
+      "taixu": {
+        "articles_exclude_private": true,
+        "classics_exclude_private": true,
+        "sources_lists_private_raw": true,
+        "baked_content_trees_exclude_private": true
+      }
+    }
+  },
+  "boundary": "Global Python monkey-patches (query.chat etc.) are process-wide and were serialized per operation; no per-library patch isolation is claimed. Siwen custom compiler, taxonomy and Flask extension code remain Python. The private fixture is a raw uncompiled internal-type document, excluded from article and classic content surfaces; raw source-inventory endpoints list raw documents by design and are recorded as evidence, not asserted empty. Explicit native library IDs are checked against doctor results and durable journal rows; environment selection is sequential proof scaffolding, not concurrent per-library Python-global isolation. No real-provider semantic quality is claimed."
+}

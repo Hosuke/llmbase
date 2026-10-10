@@ -1,0 +1,59 @@
+{
+  "sites": {
+    "siwen": {
+      "doctor": {
+        "library_id": "siwen",
+        "core": "rust",
+        "schema_version": 1,
+        "fts5": true,
+        "embedding": "unconfigured"
+      },
+      "journal": [
+        [
+          "siwen",
+          "identity-probe.txt",
+          "applied"
+        ]
+      ],
+      "source_unchanged": true,
+      "rebuild_trace": {
+        "core": "rust",
+        "operation": "compat_compile_rebuild",
+        "storage": "native_document_and_journal"
+      }
+    },
+    "taixu": {
+      "doctor": {
+        "library_id": "taixu",
+        "core": "rust",
+        "schema_version": 1,
+        "fts5": true,
+        "embedding": "unconfigured"
+      },
+      "journal": [
+        [
+          "taixu",
+          "identity-probe.txt",
+          "applied"
+        ]
+      ],
+      "source_unchanged": true,
+      "rebuild_trace": {
+        "core": "rust",
+        "operation": "compat_compile_rebuild",
+        "storage": "native_document_and_journal"
+      }
+    }
+  },
+  "wrong_identity": {
+    "siwen": {
+      "rejected": true,
+      "error": "library scope denied"
+    },
+    "taixu": {
+      "rejected": true,
+      "error": "library scope denied"
+    }
+  },
+  "environment_restored": true
+}

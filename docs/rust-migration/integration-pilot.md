@@ -1,5 +1,58 @@
 # Integration pilot: adopting the Rust candidate wheel in isolated downstream venvs
 
+## C1: identity verification slice (2026-10-10)
+
+Issue #10 is being accepted in small slices. [C1 is accepted](results/c1-dual-identity-2026-10-10/README.md):
+six regressions, independent installed-candidate identity checks and the actual
+two-site diagnostic pass (24 required routes, 159 JSON / 135 HTML per site).
+C1 repairs the diagnostic's library
+identity assertions; it is not completion of the whole issue or permission to
+switch either site. The older B5 narrative below remains historical.
+
+Current downstream inventory: Siwen HEAD
+`cb7ccbb21bfca9a0be78ab290b12b55dea62503d`, with existing uncommitted backend/bake
+changes. Its `AGENTS.md` and `CLAUDE.md` explicitly define Taixu as the same
+application code with a separate library and instance. Both use
+`SiwenKB`, `create_siwen_web_app` and `siwen.bake`; a separate Taixu repository is
+not a missing prerequisite. The diagnostic uses a manifest-verified copy of
+60 current source/config files, including the dirty working versions, never
+the original checkout or production corpus.
+
+The source checkout changed concurrently after this snapshot (`web.py` and
+`prerender.py` hashes differ); the isolated 60-file copy did not. Acceptance
+applies only to the frozen copy, not those subsequent changes.
+
+The engine is archived commit `951dfb1`. The runner may reuse B16 candidate-v2
+only after matching all 166 current runtime/build inputs to the B16 source,
+all 48 installed Python files, and the recorded wheel/native-extension hashes.
+Reusing that exact runtime saves a build; it does not refresh broader B16 gates.
+Historical B5 static assets are copied within the remote runner for the bake
+diagnostic; this is not acceptance of the current frontend build or browser UI.
+
+The old verifier declared `siwen`/`taixu` in its receipt while accepting native
+`default` journal rows. C1 must instead select and observe the actual IDs in
+native doctor results and journal rows (the current rebuild/ask traces omit
+the ID). Environment selection is a sequential
+test technique and must be restored after exceptions; deploy independent
+processes for the existing environment/global-Python profile boundary. Do not
+claim concurrent global-patch isolation.
+
+### Minimum site contract and adaptation queue
+
+| Surface | Required contract | Classification / next acceptance |
+|---|---|---|
+| Library identity | Distinct IDs and roots; same slug resolves only within its library; wrong-ID access refused | C1 tests observed identity; authenticated cross-library transport denial remains issue #18/#19 |
+| Read/search/evidence | Current site entry reads correct content; source revisions and byte spans remain resolvable | Existing native services; complete site-level evidence checks remain #10 |
+| Language | English native default; explicit bare-body wenyan site profile; original bytes unchanged | Profile data; live Python globals are an optional transition boundary, #11/#20 |
+| Compile/review | Site compiler behavior maps to explicit native draft/apply operations and reviewed hashes | Downstream adaptation: the current Python compiler is a fork, not proof of a native site compiler; #11/#16 |
+| Hooks/jobs | Registered behavior is scoped and outcomes survive failure/restart | Engine extension/workflow work in #12/#13/#14; not covered by a read/bake proof |
+| Static export | Real Flask client and BakeRun; no other-library/private data; source files unchanged | Current backend copy with historical assets is diagnostic only; current frontend acceptance #19 |
+| Privacy | Explicit private data must be denied across all public API/export surfaces | The historical internal-type raw fixture tests display filtering, not full private-capability enforcement; remains open |
+
+Do not replace the current diagnostic's explicit failures with permissive
+fallbacks. Record the actual failing surface and assign it to the queue above;
+the identity-verifier slice must not grow into an engine or downstream rewrite.
+
 Current acceptance status (2026-09-26): the B5 dual-site run remains diagnostic,
 not accepted proof. B5.1's single-site taxonomy/bake and installed-wheel tests
 are accepted in `checkpoints/helper-registration-2026-09-26/`; that wheel

@@ -8,13 +8,16 @@ belong only to the selected library. No network, credentials, production data
 or HTTP listener. Run with the isolated candidate interpreter.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.metadata
 import json
+import os
 import runpy
 import socket
 import sqlite3
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -24,6 +27,34 @@ def digest(path):
 
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+@contextmanager
+def library_scope(library_id):
+    """Select one sequential proof operation, never a concurrent app context."""
+    previous = os.environ.get("LLMBASE_LIBRARY_ID")
+    os.environ["LLMBASE_LIBRARY_ID"] = library_id
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("LLMBASE_LIBRARY_ID", None)
+        else:
+            os.environ["LLMBASE_LIBRARY_ID"] = previous
+
+
+def require_identity(observed, expected):
+    """A declared site ID is insufficient: require a matching observed ID."""
+    if not isinstance(expected, str) or not expected or expected == "default":
+        raise AssertionError("proof requires an explicit non-default site ID")
+    if observed != expected:
+        raise AssertionError(f"observed library identity {observed!r}, expected {expected!r}")
+
+
+def document_hashes(base):
+    return {str(path.relative_to(base)): digest(path)
+            for directory in (base / "raw", base / "wiki/concepts")
+            for path in sorted(directory.rglob("*.md"))}
 
 
 SITES = [
@@ -113,15 +144,21 @@ def main():
             chapter="第一章", url=f"{site['origin']}/classic/chapter-1")), encoding="utf-8")
         site["base"] = base
         site["cfg"] = load_config(base)
+        site["document_hashes"] = document_hashes(base)
         return base
 
     for site in SITES:
-        build_site(site)
-        _native.clear_trace()
-        compiler.rebuild_index(site["base"])
-        trace = _native.last_trace()
-        assert trace and trace["core"] == "rust"
-        receipts["native"].setdefault("rebuild_index", {})[site["key"]] = trace
+        with library_scope(site["library_id"]):
+            build_site(site)
+            _native.clear_trace()
+            compiler.rebuild_index(site["base"])
+            trace = _native.last_trace()
+            assert trace and trace["core"] == "rust"
+            receipts["native"].setdefault("rebuild_index", {})[site["key"]] = trace
+            observed = _native.dispatch("doctor", base_dir=site["base"],
+                                        library_id=site["library_id"], paths=site["cfg"]["paths"])
+            require_identity(observed.get("library_id"), site["library_id"])
+            receipts["native"].setdefault("identity", {})[site["key"]] = observed
     other_of = {SITES[0]["key"]: SITES[1], SITES[1]["key"]: SITES[0]}
 
     # --- B4 exact-byte atomic journal through the installed facade ---------
@@ -146,16 +183,13 @@ def main():
                 " ORDER BY created_at, id").fetchall()
         finally:
             db.close()
-        return dbs[0], rows
+        return dbs[0], [row for row in rows if Path(row[2]).name == "dual-proof.json"]
 
     def write_meta(site, payload):
-        # Explicit non-default native library ids were attempted first and are
-        # denied by the installed extension ("library scope denied", s17b log),
-        # so journaling runs with the default native id; library identity is
-        # distinguished by root (separate bases and separate core databases).
         target = site["base"] / "wiki/_meta/dual-proof.json"
         _native.with_writer(site["base"],
                             lambda: atomic.atomic_write_text(target, payload),
+                            library_id=site["library_id"],
                             paths=site["cfg"]["paths"])
         return target
 
@@ -167,7 +201,9 @@ def main():
     assert len(rows) == 2, rows
     assert sorted(r[4] for r in rows) == sorted(sha(p.encode()) for p in payloads)
     assert sorted(r[6] for r in rows) == sorted(len(p.encode()) for p in payloads)
-    assert all(row[1] == "default" for row in rows) and rows[0][0] != rows[1][0]
+    for row in rows:
+        require_identity(row[1], first["library_id"])
+    assert rows[0][0] != rows[1][0]
     assert target.read_text() == payloads[1]
     other = other_of[first["key"]]
     other_db, other_rows = journal_rows(other["base"])
@@ -176,29 +212,37 @@ def main():
     other_db_hash = digest(other_db) if other_db else None
     receipts["journal"][first["key"]] = {"db": str(db_path), "rows": [list(r) for r in rows],
         "applied_ids_distinct": True, "after_hashes_match": True,
-        "library_id_mode": "default native id; explicit per-library ids denied by extension ('library scope denied', s17b log)"}
+        "library_id_mode": "explicit selected ID verified in durable journal rows"}
     receipts["journal"][other["key"] + "_untouched"] = {"dual_proof_rows": 0,
         "file_absent": True, "db_sha256": other_db_hash}
+    write_meta(other, f"獨立寫入{other['sentinel']}")
+    second_db, second_rows = journal_rows(other["base"])
+    assert len(second_rows) == 1 and second_rows[0][-1] == "applied", second_rows
+    require_identity(second_rows[0][1], other["library_id"])
+    assert journal_rows(first["base"])[1] == rows
+    receipts["journal"][other["key"]] = {"db": str(second_db),
+        "rows": [list(row) for row in second_rows], "first_library_unchanged": True}
 
     # --- Alternate native search/get between both libraries ----------------
     old_chat, old_ctx, old_prompt = query.chat, query.chat_with_context, query.SYSTEM_PROMPT
     ask_evidence = {}
     try:
         for site in (SITES[0], SITES[1], SITES[0], SITES[1]):
-            query.chat = lambda *a, **kw: site["title"]
-            def answer(question, context, **kwargs):
-                return f"<think>hidden</think>{site['sentinel']}之對。"
-            query.chat_with_context = answer
-            query.SYSTEM_PROMPT = f"系統-{site['branding']}"
-            kb = SiwenKB(site["base"])
-            _native.clear_trace()
-            result = kb.ask("共目何義？", file_back=False, promote=False)
-            trace = _native.last_trace()
-            assert trace and trace["core"] == "rust"
-            assert site["sentinel"] in result["answer"] and "<think>" not in result["answer"]
-            assert other_of[site["key"]]["sentinel"] not in result["answer"]
-            ask_evidence.setdefault(site["key"], []).append(
-                {"answer": result["answer"], "trace_core": trace["core"]})
+            with library_scope(site["library_id"]):
+                query.chat = lambda *a, **kw: site["title"]
+                def answer(question, context, **kwargs):
+                    return f"<think>hidden</think>{site['sentinel']}之對。"
+                query.chat_with_context = answer
+                query.SYSTEM_PROMPT = f"系統-{site['branding']}"
+                kb = SiwenKB(site["base"])
+                _native.clear_trace()
+                result = kb.ask("共目何義？", file_back=False, promote=False)
+                trace = _native.last_trace()
+                assert trace and trace["core"] == "rust"
+                assert site["sentinel"] in result["answer"] and "<think>" not in result["answer"]
+                assert other_of[site["key"]]["sentinel"] not in result["answer"]
+                ask_evidence.setdefault(site["key"], []).append(
+                    {"answer": result["answer"], "trace_core": trace["core"]})
     finally:
         query.chat, query.chat_with_context, query.SYSTEM_PROMPT = old_chat, old_ctx, old_prompt
     receipts["native"]["ask"] = ask_evidence
@@ -206,78 +250,84 @@ def main():
     # --- Alternate Flask requests between both app instances ---------------
     assert SIWEN_STATIC_DIR.is_dir()
     for site in SITES:
-        app = create_siwen_web_app(site["base"])
-        app.testing = True
-        client = app.test_client()
-        site["client"] = client
-        branding = client.get("/api/branding").json
-        assert branding["name"] == site["branding"], branding
-        articles = client.get("/api/articles").json["articles"]
-        blob = json.dumps(articles, ensure_ascii=False)
-        assert site["slug"] in blob and site["title"] in blob, blob[:200]
-        assert other_of[site["key"]]["title"] not in blob
-        assert "私卷" not in blob, "private raw document leaked into /api/articles"
-        classics = client.get("/api/classics").json
-        cblob = json.dumps(classics, ensure_ascii=False)
-        assert classics["books"] and site["extra"][1] in cblob
-        assert other_of[site["key"]]["extra"][1] not in cblob
-        assert "私卷" not in cblob, "private internal document leaked into /api/classics"
-        sources_blob = json.dumps(client.get("/api/sources").json, ensure_ascii=False)
-        assert site["origin"] in sources_blob and other_of[site["key"]]["origin"] not in sources_blob
-        receipts["private"][site["key"]] = {"articles_exclude_private": "私卷" not in blob,
-            "classics_exclude_private": "私卷" not in cblob,
-            "sources_lists_private_raw": "私卷" in sources_blob,
-            "baked_content_trees_exclude_private": None}
-        page = client.get(f"/wiki/{site['slug']}").data.decode()
-        assert site["branding"] in page and site["origin"] in page
-        assert other_of[site["key"]]["origin"] not in page and other_of[site["key"]]["branding"] not in page
-        status = {}
-        for path in required:
-            response = client.get(path)
-            status[path] = response.status_code
-            assert response.status_code == 200, (site["key"], path, response.status_code)
-        receipts["flask"][site["key"]] = {"branding": branding, "shared_slug_title": site["title"],
-            "article_count": len(articles), "required_status": status,
-            "origin_in_page": site["origin"] in page}
+        with library_scope(site["library_id"]):
+            app = create_siwen_web_app(site["base"])
+            app.testing = True
+            client = app.test_client()
+            site["client"] = client
+            branding = client.get("/api/branding").json
+            assert branding["name"] == site["branding"], branding
+            articles = client.get("/api/articles").json["articles"]
+            blob = json.dumps(articles, ensure_ascii=False)
+            assert site["slug"] in blob and site["title"] in blob, blob[:200]
+            assert other_of[site["key"]]["title"] not in blob
+            assert "私卷" not in blob, "private raw document leaked into /api/articles"
+            classics = client.get("/api/classics").json
+            cblob = json.dumps(classics, ensure_ascii=False)
+            assert classics["books"] and site["extra"][1] in cblob
+            assert other_of[site["key"]]["extra"][1] not in cblob
+            assert "私卷" not in cblob, "private internal document leaked into /api/classics"
+            sources_blob = json.dumps(client.get("/api/sources").json, ensure_ascii=False)
+            assert site["origin"] in sources_blob and other_of[site["key"]]["origin"] not in sources_blob
+            receipts["private"][site["key"]] = {"articles_exclude_private": "私卷" not in blob,
+                "classics_exclude_private": "私卷" not in cblob,
+                "sources_lists_private_raw": "私卷" in sources_blob,
+                "baked_content_trees_exclude_private": None}
+            page = client.get(f"/wiki/{site['slug']}").data.decode()
+            assert site["branding"] in page and site["origin"] in page
+            assert other_of[site["key"]]["origin"] not in page and other_of[site["key"]]["branding"] not in page
+            status = {}
+            for path in required:
+                response = client.get(path)
+                status[path] = response.status_code
+                assert response.status_code == 200, (site["key"], path, response.status_code)
+            receipts["flask"][site["key"]] = {"branding": branding, "shared_slug_title": site["title"],
+                "article_count": len(articles), "required_status": status,
+                "origin_in_page": site["origin"] in page}
 
     # --- Actual populated BakeRun for both sites ---------------------------
     for site in SITES:
-        out = args.run_root / f"baked-{site['key']}"
-        _copy_static_assets(out)
-        run = BakeRun(site["client"], out)
-        ids = bake_json_tree(run)
-        bake_html_tree(run, "full", ids)
-        _verify_clean(out)
-        unexpected = [i for i in run.skipped if not i.endswith("(HTTP 404 optional)")]
-        assert not unexpected, (site["key"], unexpected)
-        assert ids["articles"] and ids["classics"]
-        texts = []
-        for path in out.rglob("*"):
-            if path.is_file() and path.suffix in {".html", ".json"}:
-                try:
-                    texts.append((path.name, path.read_text(encoding="utf-8", errors="ignore")))
-                except Exception:
-                    pass
-        baked = "\n".join(text for _, text in texts)
-        other = other_of[site["key"]]
-        assert site["sentinel"] in baked and site["branding"] in baked
-        assert other["sentinel"] not in baked and other["origin"] not in baked
-        content_trees = [text for name, text in texts if "articles" in name or "classics" in name]
-        assert content_trees and all("私卷" not in text for text in content_trees)
-        receipts["bake"][site["key"]] = {"json_count": run.json_count, "html_count": run.html_count,
-            "skipped": run.skipped, "article_count": len(ids["articles"]),
-            "classic_count": len(ids["classics"]), "verified_clean": True,
-            "own_sentinel_present": True, "other_sentinel_absent": True,
-            "branding_present": site["branding"] in baked}
-        receipts["private"][site["key"]]["baked_content_trees_exclude_private"] = True
+        with library_scope(site["library_id"]):
+            out = args.run_root / f"baked-{site['key']}"
+            _copy_static_assets(out)
+            run = BakeRun(site["client"], out)
+            ids = bake_json_tree(run)
+            bake_html_tree(run, "full", ids)
+            _verify_clean(out)
+            unexpected = [i for i in run.skipped if not i.endswith("(HTTP 404 optional)")]
+            assert not unexpected, (site["key"], unexpected)
+            assert ids["articles"] and ids["classics"]
+            texts = []
+            for path in out.rglob("*"):
+                if path.is_file() and path.suffix in {".html", ".json"}:
+                    try:
+                        texts.append((path.name, path.read_text(encoding="utf-8", errors="ignore")))
+                    except Exception:
+                        pass
+            baked = "\n".join(text for _, text in texts)
+            other = other_of[site["key"]]
+            assert site["sentinel"] in baked and site["branding"] in baked
+            assert other["sentinel"] not in baked and other["origin"] not in baked
+            content_trees = [text for name, text in texts if "articles" in name or "classics" in name]
+            assert content_trees and all("私卷" not in text for text in content_trees)
+            receipts["bake"][site["key"]] = {"json_count": run.json_count, "html_count": run.html_count,
+                "skipped": run.skipped, "article_count": len(ids["articles"]),
+                "classic_count": len(ids["classics"]), "verified_clean": True,
+                "own_sentinel_present": True, "other_sentinel_absent": True,
+                "branding_present": site["branding"] in baked}
+            receipts["private"][site["key"]]["baked_content_trees_exclude_private"] = True
 
+    for site in SITES:
+        assert document_hashes(site["base"]) == site["document_hashes"], "source/accepted documents changed"
     receipt = {
         "llmwiki_version": importlib.metadata.version("llmwiki"),
-        "siwen_version": importlib.metadata.version("siwen"),
+        "siwen_version": tomllib.loads((args.snapshot / "pyproject.toml").read_text())["project"]["version"],
+        "siwen_version_source": "copied source pyproject.toml; not installed distribution metadata",
         "llmwiki_module": llmwiki.__file__, "siwen_module": sys.modules["siwen"].__file__,
         "extension": _core.__file__, "extension_sha256": digest(Path(_core.__file__)),
         "wheel_sha256": digest(args.wheel), "external_network": "blocked",
         "model_transport": "explicit offline Python callback",
+        "source_and_accepted_documents_unchanged": True,
         "libraries": [{"key": s["key"], "library_id": s["library_id"], "base": str(s["base"]),
                        "branding": s["branding"], "canonical_origin": s["origin"],
                        "shared_slug": s["slug"]} for s in SITES],
@@ -287,10 +337,10 @@ def main():
                     "custom compiler, taxonomy and Flask extension code remain Python. The private "
                     "fixture is a raw uncompiled internal-type document, excluded from article and "
                     "classic content surfaces; raw source-inventory endpoints list raw documents by "
-                    "design and are recorded as evidence, not asserted empty. Explicit non-default "
-                    "native library ids are denied by the "
-                    "installed extension ('library scope denied'); per-library atomic identity is "
-                    "shown by root with the default id. No real-provider semantic quality is claimed.",
+                    "design and are recorded as evidence, not asserted empty. Explicit native "
+                    "library IDs are checked against doctor results and durable journal rows; "
+                    "environment selection is sequential proof scaffolding, not concurrent "
+                    "per-library Python-global isolation. No real-provider semantic quality is claimed.",
     }
     (args.run_root / "receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps({"result": "passed", "receipt": str(args.run_root / "receipt.json"),

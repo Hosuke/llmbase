@@ -1,5 +1,10 @@
 # Rust migration plan
 
+2026-10-10: the user resumed one bounded block. C1 identity-verifier repair is
+accepted with [focused and dual-site snapshot evidence](results/c1-dual-identity-2026-10-10/README.md).
+Issue #10 is still open for the remaining profile/evidence/privacy contracts.
+Save this block and stop; do not infer authorization for the next issue.
+
 **Current stop, 2026-09-27:** save full WIP and the [13 issue designs](issues/README.md),
 then remain paused until an explicit user resume. No further implementation or
 long build is part of this handoff. [ADR 0002](../adr/0002-clean-rust-major-and-extensions.md)

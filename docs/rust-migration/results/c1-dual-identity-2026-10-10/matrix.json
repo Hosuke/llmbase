@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "task": "C1 dual-library identity verifier",
+  "issue": 10,
+  "result": "accepted_slice",
+  "full_issue_accepted": false,
+  "engine_commit": "951dfb1e83693e5ca69e536c5938304afac133fd",
+  "downstream_commit": "cb7ccbb21bfca9a0be78ab290b12b55dea62503d",
+  "downstream_dirty_snapshot": true,
+  "latest_downstream_worktree_accepted": false,
+  "contracts": [
+    {"surface": "observed library IDs and independent journals", "status": "passed", "evidence": "proof-receipt.json"},
+    {"surface": "wrong ID opening an existing library database", "status": "rejected_as_required", "evidence": "identity-acceptance.json", "limit": "local binding, not HTTP authentication"},
+    {"surface": "same-slug site content and branding", "status": "passed", "evidence": "proof-receipt.json"},
+    {"surface": "real Flask read routes", "status": "passed_fixture_subset", "per_site_required_routes": 24},
+    {"surface": "SiwenKB ask", "status": "passed_offline_callback_subset", "per_site_calls": 2},
+    {"surface": "real BakeRun", "status": "passed_fixture_subset", "per_site_json": 159, "per_site_html": 135, "limit": "historical static assets"},
+    {"surface": "synthetic source and accepted-document preservation", "status": "passed", "evidence": "proof-receipt.json"},
+    {"surface": "English versus wenyan site profiles", "status": "not_verified", "next_issue": 10},
+    {"surface": "site evidence revision/span contract", "status": "not_verified", "next_issue": 10},
+    {"surface": "native site compiler and custom extensions", "status": "not_verified", "next_issue": 11},
+    {"surface": "hooks and durable job behavior", "status": "not_verified", "next_issues": [12, 13, 14]},
+    {"surface": "full public/private capability denial", "status": "not_verified", "next_issue": 19},
+    {"surface": "current frontend/browser acceptance", "status": "not_verified", "next_issue": 19}
+  ],
+  "runner_exit": 0,
+  "task_processes_running": false,
+  "production_changed": false
+}

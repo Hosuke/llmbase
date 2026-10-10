@@ -1,0 +1,13 @@
+{
+  "engine_commit": "951dfb1e83693e5ca69e536c5938304afac133fd",
+  "matching_runtime_inputs": 166,
+  "matching_installed_python_files": 48,
+  "extension_sha256": "e65792c0ea141b6e18111dfcb4c079c83aefd514a24a114921afb35d98cf5b6b",
+  "wheel_sha256": "9206384f0b203440146e2ebae3885724eefa6a72a8dd8f5b0b2b91aed79066bc",
+  "wheel": "/root/llmbase-rust-migration-20260920/b16-native-config/wheels-v2/llmwiki-0.9.0-cp311-abi3-linux_x86_64.whl",
+  "downstream_head": "cb7ccbb21bfca9a0be78ab290b12b55dea62503d",
+  "downstream_snapshot_files": 60,
+  "downstream_has_uncommitted_changes": true,
+  "assets": "historical B5 static assets copied within remote runner; not a current frontend build",
+  "runtime_reused": "B16 candidate-v2, justified by exact source and installed-file hashes"
+}

@@ -1,5 +1,10 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-10 bounded progress: [C1 observed library identity](../results/c1-dual-identity-2026-10-10/README.md)
+is accepted within design 01 / issue #10. This verifier-only block passed focused
+and frozen dual-site checks. Issue #10 remains open; stop after this block until
+the user requests the next one.
+
 **Paused; unreleased.** The user requested saving complete WIP source and explicit issues instead of continuing development. The branch is `rust-core-rebuild`; accepted B16 evidence remains checkpoint `0229032`. This handoff introduces no engine feature and does not certify the assembled source as a release candidate. The latest B16 receipt records 651 installed Python tests; current dual-site/final-release gates remain open.
 
 ## Architecture and scope
