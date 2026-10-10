@@ -1,5 +1,15 @@
 # Rust: make worker outcomes explicit and stop treating swallowed errors as success
 
+## Bounded progress — C3, 2026-10-10
+
+[C3](../results/c3-worker-outcomes-2026-10-10/README.md) adds native `JobOutcome`,
+rejects absent/null successful results, validates existing report statuses and
+preserves Partial results through the fenced ledger. It tests a real finite
+compile worker retrying the same job without rewriting accepted work. This is
+the shared native boundary slice, independent of the future custom registry.
+This issue remains open for structured error codes/retryability, normalized
+artifact references, registered handlers and general quota/checkpoint resumption.
+
 ## Starting point
 `crates/llmbase-core/src/worker.rs` already runs durable jobs. Legacy `llmwiki/worker.py` compile/learn helpers can catch errors and return None, which is not a reliable success signal.
 

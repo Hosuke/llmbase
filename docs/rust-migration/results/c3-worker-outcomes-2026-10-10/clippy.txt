@@ -1,0 +1,2 @@
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/c3-worker-outcomes-20261010/source/crates/llmbase-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.45s

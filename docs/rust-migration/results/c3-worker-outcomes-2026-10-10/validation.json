@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "task": "C3 explicit Rust worker outcomes",
+  "issue": 13,
+  "result": "accepted_native_slice",
+  "full_issue_accepted": false,
+  "base_commit": "75a8601db380256c8cfc989c1ffde007a44b0218",
+  "remote_directory": "baypier-prod:/root/llmbase-rust-migration-20260920/c3-worker-outcomes-20261010",
+  "source_inputs": 128,
+  "source_manifest_sha256": "53d219518858c872f4305e1e58fc02087c8a192238206c62b58b670b169710db",
+  "exit_codes": {
+    "source-before": 0,
+    "fmt": 0,
+    "contracts": 0,
+    "clippy": 0,
+    "transport": 0,
+    "source-after": 0,
+    "runner": 0
+  },
+  "tests": {
+    "contracts": {
+      "binaries": 9,
+      "passed": 117,
+      "additional_subprocess_test_runs": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    "transport": {
+      "binaries": 1,
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    }
+  },
+  "review": "independent staged Codex review LGTM after fixing deterministic partial report handling",
+  "local_checks": [
+    "TypeScript noEmit",
+    "Python lint import",
+    "staged whitespace",
+    "local source hashes match remote manifest"
+  ],
+  "initial_runner_failure": {
+    "stage": "clippy",
+    "exit": 101,
+    "reason": "copied runner missing checked-in test fixtures; corrected before final run"
+  },
+  "candidate_wheel_rebuilt": false,
+  "production_changed": false,
+  "task_sessions_running": false,
+  "broader_goal": "paused",
+  "remaining_issue_scope": [
+    "structured error codes and retryability",
+    "normalized artifact references",
+    "registered handlers (issue 11 prerequisite)",
+    "general partial-quota/checkpoint resumption"
+  ]
+}

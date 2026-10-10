@@ -1,0 +1,178 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/c3-worker-outcomes-20261010/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.22s
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_core-f774b1a3a1be3b80)
+
+running 32 tests
+test ask::tests::citation_marker_parser_does_not_invent_used_evidence ... ok
+test compat_pipeline::extended_json::tests::strings_escapes_big_numbers_and_bad_tokens_are_not_tags ... ok
+test compat_pipeline::extended_json::tests::actual_marker_collision_is_escaped_and_restored_once ... ok
+test fetch::tests::redirects_bounded_and_dns_mixed_answers_denied ... ok
+
+running 1 test
+test fetch::tests::bounded_chunked_declared_and_compressed_bodies ... ok
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... test fetch::tests::redirect_to_private_or_userinfo_never_connects ... okok
+
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.00s
+
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+test fetch::tests::stalled_response_obeys_total_deadline_and_cancellation ... ok
+test jobs::tests::cancellation_fences_running_owner_and_credentials_are_not_persisted ... ok
+test jobs::tests::successful_jobs_require_an_explicit_non_null_result ... ok
+test jobs::tests::partial_outcomes_preserve_results_across_reopen_and_retry ... ok
+test jobs::tests::jobs_survive_reopen_and_expired_owners_cannot_complete ... ok
+test migration::tests::dry_run_copy_verify_restore_and_rollback_preserve_unknown_fields_and_original_bytes ... ok
+test migration::tests::overlapping_destination_is_rejected_before_creating_any_directory ... ok
+test migration::tests::backup_keeps_deleted_revisions_jobs_and_tampering_is_detected ... ok
+test recovery::tests::accepted_writes_require_compare_and_swap_and_preserve_old_citations ... ok
+test recovery::tests::journal_busy_leaves_bytes_and_intent_count_unchanged ... ok
+test recovery::tests::journal_recovery_preserves_external_edit_and_keeps_evidence ... ok
+test maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write ... ok
+test recovery::tests::journal_recovers_before_and_after_file_crash_windows_once ... ok
+test recovery::tests::journal_recovery_respects_the_per_file_lock ... ok
+test recovery::tests::journal_table_is_additive_for_existing_version_one_databases ... ok
+test recovery::tests::journal_replay_fails_safely_for_foreign_escaping_and_reserved_records ... ok
+test recovery::tests::recovery_does_not_overwrite_an_unrelated_external_edit ... ok
+test visibility::tests::malformed_flags_and_visibility_fail_closed ... ok
+test worker::tests::deterministic_partial_reports_preserve_failure_and_accepted_work ... ok
+test worker::tests::domain_statuses_and_explicit_noops_are_not_misclassified ... ok
+test worker::tests::late_completion_after_cancellation_preserves_result_without_success ... ok
+test recovery::tests::journaled_atomic_write_stores_exact_images_without_indexing ... ok
+test recovery::tests::recovery_handles_before_file_and_after_file_crash_windows ... ok
+test worker::tests::missing_or_malformed_handler_results_persist_failure_not_success ... ok
+test maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.71s
+
+     Running tests/answers.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/answers-b26602e2653fb478)
+
+running 12 tests
+test explicit_save_retains_provenance_is_private_and_replays_without_duplicates ... ok
+test incomplete_promotion_guard_receipt_cannot_apply_or_replay_as_cached_success ... ok
+test cancelled_and_timed_out_promotions_persist_terminal_job_states ... ok
+test promotion_creates_reviewed_draft_with_original_provenance_and_explicit_apply ... ok
+test promotion_apply_rejects_privacy_changes_after_review_draft_creation ... ok
+test promotion_draft_rejects_a_changed_saved_note_and_truncated_saved_answer ... ok
+test save_rejects_unindexed_source_privacy_edit_before_note_creation ... ok
+test decline_is_explicit_and_invalid_truncated_or_path_outputs_never_create_a_draft ... ok
+test save_rejects_forged_cross_library_and_visibility_downgrade_before_writing ... ok
+test promotion_preserves_stale_raw_provenance_and_current_restrictions ... ok
+test stale_original_evidence_remains_resolvable_and_note_edits_are_detected ... ok
+test uncited_context_and_historical_private_flag_cannot_be_saved_publicly ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/compat_workflows.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_workflows-22c5a3aee5032729)
+
+running 11 tests
+test cancelled_and_required_callbacks_do_not_contact_provider ... ok
+test all_empty_native_compile_is_failed_and_raw_is_not_marked ... ok
+test native_compile_partial_retains_accepted_article_without_marking_failure ... ok
+test native_compile_drafts_apply_mark_exact_body_and_skip_idempotently ... ok
+test native_query_bare_wenyan_profile_and_marp_keep_original_context ... ok
+test query_overrides_select_and_answer_but_judge_uses_default_model ... ok
+test native_all_forces_new_extraction_despite_legacy_source_receipt ... ok
+test worker_compile_provider_failure_never_persists_success ... ok
+test native_query_real_selector_answer_judge_and_accepted_fileback ... ok
+test native_compile_selects_each_indexed_raw_file_and_preserves_original_assets ... ok
+test worker_partial_compile_retries_same_job_without_rewriting_accepted_article ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.02s
+
+     Running tests/compile.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compile-cfe26877abde636b)
+
+running 13 tests
+test draft_apply_checks_reviewed_target_hash_and_source_revision ... ok
+test aliases_unknown_metadata_sources_and_bare_body_override_survive_merge ... ok
+test english_native_default_configured_trilingual_and_exact_legacy_merge_threshold ... ok
+test consulted_description_becoming_private_blocks_new_public_draft_apply ... ok
+test application_compile_requires_each_capability_and_uses_config_profile ... ok
+test draft_apply_rejects_raw_file_edit_before_the_index_is_synced ... ok
+test internal_compile_excludes_private_description_context ... ok
+test partial_article_batch_persists_good_drafts_and_can_retry ... ok
+test public_compile_never_sends_private_existing_descriptions_or_merges_private_aliases ... ok
+test restrictive_source_visibility_cannot_leak_through_public_merge ... ok
+test source_draft_review_apply_is_native_idempotent_and_preserves_raw_bytes ... ok
+test unsupported_callbacks_and_foreign_drafts_are_explicit_errors ... ok
+test malformed_empty_truncated_and_all_invalid_outputs_never_succeed ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests/entities_model.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/entities_model-66bd6cfa2e7fa539)
+
+running 9 tests
+test cancellation_and_unsupported_callback_profiles_never_publish_success ... ok
+test a_later_batch_failure_does_not_publish_partial_entities ... ok
+test actual_extraction_is_guarded_durable_unicode_and_uses_effective_prompts ... ok
+test bounded_batches_deduplicate_transitively_across_original_script_names ... ok
+test disabled_and_empty_sources_are_not_extraction_successes ... ok
+test public_and_private_artifacts_are_isolated_and_authorization_precedes_http ... ok
+test revoking_an_uncited_consulted_source_withholds_public_aggregate ... ok
+test unindexed_privacy_change_and_concurrent_artifact_edit_fail_cas ... ok
+test malformed_empty_truncated_unknown_refs_and_invalid_coords_preserve_previous_artifact ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/maintenance_model.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_model-8dcfb540fbddcd6d)
+
+running 9 tests
+test explicit_fallback_is_marked_partial_and_cancelled_work_never_calls_provider ... ok
+test crash_replay_checks_generated_metadata_source_guards_before_publishing ... ok
+test direct_english_and_explicit_private_introductions_use_separate_real_caches ... ok
+test actual_taxonomy_generation_assigns_all_public_articles_and_journals_requested_tag_sync ... ok
+test locked_accepted_taxonomy_is_not_regenerated_or_overwritten ... ok
+test explicit_legacy_zh_base_translates_and_reuses_only_matching_source_fingerprint ... ok
+test source_changes_or_new_manual_cache_during_provider_work_cannot_be_overwritten ... ok
+test model_failure_and_unknown_taxonomy_references_are_errors_with_failed_jobs ... ok
+test failed_translation_and_timeout_do_not_publish_empty_or_wrong_language_success ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/maintenance_repair.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_repair-e8fe84b7d5c7194a)
+
+running 17 tests
+test cancellation_and_scope_rejection_happen_before_any_provider_or_source_change ... ok
+test concurrent_private_edit_is_not_overwritten_and_invalid_model_json_is_not_success ... ok
+test failed_model_repair_never_publishes_completed_last_fix ... ok
+test aggregate_tag_normalization_completes_multiple_articles_without_cross_visibility_leak ... ok
+test broken_link_generation_has_real_support_guards_and_no_placeholder_fallback ... ok
+test cleanup_and_url_slug_repair_use_real_journals_preserve_cjk_and_pipe_links ... ok
+test heal_persists_actual_check_fix_recheck_report_and_deep_lint_is_read_only ... ok
+test last_fix_receipts_have_real_counts_and_separate_private_storage ... ok
+test missing_metadata_uses_real_models_preserves_body_unknown_fields_and_old_revision ... ok
+test related_topics_and_cross_visibility_candidates_are_not_merged ... ok
+test provider_failure_after_an_accepted_write_reports_partial_with_job_owned_receipts ... ok
+test model_confirmed_duplicate_merge_preserves_both_sources_and_rewrites_links ... ok
+test merging_refreshes_legacy_and_accepted_taxonomy_without_changing_manual_structure ... ok
+test repair_internal_writer_wait_cancels_without_accepting_work ... ok
+test repair_waits_for_internal_writer_before_accepting_one_job ... ok
+test repair_waits_after_model_without_replaying_model_or_accepted_write ... ok
+test repair_internal_writer_exhaustion_accepts_no_job ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.86s
+
+     Running tests/plugins.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/plugins-6238a57eac824952)
+
+running 4 tests
+test scope_denial_precedes_process_and_traversal_rejects_entire_reply ... ok
+test nonzero_exit_oversize_and_unconfigured_adapter_cannot_succeed ... ok
+test configured_process_has_real_protocol_and_native_revision_receipts ... ok
+test process_failure_does_not_echo_stderr_and_cancellation_kills_child ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/worker.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/worker-b58993bf05766ade)
+
+running 10 tests
+test errors_are_persisted_without_success_or_secret_echo ... ok
+test inline_job_is_never_visible_to_a_general_queue_claim ... ok
+test targeted_worker_claims_only_requested_job_and_does_not_fallback ... ok
+test two_workers_cannot_execute_the_same_claim ... ok
+test cancellation_during_repair_open_contention_is_truthful_and_prompt ... ok
+test unauthorized_or_pre_cancelled_worker_does_not_claim ... ok
+test claimed_repair_retries_transient_recovery_lock_contention_under_same_lease ... ok
+test worker_runs_real_index_and_persists_result_and_events ... ok
+test worker_rechecks_operation_capability_and_skips_cancelled_jobs ... ok
+test claimed_repair_contention_exhaustion_fails_truthfully_without_replay ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.68s

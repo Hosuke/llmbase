@@ -1,0 +1,13 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/c3-worker-outcomes-20261010/source/crates/llmbase-core)
+   Compiling llmbase-cli v0.1.0 (/root/llmbase-rust-migration-20260920/c3-worker-outcomes-20261010/source/crates/llmbase-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 29.14s
+     Running tests/workflows.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/workflows-e9b29874ef4e379c)
+
+running 5 tests
+test legacy_ask_preserves_defaults_and_gates_writes_before_calling_provider ... ok
+test failed_accepted_compile_is_a_failed_durable_job_not_empty_success ... ok
+test legacy_cli_query_uses_old_format_tone_and_explicit_file_back_flags ... ok
+test legacy_backlinks_keeps_unknown_targets_without_private_incoming_articles ... ok
+test legacy_get_section_uses_scalar_offsets_and_hides_missing_content ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s

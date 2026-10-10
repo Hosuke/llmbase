@@ -277,6 +277,132 @@ async fn native_compile_partial_retains_accepted_article_without_marking_failure
     assert_eq!(lib.list(Some("compiled"), true).unwrap().len(), 1);
 }
 
+async fn run_compile_job(
+    app: &llmbase_core::application::Application,
+    principal: &llmbase_core::application::Principal,
+    client: Client,
+    id: &str,
+) -> llmbase_core::jobs::Job {
+    tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        app.run_job(
+            principal,
+            "workflow",
+            llmbase_core::worker::WorkerModels {
+                generation: Some(client),
+                embedding: None,
+            },
+            llmbase_core::worker::WorkerSelection {
+                worker_id: "outcome-fixture".into(),
+                job_id: Some(id.into()),
+            },
+            CancellationToken::new(),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn worker_partial_compile_retries_same_job_without_rewriting_accepted_article() {
+    use llmbase_core::{
+        application::{Application, Principal},
+        jobs::JobStatus,
+    };
+    let (_dir, cfg) = fixture();
+    raw(&cfg, "a");
+    raw(&cfg, "b");
+    let provider = Provider::new(vec![
+        extraction("accepted"),
+        reply("{malformed"),
+        extraction("recovered"),
+    ])
+    .await;
+    let app = Application::new(vec![cfg.clone()]).unwrap();
+    let principal = Principal::local("workflow");
+    let queued = Library::open(cfg.clone())
+        .unwrap()
+        .enqueue_job("legacy_compile", json!({}), 3)
+        .unwrap();
+    let partial = run_compile_job(&app, &principal, provider.client.clone(), &queued.id).await;
+    assert_eq!(partial.status, JobStatus::Partial);
+    assert_eq!(
+        partial.result.as_ref().unwrap()["articles"],
+        json!(["wiki/concepts/accepted.md"])
+    );
+    assert!(partial.error.is_some());
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 2);
+    let accepted = fs::read(cfg.concepts.join("accepted.md")).unwrap();
+    let accepted_raw = fs::read(cfg.raw.join("a/index.md")).unwrap();
+
+    // Reopen both storage and application to exercise process-restart semantics.
+    drop(app);
+    let mut library = Library::open(cfg.clone()).unwrap();
+    let saved = library.job(&queued.id).unwrap();
+    assert_eq!(saved.result, partial.result);
+    let retried = library.retry_job(&queued.id).unwrap();
+    assert_eq!(retried.id, queued.id);
+    assert_eq!(retried.library_id, "workflow");
+    assert_eq!(retried.result, partial.result);
+    drop(library);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let app = Application::new(vec![cfg.clone()]).unwrap();
+    let completed = run_compile_job(&app, &principal, provider.client.clone(), &queued.id).await;
+    assert_eq!(completed.status, JobStatus::Succeeded);
+    assert_eq!(completed.id, queued.id);
+    assert_eq!(completed.attempts, 2);
+    assert_eq!(
+        provider.calls.load(Ordering::SeqCst),
+        3,
+        "accepted source must not be regenerated"
+    );
+    assert_eq!(
+        fs::read(cfg.concepts.join("accepted.md")).unwrap(),
+        accepted
+    );
+    assert_eq!(fs::read(cfg.raw.join("a/index.md")).unwrap(), accepted_raw);
+    assert!(cfg.concepts.join("recovered.md").exists());
+    let events = Library::open(cfg).unwrap().job_events(&queued.id).unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|v| v["event"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["queued", "start", "partial", "queued", "start", "ok"]
+    );
+    assert_eq!(events[2]["payload"]["result"], partial.result.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn worker_compile_provider_failure_never_persists_success() {
+    use llmbase_core::{
+        application::{Application, Principal},
+        jobs::JobStatus,
+    };
+    let (_dir, cfg) = fixture();
+    let original = raw(&cfg, "bad");
+    let provider = Provider::new(vec![reply("{malformed")]).await;
+    let app = Application::new(vec![cfg.clone()]).unwrap();
+    let principal = Principal::local("workflow");
+    let queued = Library::open(cfg.clone())
+        .unwrap()
+        .enqueue_job("legacy_compile", json!({}), 2)
+        .unwrap();
+    let failed = run_compile_job(&app, &principal, provider.client.clone(), &queued.id).await;
+    assert_eq!(failed.status, JobStatus::Failed);
+    assert!(failed.error.is_some());
+    assert_eq!(failed.result.as_ref().unwrap()["status"], "failed");
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fs::read(cfg.raw.join("bad/index.md")).unwrap(), original);
+    let library = Library::open(cfg).unwrap();
+    assert!(library.list(Some("compiled"), true).unwrap().is_empty());
+    let events = library.job_events(&queued.id).unwrap();
+    assert_eq!(events.last().unwrap()["event"], "failed");
+    assert!(!events.iter().any(|event| event["event"] == "ok"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelled_and_required_callbacks_do_not_contact_provider() {
     let (_dir, mut cfg) = fixture();

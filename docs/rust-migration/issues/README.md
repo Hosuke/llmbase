@@ -1,5 +1,11 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-10 next bounded blocks: [C2 privacy/evidence diagnostic](../results/c2-privacy-evidence-2026-10-10/README.md)
+records a downstream classic privacy blocker in #19;
+[C3 typed Rust worker outcomes](../results/c3-worker-outcomes-2026-10-10/README.md)
+implements the first #13 slice. These do not close the parent issues or authorize
+site adoption. Stop after each accepted block; the broader Goal remains paused.
+
 2026-10-10 bounded progress: [C1 observed library identity](../results/c1-dual-identity-2026-10-10/README.md)
 is accepted within design 01 / issue #10. This verifier-only block passed focused
 and frozen dual-site checks. Issue #10 remains open; stop after this block until

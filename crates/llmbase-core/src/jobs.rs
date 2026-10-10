@@ -46,6 +46,27 @@ impl JobStatus {
     }
 }
 
+/// A worker's terminal outcome, persisted through the current lease's fence.
+/// Completed outcomes require a non-null result; `{}` is an explicit no-op.
+#[derive(Debug, Clone)]
+pub enum JobOutcome {
+    Completed {
+        result: Value,
+    },
+    Partial {
+        result: Option<Value>,
+        error: Option<String>,
+    },
+    Failed {
+        result: Option<Value>,
+        error: Option<String>,
+    },
+    Cancelled {
+        result: Option<Value>,
+        error: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub library_id: String,
@@ -270,6 +291,16 @@ impl Library {
         Ok(())
     }
 
+    pub fn finish_job_outcome(&mut self, lease: &JobLease, outcome: JobOutcome) -> Result<Job> {
+        let (status, result, error) = match outcome {
+            JobOutcome::Completed { result } => (JobStatus::Succeeded, Some(result), None),
+            JobOutcome::Partial { result, error } => (JobStatus::Partial, result, error),
+            JobOutcome::Failed { result, error } => (JobStatus::Failed, result, error),
+            JobOutcome::Cancelled { result, error } => (JobStatus::Cancelled, result, error),
+        };
+        self.finish_job(lease, status, result, error.as_deref())
+    }
+
     pub fn finish_job(
         &mut self,
         lease: &JobLease,
@@ -285,6 +316,11 @@ impl Library {
         }
         if status == JobStatus::Succeeded && error.is_some() {
             return Err(Error::Invalid("successful job cannot have an error".into()));
+        }
+        if status == JobStatus::Succeeded && matches!(result.as_ref(), None | Some(Value::Null)) {
+            return Err(Error::Invalid(
+                "successful job requires an explicit non-null result".into(),
+            ));
         }
         let tx = self
             .db
@@ -408,6 +444,124 @@ mod tests {
     use super::*;
     use crate::LibraryConfig;
     use tempfile::TempDir;
+
+    #[test]
+    fn successful_jobs_require_an_explicit_non_null_result() {
+        let dir = TempDir::new().unwrap();
+        let mut lib = Library::open(LibraryConfig::load(dir.path(), "results").unwrap()).unwrap();
+        let lease = lib
+            .enqueue_running_job("compile", json!({}), 1, "worker", 30)
+            .unwrap();
+        let events = lib.job_events(&lease.job.id).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["event"], "queued");
+        assert_eq!(events[1]["event"], "start");
+
+        for result in [None, Some(Value::Null)] {
+            assert!(matches!(
+                lib.finish_job(&lease, JobStatus::Succeeded, result, None),
+                Err(Error::Invalid(_))
+            ));
+            let running = lib.job(&lease.job.id).unwrap();
+            assert_eq!(running.status, JobStatus::Running);
+            assert_eq!(running.result, None);
+            assert_eq!(running.error, None);
+            assert_eq!(running.lease_until, lease.job.lease_until);
+            assert_eq!(lib.job_events(&lease.job.id).unwrap(), events);
+        }
+        assert!(matches!(
+            lib.finish_job_outcome(
+                &lease,
+                JobOutcome::Completed {
+                    result: Value::Null,
+                },
+            ),
+            Err(Error::Invalid(_))
+        ));
+        assert!(matches!(
+            lib.finish_job(
+                &lease,
+                JobStatus::Succeeded,
+                Some(json!({})),
+                Some("cannot succeed with an error"),
+            ),
+            Err(Error::Invalid(_))
+        ));
+        assert_eq!(lib.job(&lease.job.id).unwrap().status, JobStatus::Running);
+        assert_eq!(lib.job_events(&lease.job.id).unwrap(), events);
+
+        let completed = lib
+            .finish_job_outcome(&lease, JobOutcome::Completed { result: json!({}) })
+            .unwrap();
+        assert_eq!(completed.status, JobStatus::Succeeded);
+        assert_eq!(completed.result, Some(json!({})));
+        assert_eq!(completed.error, None);
+        assert_eq!(completed.lease_until, None);
+        assert_eq!(lib.job(&lease.job.id).unwrap().result, Some(json!({})));
+        let events = lib.job_events(&lease.job.id).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[2]["event"], "ok");
+        assert_eq!(events[2]["payload"], json!({"result":{},"err":null}));
+    }
+
+    #[test]
+    fn partial_outcomes_preserve_results_across_reopen_and_retry() {
+        let dir = TempDir::new().unwrap();
+        let cfg = LibraryConfig::load(dir.path(), "partial-results").unwrap();
+        let mut lib = Library::open(cfg.clone()).unwrap();
+        let job = lib.enqueue_job("compile", json!({}), 2).unwrap();
+        let lease = lib.claim_job_by_id(&job.id, "worker", 30).unwrap();
+        let result = json!({
+            "artifacts": [{"path":"wiki/concepts/retained.md","kind":"article"}],
+            "completed": 1
+        });
+        let partial = lib
+            .finish_job_outcome(
+                &lease,
+                JobOutcome::Partial {
+                    result: Some(result.clone()),
+                    error: Some("quota exhausted".into()),
+                },
+            )
+            .unwrap();
+        assert_eq!(partial.status, JobStatus::Partial);
+        assert_eq!(partial.result, Some(result.clone()));
+        assert_eq!(partial.error.as_deref(), Some("quota exhausted"));
+        let events = lib.job_events(&job.id).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[2]["event"], "partial");
+        assert_eq!(events[2]["payload"]["result"], result);
+        assert_eq!(events[2]["payload"]["err"], "quota exhausted");
+        drop(lib);
+
+        let mut lib = Library::open(cfg).unwrap();
+        let reopened = lib.job(&job.id).unwrap();
+        assert_eq!(reopened.library_id, job.library_id);
+        assert_eq!(reopened.id, job.id);
+        assert_eq!(reopened.status, JobStatus::Partial);
+        assert_eq!(reopened.result, Some(result.clone()));
+        assert_eq!(reopened.error.as_deref(), Some("quota exhausted"));
+        assert_eq!(lib.job_events(&job.id).unwrap(), events);
+
+        let queued = lib.retry_job(&job.id).unwrap();
+        assert_eq!(queued.library_id, job.library_id);
+        assert_eq!(queued.id, job.id);
+        assert_eq!(queued.status, JobStatus::Queued);
+        assert_eq!(queued.result, Some(result.clone()));
+        lib.db
+            .execute(
+                "UPDATE jobs SET available_at=0 WHERE library_id=?1 AND id=?2",
+                params![job.library_id, job.id],
+            )
+            .unwrap();
+        let retry = lib.claim_job_by_id(&job.id, "retry-worker", 30).unwrap();
+        assert_eq!(retry.job.library_id, job.library_id);
+        assert_eq!(retry.job.id, job.id);
+        assert_eq!(retry.job.status, JobStatus::Running);
+        assert_eq!(retry.job.attempts, 2);
+        assert_eq!(retry.job.result, Some(result));
+    }
+
     #[test]
     fn jobs_survive_reopen_and_expired_owners_cannot_complete() {
         let dir = TempDir::new().unwrap();
@@ -424,10 +578,12 @@ mod tests {
         let mut lib = Library::open(cfg).unwrap();
         assert!(lib.claim_job("restart", 30).unwrap().is_none());
         assert_eq!(lib.job(&job.id).unwrap().status, JobStatus::Interrupted);
-        assert!(
-            lib.finish_job(&old, JobStatus::Succeeded, Some(json!({})), None)
-                .is_err()
-        );
+        let events = lib.job_events(&job.id).unwrap();
+        assert!(matches!(
+            lib.finish_job_outcome(&old, JobOutcome::Completed { result: json!({}) }),
+            Err(Error::Conflict(_))
+        ));
+        assert_eq!(lib.job_events(&job.id).unwrap(), events);
         let queued = lib.retry_job(&job.id).unwrap();
         assert!(queued.available_at >= now().unwrap());
         lib.db
@@ -435,6 +591,13 @@ mod tests {
             .unwrap();
         let new = lib.claim_job("worker-pid-reused", 30).unwrap().unwrap();
         assert_ne!(old.token, new.token);
+        let events = lib.job_events(&job.id).unwrap();
+        assert!(matches!(
+            lib.finish_job_outcome(&old, JobOutcome::Completed { result: json!({}) }),
+            Err(Error::Conflict(_))
+        ));
+        assert_eq!(lib.job(&job.id).unwrap().status, JobStatus::Running);
+        assert_eq!(lib.job_events(&job.id).unwrap(), events);
         lib.heartbeat_job(&new, 60).unwrap();
         assert_eq!(
             lib.finish_job(&new, JobStatus::Partial, None, Some("quota exhausted"))
@@ -459,10 +622,16 @@ mod tests {
             lib.cancel_job(&job.id).unwrap().status,
             JobStatus::Cancelled
         );
-        assert!(lib.heartbeat_job(&lease, 30).is_err());
-        assert!(
-            lib.finish_job(&lease, JobStatus::Succeeded, None, None)
-                .is_err()
-        );
+        assert!(matches!(
+            lib.heartbeat_job(&lease, 30),
+            Err(Error::Conflict(_))
+        ));
+        let events = lib.job_events(&job.id).unwrap();
+        assert!(matches!(
+            lib.finish_job_outcome(&lease, JobOutcome::Completed { result: json!({}) }),
+            Err(Error::Conflict(_))
+        ));
+        assert_eq!(lib.job(&job.id).unwrap().status, JobStatus::Cancelled);
+        assert_eq!(lib.job_events(&job.id).unwrap(), events);
     }
 }
