@@ -90,6 +90,7 @@ fn empty_args() -> Value {
 #[derive(Clone)]
 pub struct Application {
     libraries: HashMap<String, LibraryConfig>,
+    pub(crate) extensions: std::collections::BTreeMap<String, crate::extensions::Extension>,
     /// Test-only barrier fired before a claimed operation opens its library
     /// handle; never set in production.
     operation_open_barrier: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
@@ -120,6 +121,7 @@ impl Application {
         }
         Ok(Self {
             libraries,
+            extensions: Default::default(),
             operation_open_barrier: None,
         })
     }
@@ -479,6 +481,9 @@ impl Application {
                 "operation arguments must be an object".into(),
             ));
         }
+        if let Some(extension) = self.extensions.get(&request.operation) {
+            return extension.authorize(principal, &request.library_id);
+        }
         let required = match request.operation.as_str() {
             "maintenance_repair"
                 if request.args.get("mode").and_then(Value::as_str) == Some("deep_lint") =>
@@ -709,6 +714,22 @@ impl Application {
 
     pub fn execute(&self, principal: &Principal, request: Request) -> Result<Value> {
         self.authorize(principal, &request)?;
+        if self.has_extension(&request.operation) {
+            return Err(Error::Capability(
+                "extension requires execute_extension async entry point".into(),
+            ));
+        }
+        if request.operation == "job_enqueue"
+            && request
+                .args
+                .get("operation")
+                .and_then(Value::as_str)
+                .is_some_and(|op| self.has_extension(op))
+        {
+            return Err(Error::Capability(
+                "extension jobs require a worker outcome contract; direct calls only in v1".into(),
+            ));
+        }
         let config = self
             .libraries
             .get(&request.library_id)

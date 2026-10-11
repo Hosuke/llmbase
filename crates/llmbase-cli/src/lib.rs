@@ -72,6 +72,12 @@ impl Gateway {
     pub async fn execute(&self, principal: Principal, request: Request) -> Result<Value, Error> {
         // Authorize before scheduling work or opening any storage.
         self.application.authorize(&principal, &request)?;
+        if self.application.has_extension(&request.operation) {
+            return self
+                .application
+                .execute_extension(&principal, request, llmbase_model::CancellationToken::new())
+                .await;
+        }
         if request.operation == "transcription_ask" {
             let mut args = request.args;
             if args.get("library_id").is_some() {

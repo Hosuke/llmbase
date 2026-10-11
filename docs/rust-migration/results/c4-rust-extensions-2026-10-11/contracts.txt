@@ -1,0 +1,694 @@
+   Compiling llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/c4-rust-extensions-20261011/source/crates/llmbase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.97s
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_cli-97b0ca0b217f3316)
+
+running 1 test
+test tests::legacy_catalog_is_exactly_the_audited_registry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase-5cb427a335c13c34)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ask_sse.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/ask_sse-48d484ae8aa8445b)
+
+running 8 tests
+test http_disconnect_cancels_provider_request_and_releases_lease ... ok
+test explicit_cancel_is_owned_scoped_and_finishes_with_partial_error ... ok
+test model_access_requires_capability_and_plain_ask_is_read_only ... ok
+test actual_delta_reaches_http_before_provider_finishes_and_citations_resolve ... ok
+test transcription_http_preparation_is_scoped_and_never_calls_the_provider ... ok
+test standalone_query_streams_before_completion_and_partial_failure_exits_nonzero ... ok
+test transcription_http_stream_has_real_early_deltas_citations_and_owned_cancellation ... ok
+test provider_failure_and_timeout_emit_error_without_fake_done ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/compile_transports.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compile_transports-7446aac009e9520a)
+
+running 3 tests
+test mcp_discovers_and_executes_additive_draft_tools_through_application ... ok
+test http_uses_configured_model_and_denies_public_compile_before_provider_call ... ok
+test actual_cli_creates_reviewable_draft_then_applies_exact_bytes_without_python ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/extensions.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/extensions-fc1d89fb110d62be)
+
+running 5 tests
+test gateway_authorizes_and_deserializes_before_calling_typed_handlers ... ok
+test dropping_gateway_execution_cancels_the_extension_context ... ok
+test mcp_cancel_notification_cancels_retained_context_and_blocks_later_writes ... ok
+test http_discovery_and_dispatch_use_the_selected_authorized_library ... ok
+test mcp_discovers_typed_schemas_and_dispatches_only_with_required_authority ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/http_ingest_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_ingest_contracts-dd4fababd94e99e4)
+
+running 5 tests
+test multipart_denials_and_invalid_content_do_not_create_sources ... ok
+test pdf_upload_uses_operator_process_protocol_and_preserves_original_asset ... ok
+test both_ingest_routes_delegate_scoped_existing_sources_and_reject_cross_library_paths ... ok
+test multipart_text_is_byte_exact_idempotent_and_can_exceed_json_body_limit ... ok
+test pdf_serialized_input_limit_fails_before_process_or_source_write ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.36s
+
+     Running tests/http_model_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_model_contracts-312c0c48f779c8dd)
+
+running 7 tests
+test credentials_capabilities_and_invalid_overrides_fail_before_provider_or_writes ... ok
+test deep_http_returns_real_consulted_sources_and_keeps_read_only_opt_out ... ok
+test both_http_defaults_are_basic_and_file_back_with_distinct_legacy_envelopes ... ok
+test background_web_fix_retries_post_claim_recovery_lock_contention_with_same_job ... ok
+test xici_entities_and_tones_routes_use_real_core_results_and_profile_defaults ... ok
+test compile_both_surfaces_report_only_actual_accepted_articles ... ok
+test deep_lint_both_envelopes_and_background_web_fix_are_real_and_job_specific ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.55s
+
+     Running tests/http_read_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_read_contracts-a5706545190bb68d)
+
+running 3 tests
+test pagination_and_conditional_cache_validate_before_304_and_keep_scopes_separate ... ok
+test privileged_read_routes_require_bearer_and_external_private_edits_invalidate_snapshot ... ok
+test existing_frontend_read_sequence_has_real_web_envelopes_and_no_private_content ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s
+
+     Running tests/http_write_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_write_contracts-2f4fb6763f6d892d)
+
+running 1 test
+test real_legacy_deterministic_writes_share_auth_application_and_journals ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/static_ui.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/static_ui-dfc4ba6601e85c74)
+
+running 3 tests
+test custom_static_directory_is_scoped_and_filesystem_escapes_are_rejected ... ok
+test existing_web_build_assets_spa_and_custom_favicon_are_served_without_authority ... ok
+test lightweight_reader_uses_legacy_search_envelope_and_scoped_core ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/transports.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/transports-d86be6060b8cde3f)
+
+running 8 tests
+test cli_errors_use_stderr_and_nonzero_exit_without_secret_echo ... ok
+test factories_keep_distinct_envelopes_and_missing_capabilities_do_not_succeed ... ok
+test cli_exports_and_finite_jobs_run_without_interpreter_environment ... ok
+test http_scope_and_capability_checks_apply_to_native_and_legacy_routes ... ok
+test standalone_cli_indexes_searches_and_resolves_original_evidence_without_python ... ok
+test legacy_exports_sections_and_taxonomy_share_scoped_native_reads ... ok
+test stdio_initialization_tool_discovery_execution_errors_and_eof ... ok
+test migration_cli_preserves_original_and_verifies_copy_backup_restore_and_rollback ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+     Running tests/workflows.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/workflows-a5321f1ef23417fd)
+
+running 5 tests
+test failed_accepted_compile_is_a_failed_durable_job_not_empty_success ... ok
+test legacy_cli_query_uses_old_format_tone_and_explicit_file_back_flags ... ok
+test legacy_ask_preserves_defaults_and_gates_writes_before_calling_provider ... ok
+test legacy_backlinks_keeps_unknown_targets_without_private_incoming_articles ... ok
+test legacy_get_section_uses_scalar_offsets_and_hides_missing_content ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_core-19eb9f08f5846068)
+
+running 32 tests
+test compat_pipeline::extended_json::tests::strings_escapes_big_numbers_and_bad_tokens_are_not_tags ... ok
+test ask::tests::citation_marker_parser_does_not_invent_used_evidence ... ok
+test compat_pipeline::extended_json::tests::actual_marker_collision_is_escaped_and_restored_once ... ok
+
+running 1 test
+test fetch::tests::bounded_chunked_declared_and_compressed_bodies ... ok
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.00s
+
+test fetch::tests::redirect_to_private_or_userinfo_never_connects ... ok
+test fetch::tests::redirects_bounded_and_dns_mixed_answers_denied ... ok
+test fetch::tests::pinned_connection_ignores_proxy_and_revalidates_relative_redirect ... ok
+test jobs::tests::cancellation_fences_running_owner_and_credentials_are_not_persisted ... ok
+test fetch::tests::stalled_response_obeys_total_deadline_and_cancellation ... ok
+test jobs::tests::partial_outcomes_preserve_results_across_reopen_and_retry ... ok
+test jobs::tests::jobs_survive_reopen_and_expired_owners_cannot_complete ... ok
+test jobs::tests::successful_jobs_require_an_explicit_non_null_result ... ok
+test migration::tests::dry_run_copy_verify_restore_and_rollback_preserve_unknown_fields_and_original_bytes ... ok
+test migration::tests::overlapping_destination_is_rejected_before_creating_any_directory ... ok
+test migration::tests::backup_keeps_deleted_revisions_jobs_and_tampering_is_detected ... ok
+test recovery::tests::journal_busy_leaves_bytes_and_intent_count_unchanged ... ok
+test recovery::tests::accepted_writes_require_compare_and_swap_and_preserve_old_citations ... ok
+test maintenance_repair::contention_tests::final_publication_wait_preserves_one_accepted_write ... ok
+test recovery::tests::journal_recovery_preserves_external_edit_and_keeps_evidence ... ok
+test recovery::tests::journal_recovers_before_and_after_file_crash_windows_once ... ok
+test recovery::tests::journal_recovery_respects_the_per_file_lock ... ok
+test recovery::tests::journal_replay_fails_safely_for_foreign_escaping_and_reserved_records ... ok
+test recovery::tests::journal_table_is_additive_for_existing_version_one_databases ... ok
+test recovery::tests::recovery_does_not_overwrite_an_unrelated_external_edit ... ok
+test visibility::tests::malformed_flags_and_visibility_fail_closed ... ok
+test worker::tests::deterministic_partial_reports_preserve_failure_and_accepted_work ... ok
+test worker::tests::domain_statuses_and_explicit_noops_are_not_misclassified ... ok
+test worker::tests::late_completion_after_cancellation_preserves_result_without_success ... ok
+test recovery::tests::journaled_atomic_write_stores_exact_images_without_indexing ... ok
+test recovery::tests::recovery_handles_before_file_and_after_file_crash_windows ... ok
+test worker::tests::missing_or_malformed_handler_results_persist_failure_not_success ... ok
+test maintenance_repair::contention_tests::final_publication_wait_exhaustion_preserves_partial_job ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.67s
+
+     Running tests/answers.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/answers-41b995cf85c82ab7)
+
+running 12 tests
+test explicit_save_retains_provenance_is_private_and_replays_without_duplicates ... ok
+test incomplete_promotion_guard_receipt_cannot_apply_or_replay_as_cached_success ... ok
+test cancelled_and_timed_out_promotions_persist_terminal_job_states ... ok
+test promotion_creates_reviewed_draft_with_original_provenance_and_explicit_apply ... ok
+test promotion_apply_rejects_privacy_changes_after_review_draft_creation ... ok
+test promotion_draft_rejects_a_changed_saved_note_and_truncated_saved_answer ... ok
+test save_rejects_unindexed_source_privacy_edit_before_note_creation ... ok
+test save_rejects_forged_cross_library_and_visibility_downgrade_before_writing ... ok
+test decline_is_explicit_and_invalid_truncated_or_path_outputs_never_create_a_draft ... ok
+test promotion_preserves_stale_raw_provenance_and_current_restrictions ... ok
+test uncited_context_and_historical_private_flag_cannot_be_saved_publicly ... ok
+test stale_original_evidence_remains_resolvable_and_note_edits_are_detected ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+     Running tests/ask.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/ask-d8a10dd32147bbf0)
+
+running 7 tests
+test citations_resolve_original_revision_and_mark_concurrent_edit_stale ... ok
+test collected_ask_preserves_length_finish_and_language_override ... ok
+test cancellation_is_terminal_and_drop_disconnects_provider ... ok
+test no_evidence_budget_and_untrusted_access_fields_are_rejected_without_generation ... ok
+test evidence_precedes_real_delta_and_citation_markers_are_not_claimed_as_entailment ... ok
+test timeout_and_midstream_failure_never_emit_done ... ok
+test capture_fixed_grounding_acceptance_cases ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/catalog.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/catalog-6f1ff93571b874ab)
+
+running 5 tests
+test taxonomy_fallback_and_entity_cache_reads_are_real_and_corruption_is_not_empty_success ... ok
+test aliases_backlinks_and_graph_are_live_scoped_and_bounded ... ok
+test relation_evidence_cannot_be_forged_cross_library_or_exposed_through_public_projection ... ok
+test taxonomy_preserves_accepted_json_and_projects_children_first_without_private_records ... ok
+test real_evidence_supports_survive_one_deletion_preserve_staleness_and_distinct_kinds ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/compat_compile.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_compile-19d109d9add8be84)
+
+running 9 tests
+test legacy_raw_metadata_is_journaled_while_body_bytes_and_original_revision_are_retained ... ok
+test pure_tagged_parsing_preserves_legacy_order_fields_and_bare_sections ... ok
+test native_merge_preserves_exact_unchanged_bytes_and_legacy_sources_tags_rules ... ok
+test native_alias_and_cjk_resolution_reuses_existing_article ... ok
+test read_helpers_keep_legacy_paths_without_creating_index_state ... ok
+test raw_inheritance_never_downgrades_existing_target_restrictions ... ok
+test raw_guard_rejects_changed_source_and_carries_private_visibility_into_article ... ok
+test rebuild_returns_legacy_shape_with_public_projection_and_unknown_backlinks ... ok
+test malformed_raw_private_and_visibility_flags_fail_closed ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.06s
+
+     Running tests/compat_config.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_config-e130cd08711bea39)
+
+running 4 tests
+test mkdir_failure_keeps_earlier_directories_and_stops_lookups ... ok
+test native_defaults_and_host_steps_are_sequential ... ok
+test symlinks_resolve_before_parent_and_missing_components ... ok
+test bounded_read_is_readonly_and_native_parser_keeps_its_contract ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/compat_heads.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_heads-5e80922df47027a4)
+
+running 5 tests
+test invalid_rules_fail_eagerly_without_python_fallback ... ok
+test no_rules_preserves_bytes_and_never_invokes_classifier ... ok
+test scanner_calls_only_eligible_titles_in_order_and_keeps_groups ... ok
+test resource_bounds_are_enforced ... ok
+test frozen_native_dialect_oracle ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+     Running tests/compat_io.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_io-f50b9ca077b6d561)
+
+running 7 tests
+test case_aliases_of_protected_names_are_scope_refused ... ok
+test explicit_library_atomic_write_reuses_shared_writer_and_rejects_escape ... ok
+test rejected_writer_lock_replacement_keeps_inode_and_fencing ... ok
+test parent_symlink_alias_cannot_bypass_protected_paths ... ok
+test standalone_atomic_write_is_durable_exact_and_fenced ... ok
+test standalone_write_keeps_existing_contract_without_library_ancestor ... ok
+test engine_owned_and_coordination_destinations_are_scope_refused_without_side_effects ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/compat_kb.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_kb-5af01d5bb0393415)
+
+running 8 tests
+test public_trails_report_true_empty_only_and_never_hide_parse_errors ... ok
+test aliases_follow_file_order_and_cannot_escape_the_configured_root ... ok
+test get_and_list_preserve_existing_json_metadata_types_without_creating_database ... ok
+test raw_listing_redacts_recursive_paths_and_retains_null_base_metadata ... ok
+test stats_count_raw_entries_and_health_preserves_existing_payload ... ok
+test visibility_snapshot_is_current_scoped_and_does_not_initialize_storage ... ok
+test sections_retain_scalar_offsets_subtrees_and_collision_suffixes ... ok
+test raw_writes_use_existing_native_writer_lock_without_scanning_unrelated_files ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/compat_maintenance.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_maintenance-550d068a7d017534)
+
+running 5 tests
+test deterministic_checks_preserve_legacy_exact_messages_and_scalar_counts ... ok
+test duplicate_candidates_use_cjk_conversion_and_preserve_unrelated_single_character_topics ... ok
+test native_sequence_reads_snapshot_once_and_honors_live_custom_checks_and_emit ... ok
+test public_only_load_fails_closed_on_malformed_private_and_non_public_visibility ... ok
+test legacy_alias_cascade_and_cached_backlink_key_semantics_are_preserved ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/compat_paragraphs.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_paragraphs-9d841c6a97ef4b86)
+
+running 2 tests
+test paragraph_arguments_are_strings_and_unknown_actions_fail ... ok
+test frozen_legacy_paragraph_oracle ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/compat_pipeline.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_pipeline-367827b8ae762a2e)
+
+running 10 tests
+test last_round_metadata_and_terminal_are_reduced_from_real_events ... ok
+test missing_reads_do_not_initialize_a_root ... ok
+test cache_invalid_utf8_is_not_a_miss ... ok
+test arbitrary_integer_and_metadata_insertion_order_survive_log_round_trip ... ok
+test stage_and_cache_subdirectories_cannot_escape_configured_roots ... ok
+test stage_kernel_leases_are_scoped_and_survive_pidfile_removal ... ok
+test cache_changes_are_atomic_content_addressed_and_cid_scoped ... ok
+test native_extended_json_transport_preserves_nonfinite_records_and_reduction ... ok
+test torn_binary_tail_is_preserved_and_next_append_recovers ... ok
+test separate_threads_append_complete_records_without_interleaving ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/compat_query.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_query-a1dd2c516334a4cd)
+
+running 12 tests
+test deep_actual_sequence_and_consulted_titles ... ok
+test callback_failure_is_error_and_no_default_save_side_effect ... ok
+test corrupt_legacy_surrogates_are_repaired_and_static_summary_is_current ... ok
+test prefilter_native_unicode_and_live_tokens_keep_ranking_and_fallback ... ok
+test malformed_private_and_visibility_flags_fail_closed_across_query_paths ... ok
+test private_and_stale_static_index_never_enter_default_context ... ok
+test malformed_truncated_and_declined_judges_never_write ... ok
+test shallow_sequence_and_journal_fileback_preserve_originals ... ok
+test accepted_promotion_uses_shared_merge_and_real_metadata_rebuild ... ok
+test source_edit_during_generation_prevents_filing ... ok
+test private_target_and_mid_judge_private_change_fail_closed ... ok
+test public_only_promotion_rejects_non_public_target_before_mutation ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+     Running tests/compat_resolve.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_resolve-0dfa1520be2ba819)
+
+running 3 tests
+test ordered_alias_resolution_preserves_exact_hyphen_space_variants_and_fuzzy_first_match ... ok
+test variants_preserve_original_and_last_generated_collision_semantics ... ok
+test alias_snapshot_has_legacy_title_and_merged_names_current_privacy_and_real_file_order ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/compat_search.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_search-394fb6817646aa5d)
+
+running 11 tests
+test cjk_non_bmp_combining_marks_and_stopword_bigram_contract ... ok
+test empty_query_and_callback_do_not_parse_malformed_compiled_sources ... ok
+test default_native_rank_keeps_weights_keys_and_does_not_create_database ... ok
+test compiled_includes_flat_notes_and_preserves_negative_slice_while_raw_clamps ... ok
+test python_callback_tokens_are_actually_scored_by_native ... ok
+test private_documents_require_capability_even_in_legacy_snapshot ... ok
+test raw_null_title_and_unrelated_compiled_metadata_keep_legacy_behavior ... ok
+test source_edits_and_mutable_stopwords_are_visible_on_every_call ... ok
+test raw_skips_malformed_files_and_redacts_private_source_paths ... ok
+test local_public_only_excludes_private_before_idf_and_callback_documents ... ok
+test stale_incomplete_duplicate_or_forged_callback_snapshots_fail ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/compat_taxonomy.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_taxonomy-0f04cd97105e5658)
+
+running 9 tests
+test explicit_null_and_missing_titles_are_preserved ... ok
+test cache_means_no_fallback_and_invalid_cache_fails_unchanged ... ok
+test frozen_libraries_execute_without_writes ... ok
+test frozen_pure_cases_execute_in_rust ... ok
+test missing_directories_return_empty_values ... ok
+test uncached_build_rejects_malformed_file_tags_without_panic_or_writes ... ok
+test invalid_arguments_and_unknown_action_fail ... ok
+test deep_and_malformed_trees_fail_clearly_without_panic ... ok
+test aggregate_article_read_budget_applies_to_every_filesystem_action ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.96s
+
+     Running tests/compat_util.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_util-84b2b025dfa4fdd5)
+
+running 3 tests
+test span_anchoring_maps_back_to_exact_original_without_byte_offset_confusion ... ok
+test anchor_configuration_and_unknown_actions_are_not_cached_or_silently_ignored ... ok
+test sections_and_flat_split_preserve_original_unicode_scalar_slices ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/compat_workflows.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compat_workflows-8b6c137676ee25e4)
+
+running 11 tests
+test cancelled_and_required_callbacks_do_not_contact_provider ... ok
+test all_empty_native_compile_is_failed_and_raw_is_not_marked ... ok
+test native_compile_drafts_apply_mark_exact_body_and_skip_idempotently ... ok
+test native_query_bare_wenyan_profile_and_marp_keep_original_context ... ok
+test native_compile_partial_retains_accepted_article_without_marking_failure ... ok
+test query_overrides_select_and_answer_but_judge_uses_default_model ... ok
+test native_all_forces_new_extraction_despite_legacy_source_receipt ... ok
+test worker_compile_provider_failure_never_persists_success ... ok
+test native_query_real_selector_answer_judge_and_accepted_fileback ... ok
+test native_compile_selects_each_indexed_raw_file_and_preserves_original_assets ... ok
+test worker_partial_compile_retries_same_job_without_rewriting_accepted_article ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+     Running tests/compile.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/compile-e6f7361a86f1a13c)
+
+running 13 tests
+test draft_apply_checks_reviewed_target_hash_and_source_revision ... ok
+test consulted_description_becoming_private_blocks_new_public_draft_apply ... ok
+test english_native_default_configured_trilingual_and_exact_legacy_merge_threshold ... ok
+test aliases_unknown_metadata_sources_and_bare_body_override_survive_merge ... ok
+test application_compile_requires_each_capability_and_uses_config_profile ... ok
+test draft_apply_rejects_raw_file_edit_before_the_index_is_synced ... ok
+test internal_compile_excludes_private_description_context ... ok
+test partial_article_batch_persists_good_drafts_and_can_retry ... ok
+test public_compile_never_sends_private_existing_descriptions_or_merges_private_aliases ... ok
+test restrictive_source_visibility_cannot_leak_through_public_merge ... ok
+test unsupported_callbacks_and_foreign_drafts_are_explicit_errors ... ok
+test source_draft_review_apply_is_native_idempotent_and_preserves_raw_bytes ... ok
+test malformed_empty_truncated_and_all_invalid_outputs_never_succeed ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running tests/document_yaml_contracts.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/document_yaml_contracts-fbd508761b72ede9)
+
+running 8 tests
+test document_without_frontmatter_starts_body_at_zero ... ok
+test json_flow_metadata_is_accepted ... ok
+test cyclic_and_unresolved_aliases_are_rejected ... ok
+test plain_null_mapping_key_is_the_json_null_string_key ... ok
+test yaml11_plain_booleans_but_quoted_scalars_stay_strings ... ok
+test utf8_original_and_body_offsets_are_byte_exact ... ok
+test malformed_yaml_is_rejected ... ok
+test alias_expansion_bomb_is_bounded ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/entities_model.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/entities_model-b43a31579bb27a0b)
+
+running 9 tests
+test a_later_batch_failure_does_not_publish_partial_entities ... ok
+test cancellation_and_unsupported_callback_profiles_never_publish_success ... ok
+test actual_extraction_is_guarded_durable_unicode_and_uses_effective_prompts ... ok
+test bounded_batches_deduplicate_transitively_across_original_script_names ... ok
+test disabled_and_empty_sources_are_not_extraction_successes ... ok
+test public_and_private_artifacts_are_isolated_and_authorization_precedes_http ... ok
+test revoking_an_uncited_consulted_source_withholds_public_aggregate ... ok
+test unindexed_privacy_change_and_concurrent_artifact_edit_fail_cas ... ok
+test malformed_empty_truncated_unknown_refs_and_invalid_coords_preserve_previous_artifact ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+     Running tests/extensions.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/extensions-9f2af8fbbfd2a54d)
+
+running 8 tests
+test authorization_and_typed_input_precede_handler_and_storage ... ok
+test cancellation_reaches_handler_and_does_not_cancel_parent_on_completion ... ok
+test invalid_enabled_language_profile_fails_at_registration ... ok
+test registration_rejects_collisions_versions_invalid_policy_and_non_objects ... ok
+test two_library_scope_is_explicit_and_discovery_is_sorted ... ok
+test handler_failure_retains_accepted_writes_and_jobs_are_rejected ... ok
+test context_narrows_caller_grants_and_cannot_override_selected_library ... ok
+test extension_writes_use_durable_intents_and_recover_after_index_failure ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/fetch.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/fetch-5a1796069503f6eb)
+
+running 3 tests
+test dangerous_url_spellings_fail_before_any_http ... ok
+test precancel_and_invalid_bounds_do_not_resolve_or_fetch ... ok
+test public_unicast_policy_covers_special_ranges_and_transition_forms ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ingest.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/ingest-4c2468c00a7f7984)
+
+running 5 tests
+test accepted_text_keeps_all_original_bytes_unknown_metadata_and_idempotent_identity ... ok
+test filename_scope_and_existing_content_require_explicit_cas ... ok
+test opaque_asset_recovery_does_not_index_unrelated_malformed_markdown ... ok
+test public_caller_cannot_ingest_or_choose_a_server_filesystem_path ... ok
+test opaque_originals_keep_binary_versions_in_the_write_journal_and_stay_out_of_search ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/library.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/library-2f358a8d09bcf31b)
+
+running 11 tests
+test accepted_metadata_preserves_nested_numbers_without_serializer_markers ... ok
+test cross_process_lock_is_not_a_pid_file_and_survives_stale_contents ... ok
+test application_denies_scope_and_capabilities_before_core_execution ... ok
+test custom_data_roots_and_index_fingerprint_only_rebuild_affected_sources ... ok
+test explicit_python_writer_session_allows_nested_native_work_but_excludes_other_threads ... ok
+test index_failure_does_not_publish_partial_changes_or_deletions ... ok
+test old_revision_keeps_its_title_and_privacy_after_publication_and_rename ... ok
+test original_revision_evidence_survives_update_move_and_deletion ... ok
+test unicode_offsets_and_chunk_boundaries_are_original_bytes ... ok
+test scope_alias_visibility_and_forged_citation_boundaries ... ok
+test unsynced_private_metadata_blocks_public_reads_and_writes_across_native_operations ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests/maintenance.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance-e5c9f3594a4a7862)
+
+running 9 tests
+test lint_reports_real_links_metadata_duplicates_and_explicit_cjk_policy ... ok
+test journaled_projection_batches_recover_both_crash_windows_before_any_native_read ... ok
+test deterministic_fix_uses_source_journal_preserves_body_unknown_fields_and_original_revision ... ok
+test compatibility_rebuild_preserves_unknown_backlink_targets_but_excludes_private_aliases ... ok
+test stale_unindexed_source_edit_prevents_automatic_tag_overwrite ... ok
+test recovery_refuses_to_overwrite_new_manual_alias_edits ... ok
+test xici_cache_reads_validate_language_and_do_not_expose_unproven_private_aggregates ... ok
+test rebuilding_real_legacy_files_preserves_manual_aliases_and_never_publishes_private_articles ... ok
+test native_exports_preserve_legacy_shapes_sections_aliases_and_private_boundaries ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.23s
+
+     Running tests/maintenance_model.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_model-6db86ba5991bb051)
+
+running 9 tests
+test explicit_fallback_is_marked_partial_and_cancelled_work_never_calls_provider ... ok
+test direct_english_and_explicit_private_introductions_use_separate_real_caches ... ok
+test crash_replay_checks_generated_metadata_source_guards_before_publishing ... ok
+test actual_taxonomy_generation_assigns_all_public_articles_and_journals_requested_tag_sync ... ok
+test locked_accepted_taxonomy_is_not_regenerated_or_overwritten ... ok
+test explicit_legacy_zh_base_translates_and_reuses_only_matching_source_fingerprint ... ok
+test source_changes_or_new_manual_cache_during_provider_work_cannot_be_overwritten ... ok
+test model_failure_and_unknown_taxonomy_references_are_errors_with_failed_jobs ... ok
+test failed_translation_and_timeout_do_not_publish_empty_or_wrong_language_success ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running tests/maintenance_repair.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/maintenance_repair-8db54f0137d74876)
+
+running 17 tests
+test cancellation_and_scope_rejection_happen_before_any_provider_or_source_change ... ok
+test concurrent_private_edit_is_not_overwritten_and_invalid_model_json_is_not_success ... ok
+test aggregate_tag_normalization_completes_multiple_articles_without_cross_visibility_leak ... ok
+test failed_model_repair_never_publishes_completed_last_fix ... ok
+test broken_link_generation_has_real_support_guards_and_no_placeholder_fallback ... ok
+test cleanup_and_url_slug_repair_use_real_journals_preserve_cjk_and_pipe_links ... ok
+test last_fix_receipts_have_real_counts_and_separate_private_storage ... ok
+test heal_persists_actual_check_fix_recheck_report_and_deep_lint_is_read_only ... ok
+test missing_metadata_uses_real_models_preserves_body_unknown_fields_and_old_revision ... ok
+test related_topics_and_cross_visibility_candidates_are_not_merged ... ok
+test provider_failure_after_an_accepted_write_reports_partial_with_job_owned_receipts ... ok
+test model_confirmed_duplicate_merge_preserves_both_sources_and_rewrites_links ... ok
+test repair_internal_writer_wait_cancels_without_accepting_work ... ok
+test merging_refreshes_legacy_and_accepted_taxonomy_without_changing_manual_structure ... ok
+test repair_waits_for_internal_writer_before_accepting_one_job ... ok
+test repair_waits_after_model_without_replaying_model_or_accepted_write ... ok
+test repair_internal_writer_exhaustion_accepts_no_job ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.31s
+
+     Running tests/plugins.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/plugins-dc92e4d164798a73)
+
+running 4 tests
+test nonzero_exit_oversize_and_unconfigured_adapter_cannot_succeed ... ok
+test scope_denial_precedes_process_and_traversal_rejects_entire_reply ... ok
+test process_failure_does_not_echo_stderr_and_cancellation_kills_child ... ok
+test configured_process_has_real_protocol_and_native_revision_receipts ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/transcription.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/transcription-00eb983c549e443d)
+
+running 5 tests
+test preparation_matches_frozen_mapping_preserves_text_and_creates_no_library ... ok
+test scope_capability_unsupported_images_and_invalid_inputs_fail_before_http_or_indexing ... ok
+test collected_transcription_uses_same_real_ask_and_receipt ... ok
+test frozen_transcription_reaches_real_stream_scoped_citations_and_no_saved_note ... ok
+test cancelling_or_dropping_device_stream_disconnects_the_actual_provider ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/vector.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/vector-f63fc34b09a5c38b)
+
+running 7 tests
+test cancellation_leaves_active_generation_and_does_not_publish_partial_vectors ... ok
+test full_model_spec_separates_generations_and_dimensions ... ok
+test concurrent_source_change_prevents_activation_and_stale_search_degrades ... ok
+test failed_partial_build_retains_active_and_resumes_successful_batches ... ok
+test missing_vectors_degrade_and_cancelled_or_mismatched_requests_never_call_provider ... ok
+test idempotent_persisted_cache_and_incremental_change ... ok
+test hybrid_uses_semantic_candidates_and_enforces_scope_visibility_and_deletion ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests/web_read.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/web_read-3bd265b2dbf9bf8e)
+
+running 5 tests
+test public_trails_returns_only_true_empty_and_never_withholds_nonempty_as_empty ... ok
+test web_reads_fail_closed_after_unindexed_private_edit_and_filter_private_caches ... ok
+test web_config_whitelists_secrets_preserves_legacy_defaults_and_custom_language_views ... ok
+test web_source_literal_yaml_cap_loads_integer_and_preserves_raw_bytes ... ok
+test web_article_pagination_sections_raw_and_statistics_follow_real_content ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests/web_write.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/web_write-8c11207717e9280f)
+
+running 3 tests
+test stale_disk_edit_aborts_delete_and_manual_taxonomy_is_preserved_in_native_history ... ok
+test trails_persist_real_steps_timestamps_unknown_fields_revision_history_and_recovery ... ok
+test cleanup_and_delete_are_real_journaled_mutations_with_old_revisions_and_visibility ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running tests/worker.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/worker-a1131fb183b68c5a)
+
+running 10 tests
+test errors_are_persisted_without_success_or_secret_echo ... ok
+test inline_job_is_never_visible_to_a_general_queue_claim ... ok
+test targeted_worker_claims_only_requested_job_and_does_not_fallback ... ok
+test two_workers_cannot_execute_the_same_claim ... ok
+test cancellation_during_repair_open_contention_is_truthful_and_prompt ... ok
+test unauthorized_or_pre_cancelled_worker_does_not_claim ... ok
+test claimed_repair_retries_transient_recovery_lock_contention_under_same_lease ... ok
+test worker_rechecks_operation_capability_and_skips_cancelled_jobs ... ok
+test worker_runs_real_index_and_persists_result_and_events ... ok
+test claimed_repair_contention_exhaustion_fails_truthfully_without_replay ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s
+
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_model-79142110b748419b)
+
+running 2 tests
+test sse::tests::bounds_comments_and_unterminated_frames ... ok
+test sse::tests::every_byte_split_and_all_sse_newlines ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/http_adapter.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/http_adapter-13d21c4a5cf680e2)
+
+running 20 tests
+test complete_sends_real_http_and_preserves_metadata ... ok
+test cancellation_interrupts_inflight_generation ... ok
+test embeddings_are_validated_and_restored_to_input_order ... ok
+test first_delta_is_delivered_before_provider_can_finish ... ok
+test invalid_embedding_dimensions_and_duplicate_indices_fail ... ok
+test malformed_json_is_an_error_without_echo ... ok
+test explicit_fallback_is_used_and_empty_metadata_is_preserved ... ok
+test non_2xx_errors_do_not_echo_provider_body_or_credentials ... ok
+test provider_without_streaming_is_not_faked ... ok
+test redirect_does_not_forward_authorization ... ok
+test rejects_credential_bearing_urls_and_invalid_configuration ... ok
+test rate_limit_retries_and_reports_actual_attempts ... ok
+test bytewise_sse_preserves_unicode_usage_and_finish_reason ... ok
+test response_and_event_limits_are_enforced ... ok
+test scoped_model_and_key_override_preserve_endpoint_and_isolate_operator_fallbacks ... ok
+test stream_cancellation_is_terminal_and_does_not_cancel_parent ... ok
+test retry_exhaustion_does_not_claim_success ... ok
+test truncation_and_legacy_reasoning_fallback_are_explicit ... ok
+test deadline_covers_server_wait_and_retry_backoff ... ok
+test stream_timeout_and_midstream_errors_never_produce_done_or_retry ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running unittests src/lib.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_rust_extension_example-85bab5fe18abceea)
+
+running 4 tests
+test tests::configured_single_section_wenyan_preserves_original_bytes ... ok
+test tests::unconfigured_library_uses_english_and_returns_native_source ... ok
+test tests::applications_do_not_inherit_extension_registrations ... ok
+test tests::applications_with_the_same_library_id_keep_separate_profiles ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/main.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/llmbase_rust_extension_example-d058f883d3fe05a9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (/root/llmbase-rust-migration-20260920/source/target/debug/deps/cli-c485e747d771f4f5)
+
+running 1 test
+test standalone_cli_discovers_and_executes_the_public_extension ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+   Doc-tests llmbase_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests llmbase_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests llmbase_model
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests llmbase_rust_extension_example
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

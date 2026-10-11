@@ -1057,6 +1057,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rusqlite",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1098,6 +1099,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "llmbase-rust-extension-example"
+version = "0.1.0"
+dependencies = [
+ "llmbase-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

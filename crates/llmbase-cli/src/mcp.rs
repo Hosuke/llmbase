@@ -102,6 +102,22 @@ impl McpServer {
             })
             .collect();
         tools.extend(native_tools());
+        if let Ok(descriptors) = self
+            .gateway
+            .application
+            .extension_descriptors(&self.principal, &self.gateway.default_library)
+        {
+            tools.extend(descriptors.into_iter().filter_map(|descriptor| {
+                // Registration accepts object schemas; keep discovery fail-closed
+                // if an application ever supplies a non-object descriptor.
+                let input = descriptor.input_schema.as_object()?.clone();
+                let output = descriptor.output_schema.as_object()?.clone();
+                Some(
+                    Tool::new(descriptor.name, descriptor.description, input)
+                        .with_raw_output_schema(output.into()),
+                )
+            }));
+        }
         tools
     }
 }
@@ -138,8 +154,9 @@ impl ServerHandler for McpServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        let extension = self.gateway.application.has_extension(&request.name);
         let native = match request.name.as_ref() {
             "compile_source" => Some("compile"),
             "get_draft" => Some("draft_get"),
@@ -165,6 +182,7 @@ impl ServerHandler for McpServer {
             "ingest_with_adapter" => Some("plugin_ingest"),
             "add_relation" => Some("relation_add"),
             "remove_relation" => Some("relation_remove"),
+            _ if extension => Some(request.name.as_ref()),
             _ => None,
         };
         let known = native.is_some()
@@ -178,16 +196,26 @@ impl ServerHandler for McpServer {
         }
         let args = Value::Object(request.arguments.unwrap_or_default());
         let result = if let Some(operation) = native {
-            self.gateway
-                .execute(
-                    self.principal.clone(),
-                    Request {
-                        library_id: self.gateway.default_library.clone(),
-                        operation: operation.into(),
-                        args,
-                    },
-                )
-                .await
+            let execution = self.gateway.execute(
+                self.principal.clone(),
+                Request {
+                    library_id: self.gateway.default_library.clone(),
+                    operation: operation.into(),
+                    args,
+                },
+            );
+            if extension {
+                // rmcp cancels the request token without aborting this task.
+                // Dropping the Gateway future cancels the extension's child;
+                // the biased branch also prevents dispatch when already cancelled.
+                tokio::select! {
+                    biased;
+                    _ = context.ct.cancelled() => Err(llmbase_model::ModelError::Cancelled.into()),
+                    result = execution => result,
+                }
+            } else {
+                execution.await
+            }
         } else {
             self.gateway
                 .legacy(
@@ -199,6 +227,7 @@ impl ServerHandler for McpServer {
                 .await
         };
         let result = match result {
+            Ok(value) if extension => CallToolResult::structured(value),
             Ok(value) => CallToolResult::success(vec![ContentBlock::text(
                 serde_json::to_string_pretty(&value).expect("JSON value serialization"),
             )]),

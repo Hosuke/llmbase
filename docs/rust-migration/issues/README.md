@@ -1,5 +1,12 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-11 bounded progress: [C4 Rust extension API v1](../results/c4-rust-extensions-2026-10-11/README.md)
+completes the minimal design 02 / #11 contract: typed application-scoped
+registration, shared HTTP/MCP dispatch, cancellation and an external example CLI.
+357 native tests and independent review pass. C3's full CI also passed. No site
+adoption or major release is authorized by these checks; #19 privacy and final
+release gates remain open. The broader Goal remains paused after saving C4.
+
 2026-10-10 next bounded blocks: [C2 privacy/evidence diagnostic](../results/c2-privacy-evidence-2026-10-10/README.md)
 records a downstream classic privacy blocker in #19;
 [C3 typed Rust worker outcomes](../results/c3-worker-outcomes-2026-10-10/README.md)

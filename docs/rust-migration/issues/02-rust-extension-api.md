@@ -1,5 +1,12 @@
 # Rust: add an application-scoped v1 extension API and an external example
 
+**Implemented and accepted in C4, 2026-10-11.** See the
+[public API guide](../extensions.md), [external example](../../../examples/rust-extension/README.md)
+and [357-test acceptance record](../results/c4-rust-extensions-2026-10-11/README.md).
+The original design below is retained for traceability. Native worker extension
+outcomes, lifecycle hooks and scheduling belong to #13, #12 and #14 respectively;
+this checkpoint does not publish the major version or authorize a site switch.
+
 ## Starting point
 `crates/llmbase-core/src/profile.rs` already implements language profiles, and `application.rs` owns authorization and built-in dispatch. There is no general native extension registry. Use ADR 0002 as the architecture decision.
 
@@ -19,4 +26,4 @@ Keep prompt/language values in validated per-library profiles. Provide an extern
 Depends on 01's site requirements. No dynamic Rust ABI, hot loading, WASM runtime or reproduction of Python global patch points. Freeze only this minimal v1 API, not an extensibility framework for hypothetical use cases.
 
 ## Working rule
-This issue is saved design, not a completed feature. Implement one bounded change at a time, independently review/accept it, then commit before starting the next. Preserve source bytes, library isolation and recovery guarantees. See [ADR 0002](https://github.com/Hosuke/llmbase/blob/rust-core-rebuild/docs/adr/0002-clean-rust-major-and-extensions.md). Dependencies refer to numbered design items in the [handoff](https://github.com/Hosuke/llmbase/blob/rust-core-rebuild/docs/rust-migration/issues/README.md).
+Implement one bounded change at a time, independently review/accept it, then commit before starting the next. Preserve source bytes, library isolation and recovery guarantees. See [ADR 0002](https://github.com/Hosuke/llmbase/blob/rust-core-rebuild/docs/adr/0002-clean-rust-major-and-extensions.md). Dependencies refer to numbered design items in the [handoff](https://github.com/Hosuke/llmbase/blob/rust-core-rebuild/docs/rust-migration/issues/README.md).

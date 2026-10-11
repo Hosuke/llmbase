@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-11",
+  "checkpoint": "C4 scoped Rust extension API v1",
+  "issue": 11,
+  "source_parent": "513105a06bf7621813172b1e8136ea4357c023fb",
+  "source_inputs": 137,
+  "remote": "baypier-prod:/root/llmbase-rust-migration-20260920/c4-rust-extensions-20261011",
+  "tmux_session": "llmbase-c4-accepted",
+  "step_exit_codes": {
+    "clippy": 0,
+    "fmt": 0,
+    "source-after": 0,
+    "source-before": 0,
+    "contracts": 0,
+    "runner": 0
+  },
+  "tests": {
+    "core": 281,
+    "cli": 49,
+    "model": 22,
+    "external_example": 5,
+    "total": 357,
+    "new": 18,
+    "nested_subprocess_excluded": 1
+  },
+  "local_checks": {
+    "typescript_no_emit": 0,
+    "python_lint_import": 0,
+    "staged_diff_check": 0
+  },
+  "review": "Independent staged review LGTM after MCP cancellation fix; no remaining HIGH/MEDIUM.",
+  "not_claimed": [
+    "installed Python wheel acceptance for C4",
+    "site production acceptance",
+    "major release"
+  ],
+  "goal": "broader Goal remains paused; bounded C4 work only"
+}

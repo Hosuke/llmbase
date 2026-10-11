@@ -14,7 +14,7 @@
 
 > **Rust migration candidate — not yet released.** This branch contains the native Rust core and the Python compatibility package. Public package badges reflect the published Python release, not this candidate. Follow the [acceptance status](docs/rust-migration/status.md) and [compatibility matrix](docs/rust-migration/parity.md) for implementation and verification coverage.
 
-Development is paused for quota conservation. The [issue handoff](docs/rust-migration/issues/README.md) records the remaining work and the [clean-major design](docs/adr/0002-clean-rust-major-and-extensions.md): per-library profiles and explicit Rust extensions, with a documented optional Python transition layer. The extension API is planned, not yet a supported public interface.
+The [issue handoff](docs/rust-migration/issues/README.md) tracks the remaining work toward the [clean-major design](docs/adr/0002-clean-rust-major-and-extensions.md): per-library profiles and explicit Rust extensions, with a documented optional Python transition layer. The candidate now includes a [minimal Rust extension API v1](docs/rust-migration/extensions.md) and an [external example](examples/rust-extension/README.md); no major release has been published.
 
 ## What it does
 

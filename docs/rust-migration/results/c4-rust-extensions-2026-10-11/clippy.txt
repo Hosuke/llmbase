@@ -1,0 +1,3 @@
+    Checking llmbase-core v0.1.0 (/root/llmbase-rust-migration-20260920/c4-rust-extensions-20261011/source/crates/llmbase-core)
+    Checking llmbase-rust-extension-example v0.1.0 (/root/llmbase-rust-migration-20260920/c4-rust-extensions-20261011/source/examples/rust-extension)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.31s

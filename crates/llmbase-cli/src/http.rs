@@ -730,10 +730,15 @@ async fn legacy_op(
     Path(name): Path<String>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, HttpError> {
-    if !operation_catalog().iter().any(|op| op["name"] == name) {
+    let extension = state.gateway.application.has_extension(&name);
+    if !extension && !operation_catalog().iter().any(|op| op["name"] == name) {
         return Err(Error::NotFound("operation".into()).into());
     }
-    let value = state.legacy(headers, &name, args).await?;
+    let value = if extension {
+        state.read(headers, &name, args).await?
+    } else {
+        state.legacy(headers, &name, args).await?
+    };
     Ok(Json(json!({"status":"ok","result":value})))
 }
 
@@ -741,12 +746,22 @@ async fn list_operations(
     State(state): State<HttpState>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, HttpError> {
-    state.principal(&headers)?;
-    let operations: Vec<_> = operation_catalog()
+    let principal = state.principal(&headers)?;
+    let library_id = state.library(&headers)?;
+    let mut operations: Vec<_> = operation_catalog()
         .iter()
         .filter(|op| native_tool_available(op["name"].as_str().unwrap_or_default()))
         .cloned()
         .collect();
+    for descriptor in state
+        .gateway
+        .application
+        .extension_descriptors(&principal, &library_id)?
+    {
+        let mut operation = serde_json::to_value(&descriptor).map_err(Error::from)?;
+        operation["params"] = descriptor.input_schema;
+        operations.push(operation);
+    }
     Ok(Json(json!({"status":"ok","operations":operations})))
 }
 

@@ -20,6 +20,7 @@ pub mod compile;
 pub mod config;
 pub mod document;
 pub mod entities_model;
+pub mod extensions;
 pub mod fetch;
 pub mod ingest;
 pub mod jobs;
@@ -42,6 +43,8 @@ pub mod worker;
 use serde::{Deserialize, Serialize};
 
 pub use config::LibraryConfig;
+// Allows external extensions to derive JsonSchema without duplicating the version pin.
+pub use schemars;
 pub use store::Library;
 
 #[derive(Debug, thiserror::Error)]

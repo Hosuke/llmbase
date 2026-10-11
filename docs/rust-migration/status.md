@@ -1,4 +1,20 @@
-# Status — 2026-10-10
+# Status — 2026-10-11
+
+C4 completes the minimal application-scoped Rust extension API in #11: typed
+registration/schemas, explicit library/capability policy, constrained shared
+services, cancellation, HTTP/MCP dispatch and a separate public-only example CLI.
+The final isolated run passes 357 native tests (18 new), fmt and clippy. Independent
+review caught and verified the fix for MCP request cancellation. See the
+[API guide](extensions.md) and [C4 acceptance](results/c4-rust-extensions-2026-10-11/README.md).
+
+C3's full GitHub CI at `513105a` passed, including native checks, fresh installed
+wheel tests and frontend build. C4 remains an unreleased native checkpoint; no
+new wheel or site acceptance is claimed by its remote run. C2's downstream classic
+privacy blocker (#19), hooks (#12), worker follow-up (#13), schedules (#14) and
+final release gates remain open. Work stops after this accepted block; the broader
+Goal stays paused, with no production change or unattended next task.
+
+## Earlier checkpoints — 2026-10-10
 
 C1, the library-identity slice of issue #10, is accepted. The verifier now
 selects and checks real `siwen`/`taixu` IDs instead of certifying `default` rows.
