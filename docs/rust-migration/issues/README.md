@@ -1,5 +1,13 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-12 bounded repair: [C5 detail visibility](../results/c5-detail-visibility-2026-10-12/README.md)
+fixes [#24](https://github.com/Hosuke/llmbase/issues/24)'s whole-library scan on
+each original Flask detail request. Fresh installed wheels pass 59 focused and
+693 full Python tests; the synthetic 10,000-document article median improves
+from 130.837 ms to 0.843 ms with identical response bytes. C4 full CI also passed.
+Real-site bake and Siwen's custom-route privacy repair remain required; #19/#21
+stay open. Save this block and stop; the broader Goal remains paused.
+
 2026-10-11 bounded progress: [C4 Rust extension API v1](../results/c4-rust-extensions-2026-10-11/README.md)
 completes the minimal design 02 / #11 contract: typed application-scoped
 registration, shared HTTP/MCP dispatch, cancellation and an external example CLI.

@@ -1,4 +1,20 @@
-# Status — 2026-10-11
+# Status — 2026-10-12
+
+C5 fixes #24's per-request whole-library visibility scan for the original Flask
+article, sections and raw-source detail views. Each checks its current target
+metadata; aliases/backlinks retain privacy and path checks, with no stale cache.
+Fresh installed wheels pass 59 focused and 693 full Python tests (18 subtests).
+At 10,000 synthetic documents, article median latency falls from 130.837 ms to
+0.843 ms; response bytes and source files match. This is not real-site bake
+acceptance. See [C5 proof and limits](results/c5-detail-visibility-2026-10-12/README.md).
+
+C4's full GitHub CI at `90394d0` passed (native, fresh wheel and frontend checks).
+C5 changes no Rust source and remains an unreleased upstream repair. Siwen's
+custom-route privacy fix and actual dual-site bake gates remain with #19/#21.
+Save this block and stop; the broader Goal remains paused, with no production
+switch or unattended next task.
+
+## Earlier checkpoint — 2026-10-11
 
 C4 completes the minimal application-scoped Rust extension API in #11: typed
 registration/schemas, explicit library/capability policy, constrained shared

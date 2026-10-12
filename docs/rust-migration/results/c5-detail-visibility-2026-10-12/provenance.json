@@ -1,0 +1,38 @@
+{
+  "baseline": {
+    "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "package": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/baseline/lib/python3.12/site-packages/llmwiki/__init__.py",
+    "backend": {
+      "core": "rust",
+      "crate": "llmbase-python",
+      "crate_version": "0.1.0",
+      "abi": "abi3-py311",
+      "application": "llmbase_core::application::Application",
+      "successful_dispatches": 0,
+      "writer_sessions": 0,
+      "native": true,
+      "extension_path": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/baseline/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so"
+    },
+    "extension_sha256": "b77cbc08d58c910df4f3f96916764be9ed421a7aa7e63da2fcfa5040e161af7b",
+    "wheel": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/baseline-wheels/llmwiki-0.9.0-cp312-cp312-linux_x86_64.whl",
+    "wheel_sha256": "ac9a9461aadc4ca107175d4a3b296a10aaf36ad5b47e38d590ef85636a54e046"
+  },
+  "candidate": {
+    "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "package": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+    "backend": {
+      "core": "rust",
+      "crate": "llmbase-python",
+      "crate_version": "0.1.0",
+      "abi": "abi3-py311",
+      "application": "llmbase_core::application::Application",
+      "successful_dispatches": 0,
+      "writer_sessions": 0,
+      "native": true,
+      "extension_path": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/candidate/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so"
+    },
+    "extension_sha256": "b77cbc08d58c910df4f3f96916764be9ed421a7aa7e63da2fcfa5040e161af7b",
+    "wheel": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/candidate-wheels/llmwiki-0.9.0-cp312-cp312-linux_x86_64.whl",
+    "wheel_sha256": "884680263d41b0bdf7583e8fa41f9bb3350184f544459f913e3e8ad3f5da0f9a"
+  }
+}

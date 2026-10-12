@@ -7,6 +7,7 @@ from functools import wraps
 from pathlib import Path
 
 import frontmatter
+from yaml import YAMLError
 from flask import Flask, current_app, g, request, jsonify, send_from_directory
 
 
@@ -273,6 +274,35 @@ def create_web_app(base_dir: Path | None = None):
     def _visible_post(post):
         return can_read_private() or not private_metadata(post.metadata)
 
+    def _safe_document(root: Path, relative: str) -> Path | None:
+        """Check only the requested file's descendants, without a library walk.
+
+        Configured roots may themselves be aliases. Below that trusted root,
+        reject symlinks before resolve() can hide them, including parent dirs.
+        """
+        rel = Path(relative)
+        if rel.is_absolute() or ".." in rel.parts or "\\" in relative:
+            return None
+        try:
+            root = root.resolve()
+            candidate = root
+            for part in rel.parts:
+                candidate = candidate / part
+                if candidate.is_symlink():
+                    return None
+            return candidate if candidate.resolve().is_relative_to(root) else None
+        except (OSError, RuntimeError):
+            return None
+
+    def _detail_post(path: Path):
+        # Validate the exact post subsequently returned; no stale visibility
+        # cache or second read between the privacy decision and serialization.
+        try:
+            post = frontmatter.load(str(path))
+            return post if _visible_post(post) else None
+        except (OSError, UnicodeError, ValueError, TypeError, YAMLError):
+            return None
+
     @app.before_request
     def _builtin_scope_gate():
         # Named built-ins only: downstream replacement factories and their own
@@ -291,6 +321,14 @@ def create_web_app(base_dir: Path | None = None):
             if denied is not None:
                 return denied
         if can_read_private() or request.endpoint in {"api_healthz", "api_branding", "api_languages", "api_tones", "api_ref_plugins"}:
+            return None
+        # These exact built-ins authorize their current target post (and any
+        # backlink targets). Scanning unrelated documents here turns N detail
+        # requests during bake into N full-library scans. Replaced views retain
+        # the old gate; an endpoint name alone is not evidence of safe filtering.
+        if (request.method in {"GET", "HEAD", "OPTIONS"}
+                and request.endpoint in detail_views
+                and app.view_functions.get(request.endpoint) is detail_views[request.endpoint]):
             return None
         try:
             has_private = _visibility()["has_nonpublic"]
@@ -641,14 +679,7 @@ def create_web_app(base_dir: Path | None = None):
         return _apply_kb_cache_headers(resp, etag, last_mod, max_age=max_age)
 
     def _safe_concept(concepts_dir: Path, slug: str) -> Path | None:
-        """Resolve concepts_dir/{slug}.md, returning None if it escapes concepts_dir.
-
-        Uses Path.is_relative_to so prefix-confusion attacks (e.g. concepts vs
-        concepts_evil sharing a string prefix) are rejected, not just `..`.
-        """
-        concepts_resolved = concepts_dir.resolve()
-        candidate = (concepts_dir / f"{slug}.md").resolve()
-        return candidate if candidate.is_relative_to(concepts_resolved) else None
+        return _safe_document(concepts_dir, f"{slug}.md")
 
     @app.route("/api/articles/<path:slug>/sections")
     def api_article_sections(slug):
@@ -670,8 +701,8 @@ def create_web_app(base_dir: Path | None = None):
                 slug = resolved
         if article_path is None or not article_path.exists():
             return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
-        post = frontmatter.load(str(article_path))
-        if not _visible_post(post):
+        post = _detail_post(article_path)
+        if post is None:
             return jsonify({"status": "error", "message": "Article not found"}), 404
         return jsonify({
             "status": "ok",
@@ -699,8 +730,8 @@ def create_web_app(base_dir: Path | None = None):
                 slug = resolved
         if article_path is None or not article_path.exists():
             return jsonify({"status": "error", "message": f"Article not found: {slug}"}), 404
-        post = frontmatter.load(str(article_path))
-        if not _visible_post(post):
+        post = _detail_post(article_path)
+        if post is None:
             return jsonify({"status": "error", "message": "Article not found"}), 404
         # Sanitize source URLs (only allow http/https)
         sources = post.metadata.get("sources", [])
@@ -735,14 +766,13 @@ def create_web_app(base_dir: Path | None = None):
             return []
         slugs = data.get(slug, [])
         result = []
-        concepts_resolved = str(concepts_dir.resolve()) + "/"
         for s in slugs:
-            p = (concepts_dir / f"{s}.md").resolve()
-            if not (str(p) + "/").startswith(concepts_resolved):
-                continue  # Path traversal guard
-            if p.exists():
-                post = frontmatter.load(str(p))
-                if not _visible_post(post):
+            if not isinstance(s, str):
+                continue
+            p = _safe_concept(concepts_dir, s)
+            if p is not None and p.exists():
+                post = _detail_post(p)
+                if post is None:
                     continue
                 result.append({"slug": s, "title": post.metadata.get("title", s)})
         return result
@@ -1113,16 +1143,13 @@ def create_web_app(base_dir: Path | None = None):
             return jsonify({"status": "error", "message": "Not found"}), 404
         cfg = load_config(base)
         raw_dir = Path(cfg["paths"]["raw"])
-        doc_dir = (raw_dir / slug).resolve()
-        if not doc_dir.is_relative_to(raw_dir.resolve()):
-            return jsonify({"status": "error", "message": "Invalid source path"}), 400
-        idx = (doc_dir / "index.md").resolve()
-        if not idx.is_relative_to(raw_dir.resolve()):
+        idx = _safe_document(raw_dir, f"{slug}/index.md")
+        if idx is None:
             return jsonify({"status": "error", "message": "Invalid source path"}), 400
         if not idx.exists():
             return jsonify({"status": "error", "message": "Not found"})
-        post = frontmatter.load(str(idx))
-        if not _visible_post(post):
+        post = _detail_post(idx)
+        if post is None:
             return jsonify({"status": "error", "message": "Not found"}), 404
         # Configurable content cap: sources.max_content_chars (default 50000)
         # null → use hard ceiling (500K); explicit int → clamped to [0, 500K]
@@ -1379,6 +1406,8 @@ def create_web_app(base_dir: Path | None = None):
 
     # ─── Extension points ────────────────────────────────────────
     builtin_endpoints = frozenset(rule.endpoint for rule in app.url_map.iter_rules())
+    detail_views = {name: app.view_functions[name] for name in
+                    ("api_article", "api_article_sections", "api_source_detail")}
     # Register extra routes from EXTRA_ROUTES
     for route_entry in EXTRA_ROUTES:
         rule, view_func = route_entry[0], route_entry[1]

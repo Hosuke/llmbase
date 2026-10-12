@@ -87,7 +87,10 @@ def operation_scopes(op, arguments):
 
 
 def private_metadata(metadata):
-    return metadata.get("private") is True or metadata.get("visibility", "public") != "public"
+    # Keep Python detail reads aligned with Rust visibility::is_public. Equality
+    # against False would also accept 0; malformed flags must fail closed.
+    flag = metadata.get("private")
+    return (flag is not None and flag is not False) or metadata.get("visibility", "public") != "public"
 
 
 def public_search_hit(snapshot, cfg, row, *, raw=False):

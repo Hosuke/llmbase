@@ -1,0 +1,223 @@
+{
+  "label": "90394d0",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/root/llmbase-rust-migration-20260920/c5-detail-visibility-20261012/baseline/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so"
+  },
+  "profile_enabled": false,
+  "siwen_loaded": false,
+  "before": {
+    "files": 11100,
+    "sha256": "aab7f8cfe1718bb12f712f2c19cc166c2632321be977dbcf6a5534b497004555"
+  },
+  "after": {
+    "files": 11100,
+    "sha256": "aab7f8cfe1718bb12f712f2c19cc166c2632321be977dbcf6a5534b497004555"
+  },
+  "requests": [
+    {
+      "documents": 100,
+      "route": "/api/articles/p0",
+      "repeat": 0,
+      "seconds": 0.005854640156030655,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 100,
+      "route": "/api/articles/p0",
+      "repeat": 1,
+      "seconds": 0.002593856304883957,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 100,
+      "route": "/api/articles/p0",
+      "repeat": 2,
+      "seconds": 0.002527950331568718,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 100,
+      "route": "/api/articles/p0/sections",
+      "repeat": 0,
+      "seconds": 0.00412682443857193,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 100,
+      "route": "/api/articles/p0/sections",
+      "repeat": 1,
+      "seconds": 0.0027857553213834763,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 100,
+      "route": "/api/articles/p0/sections",
+      "repeat": 2,
+      "seconds": 0.0024494826793670654,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0",
+      "repeat": 0,
+      "seconds": 0.015582975000143051,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0",
+      "repeat": 1,
+      "seconds": 0.014184782281517982,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0",
+      "repeat": 2,
+      "seconds": 0.015082783997058868,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 0,
+      "seconds": 0.013987822458148003,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 1,
+      "seconds": 0.015466785058379173,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 1000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 2,
+      "seconds": 0.016231847926974297,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0",
+      "repeat": 0,
+      "seconds": 0.1413765400648117,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0",
+      "repeat": 1,
+      "seconds": 0.13083656691014767,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0",
+      "repeat": 2,
+      "seconds": 0.12855002842843533,
+      "status": 200,
+      "bytes": 181,
+      "body_sha256": "b4efba13d178bfe04b56561b7ca859cc1f3379b53a627c52fb90a7d663b9935a",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 0,
+      "seconds": 0.13068880885839462,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 1,
+      "seconds": 0.12902225740253925,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    },
+    {
+      "documents": 10000,
+      "route": "/api/articles/p0/sections",
+      "repeat": 2,
+      "seconds": 0.13017003796994686,
+      "status": 200,
+      "bytes": 77,
+      "body_sha256": "0f5564a4c33a799664b0c5388e6823f9ce4ed8630ec0c00387ca269f4840b343",
+      "dispatch_delta": 1
+    }
+  ],
+  "synthetic_bakes": [
+    {
+      "documents": 100,
+      "requests": 200,
+      "seconds": 0.4993828944861889,
+      "body_sha256": "cf957e5d9dae1a7ffff4113ae0d39c1dad8f8b590b3c21b8b97637ac8277be98",
+      "dispatch_delta": 200
+    },
+    {
+      "documents": 1000,
+      "requests": 2000,
+      "seconds": 28.85609463043511,
+      "body_sha256": "b74abf5574cc9e20b2796b7dcd94403465301f8a22f95e4fcdf9b62d06c081f9",
+      "dispatch_delta": 2000
+    }
+  ]
+}
