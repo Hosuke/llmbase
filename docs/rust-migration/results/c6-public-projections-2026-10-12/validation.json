@@ -1,0 +1,43 @@
+{
+  "steps": {
+    "baseline-probe": 0,
+    "build-runner": 0,
+    "build-tools": 0,
+    "build-venv": 0,
+    "candidate-install": 0,
+    "candidate-probe": 0,
+    "candidate-venv": 0,
+    "compare": 0,
+    "corpus-config": 0,
+    "focused": 0,
+    "full-engine": 0,
+    "harness-copy": 0,
+    "harness": 0,
+    "proof-runner": 0,
+    "proof-source-after": 0,
+    "provenance": 0,
+    "siwen-full": 1,
+    "siwen-get": 0,
+    "source-after": 0,
+    "source-before": 0,
+    "wheel": 0
+  },
+  "engine_full": {
+    "passed": 719,
+    "subtests": 18
+  },
+  "engine_focused": 85,
+  "siwen_get": 136,
+  "siwen_full": {
+    "passed": 610,
+    "failed": 14,
+    "skipped": 8
+  },
+  "typescript_no_emit": true,
+  "lint_import": true,
+  "remote_sessions_ended": true,
+  "source_inputs": 656,
+  "installed_python_files": 49,
+  "rust_source_changed": false,
+  "probe_sha256": "542aee079ec82ac6bcc1d98851b30852119a04675776b8e78cf3e36e59948a1d"
+}

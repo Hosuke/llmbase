@@ -90,3 +90,9 @@ endpoints and baked 133 JSON / 112 HTML files with no skips. Original downstream
 hashes/status and raw bytes remained unchanged. Evidence:
 [`python-native-candidate-v11.json`](results/python-native-candidate-v11.json),
 [`siwen-candidate-v11.json`](results/siwen-candidate-v11.json).
+
+Reviewed host projections can now use the explicit app-scoped
+[public read projection v1 contract](public-read-projections.md). It skips the
+legacy snapshot/opaque gate only for exact registered read pipelines, retains
+scope checks and fails closed if the registered composition changes. Unregistered
+opaque aggregates retain the policy described above.

@@ -1,5 +1,22 @@
 # Status — 2026-10-12
 
+C6 resolves R2's explicit public-projection integration gap (#25): reviewed Flask
+host pipelines can register anonymous public aggregate views and bounded detail
+wrappers. View/rule/hook bindings, scopes and conditional freshness fail closed.
+Installed engine 719 tests/18 subtests and 136 frozen Siwen GET/privacy tests pass.
+The real copied Siwen wrapped article makes zero snapshots (previously one), with
+identical bytes; observed median 640.771 → 21.948 ms. See
+[C6 evidence and remaining suite differences](results/c6-public-projections-2026-10-12/README.md).
+
+The complete committed Siwen suite is **not all green**: 610 passed, 14 failed,
+8 skipped. Thirteen failures are R2's existing auth migration differences; one
+fixture replaces a registered view after setup. The saved site adapter patch must
+be integrated before R3; a wheel upgrade alone does not opt in. C5 full CI passed.
+Real dual-site bakes and #19/#21 release gates remain pending. Save this block and
+stop; no production switch or broader Goal resume is implied.
+
+## Earlier checkpoint — C5
+
 C5 fixes #24's per-request whole-library visibility scan for the original Flask
 article, sections and raw-source detail views. Each checks its current target
 metadata; aliases/backlinks retain privacy and path checks, with no stale cache.

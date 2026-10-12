@@ -1,5 +1,13 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-12 R2 integration repair: [C6 explicit public read projections](../results/c6-public-projections-2026-10-12/README.md)
+addresses [#25](https://github.com/Hosuke/llmbase/issues/25), with a saved Siwen
+7198482 adapter patch. Engine 719 tests and frozen Siwen GET/privacy 136 tests pass;
+the actual copied-corpus wrapped article records zero scans and unchanged bytes.
+Full committed downstream suite still has 14 failures/8 skips, fully classified in
+the receipt. R3 requires the explicit site adaptation and remaining auth fixture
+migration; no full-site acceptance or deployment is claimed. Stop after this block.
+
 2026-10-12 bounded repair: [C5 detail visibility](../results/c5-detail-visibility-2026-10-12/README.md)
 fixes [#24](https://github.com/Hosuke/llmbase/issues/24)'s whole-library scan on
 each original Flask detail request. Fresh installed wheels pass 59 focused and

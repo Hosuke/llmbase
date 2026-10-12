@@ -1,0 +1,313 @@
+{
+  "label": "candidate",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "llmwiki_module": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "siwen_module": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/siwen/siwen/__init__.py",
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so"
+  },
+  "corpus_before": {
+    "files": 17880,
+    "bytes": 55874771,
+    "sha256": "e718c147017ff14e176167f65ae7a91062b07287c9de2e53ec0b38d178939687"
+  },
+  "monitoring": "code-local PY_START: llmwiki.http_auth.visibility_snapshot; no global events",
+  "real_requests": [
+    {
+      "route": "/api/articles/ben-lai",
+      "seconds": 0.6451591048389673,
+      "status": 200,
+      "bytes": 5575,
+      "body_sha256": "06e31cdcbb741cf892d06250ec3b563855aa1f606e0b49531eb83d4fa4e7961e",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 0
+    },
+    {
+      "route": "/api/articles/ben-lai",
+      "seconds": 0.02194787748157978,
+      "status": 200,
+      "bytes": 5575,
+      "body_sha256": "06e31cdcbb741cf892d06250ec3b563855aa1f606e0b49531eb83d4fa4e7961e",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 1
+    },
+    {
+      "route": "/api/articles/ben-lai",
+      "seconds": 0.02128557488322258,
+      "status": 200,
+      "bytes": 5575,
+      "body_sha256": "06e31cdcbb741cf892d06250ec3b563855aa1f606e0b49531eb83d4fa4e7961e",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 2
+    },
+    {
+      "route": "/api/articles/ben-lai/sections",
+      "seconds": 0.006383037194609642,
+      "status": 200,
+      "bytes": 567,
+      "body_sha256": "34be4b9afa000307c9b664bfa02659b9ef6f2a7aa3c7b88a0a7ad1aa879fb701",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 0
+    },
+    {
+      "route": "/api/articles/ben-lai/sections",
+      "seconds": 0.0028666704893112183,
+      "status": 200,
+      "bytes": 567,
+      "body_sha256": "34be4b9afa000307c9b664bfa02659b9ef6f2a7aa3c7b88a0a7ad1aa879fb701",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 1
+    },
+    {
+      "route": "/api/articles/ben-lai/sections",
+      "seconds": 0.002407986670732498,
+      "status": 200,
+      "bytes": 567,
+      "body_sha256": "34be4b9afa000307c9b664bfa02659b9ef6f2a7aa3c7b88a0a7ad1aa879fb701",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "repeat": 2
+    }
+  ],
+  "fixture_requests": [
+    {
+      "route": "/api/entities",
+      "seconds": 0.0021223481744527817,
+      "status": 200,
+      "bytes": 94,
+      "body_sha256": "c8f23da261959c25adb2f41b5f5335519f20c4e18dbc11639b68e22eca72f9ee",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "events": [],
+        "people": [
+          {
+            "articles": [
+              "public"
+            ],
+            "name": "PUBLIC_C6_PERSON"
+          }
+        ],
+        "places": []
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/stats",
+      "seconds": 0.002182692289352417,
+      "status": 200,
+      "bytes": 112,
+      "body_sha256": "8b73bef3443052f070e43397eab95ab2f11f697a7ab3718c194d2286e79116bf",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "article_count": 1,
+        "health_score": 100,
+        "link_count": 0,
+        "output_count": 0,
+        "raw_count": 1,
+        "total_words": 13
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/export/article/public",
+      "seconds": 0.0105966217815876,
+      "status": 200,
+      "bytes": 256,
+      "body_sha256": "e69097c373fc496ae076e1768063c2130fd8c7982a5a4fb3b696f1e290f04a0b",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "backlinks": [],
+        "content": {
+          "文言": "## 文言\n\nPUBLIC_C6_BODY"
+        },
+        "created": "",
+        "outgoing_links": [],
+        "related_by_tags": [],
+        "slug": "public",
+        "sources": [],
+        "summary": "PUBLIC_C6_TITLE",
+        "tags": [
+          "proof"
+        ],
+        "title": "PUBLIC_C6_TITLE",
+        "updated": ""
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/articles/public",
+      "seconds": 0.003340844064950943,
+      "status": 200,
+      "bytes": 185,
+      "body_sha256": "74c244dc88571ef19cefc31ad02e16a6664a0e69508ddd4f860c1d2ec1e97ceb",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "backlinks": [],
+        "content": "## 文言\n\nPUBLIC_C6_BODY",
+        "slug": "public",
+        "sources": [],
+        "status": "ok",
+        "summary": "PUBLIC_C6_TITLE",
+        "tags": [
+          "proof"
+        ],
+        "title": "PUBLIC_C6_TITLE"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/articles/public-alias",
+      "seconds": 0.0036319326609373093,
+      "status": 200,
+      "bytes": 185,
+      "body_sha256": "74c244dc88571ef19cefc31ad02e16a6664a0e69508ddd4f860c1d2ec1e97ceb",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "backlinks": [],
+        "content": "## 文言\n\nPUBLIC_C6_BODY",
+        "slug": "public",
+        "sources": [],
+        "status": "ok",
+        "summary": "PUBLIC_C6_TITLE",
+        "tags": [
+          "proof"
+        ],
+        "title": "PUBLIC_C6_TITLE"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/articles/private",
+      "seconds": 0.0006158500909805298,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/sources/public",
+      "seconds": 0.0021217353641986847,
+      "status": 200,
+      "bytes": 239,
+      "body_sha256": "f98805a9fc5965d8d018bc297d54764e937a267f5f59e2715dc615dd2681b7f7",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "compiled": false,
+        "content": "## 文言\n\nPUBLIC_C6_BODY",
+        "metadata": {
+          "private": "False",
+          "summary": "PUBLIC_C6_TITLE",
+          "tags": "['proof']",
+          "title": "PUBLIC_C6_TITLE"
+        },
+        "slug": "public",
+        "title": "PUBLIC_C6_TITLE",
+        "type": "unknown"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/sources/private",
+      "seconds": 0.000739801675081253,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/articles/nonpublic",
+      "seconds": 0.0006617754697799683,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store"
+    },
+    {
+      "route": "/api/sources/nonpublic",
+      "seconds": 0.0006961710751056671,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store"
+    }
+  ],
+  "live_privacy": [
+    {
+      "route": "/api/articles/public",
+      "seconds": 0.0007051564753055573,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store",
+      "size_preserved": true,
+      "mtime_preserved": true,
+      "bytes_changed": true
+    },
+    {
+      "route": "/api/sources/public",
+      "seconds": 0.0007815118879079819,
+      "status": 404,
+      "bytes": 25,
+      "body_sha256": "1582f8de1defb66a7bf7ade02db63bfb7dfa130a2b0ff3e5b25ff504ff7c375c",
+      "snapshot_calls": 0,
+      "dispatch_delta": 0,
+      "data": {
+        "error": "未見此文"
+      },
+      "cache_control": "no-store",
+      "size_preserved": true,
+      "mtime_preserved": true,
+      "bytes_changed": true
+    }
+  ],
+  "boundary": "Finite Flask requests only; observed timings are not a full bake acceptance.",
+  "corpus_after": {
+    "files": 17880,
+    "bytes": 55874771,
+    "sha256": "e718c147017ff14e176167f65ae7a91062b07287c9de2e53ec0b38d178939687"
+  }
+}

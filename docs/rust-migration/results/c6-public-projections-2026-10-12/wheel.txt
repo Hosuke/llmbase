@@ -1,0 +1,10 @@
+Looking in indexes: http://mirrors.tencentyun.com/pypi/simple
+Processing ./engine
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: llmwiki
+  Building wheel for llmwiki (pyproject.toml): started
+  Building wheel for llmwiki (pyproject.toml): finished with status 'done'
+  Created wheel for llmwiki: filename=llmwiki-0.9.0-cp312-cp312-linux_x86_64.whl size=6383470 sha256=e874e12299b3e0518891bb0ace89d2a683679d671e7aaa68b2c9b1fa544f515c
+  Stored in directory: /tmp/pip-ephem-wheel-cache-72y9n__1/wheels/44/bb/d6/37bd1a2e7de96f570977494d04cd5ee69c7737df9f759d5712
+Successfully built llmwiki

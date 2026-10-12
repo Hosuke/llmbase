@@ -1,0 +1,19 @@
+{
+  "accepted": true,
+  "response_bytes_equal": true,
+  "copied_corpora_unchanged": true,
+  "public_controls_and_private_denials": true,
+  "timings": [
+    {
+      "route": "/api/articles/ben-lai",
+      "baseline_median_ms": 640.770623460412,
+      "candidate_median_ms": 21.94787748157978
+    },
+    {
+      "route": "/api/articles/ben-lai/sections",
+      "baseline_median_ms": 2.8526727110147476,
+      "candidate_median_ms": 2.8666704893112183
+    }
+  ],
+  "boundary": "Observed finite requests; no full bake claim."
+}

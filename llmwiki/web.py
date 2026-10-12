@@ -10,6 +10,9 @@ import frontmatter
 from yaml import YAMLError
 from flask import Flask, current_app, g, request, jsonify, send_from_directory
 
+from .http_public import (PublicProjectionFlask, init_public_read_projections,
+                          public_read_projection_gate, register_public_read_projection)
+
 
 def _kb_etag(meta_dir: Path, extra: str = "") -> tuple[str | None, str | None]:
     """Return (ETag, Last-Modified) derived from index.json mtime.
@@ -240,7 +243,7 @@ def create_web_app(base_dir: Path | None = None):
     else:
         static_dir = base / "static" / "dist"
 
-    app = Flask(__name__, static_folder=None)
+    app = PublicProjectionFlask(__name__, static_folder=None)
 
     # ─── Auth middleware for write endpoints ───────────────────
     # Auto-generate a secret if not set and running in production (PORT env = cloud deploy)
@@ -320,6 +323,9 @@ def create_web_app(base_dir: Path | None = None):
             denied = authorize(*scopes)
             if denied is not None:
                 return denied
+        projected, denied = public_read_projection_gate(app)
+        if projected:
+            return denied
         if can_read_private() or request.endpoint in {"api_healthz", "api_branding", "api_languages", "api_tones", "api_ref_plugins"}:
             return None
         # These exact built-ins authorize their current target post (and any
@@ -1406,6 +1412,7 @@ def create_web_app(base_dir: Path | None = None):
 
     # ─── Extension points ────────────────────────────────────────
     builtin_endpoints = frozenset(rule.endpoint for rule in app.url_map.iter_rules())
+    init_public_read_projections(app, builtin_endpoints)
     detail_views = {name: app.view_functions[name] for name in
                     ("api_article", "api_article_sections", "api_source_detail")}
     # Register extra routes from EXTRA_ROUTES

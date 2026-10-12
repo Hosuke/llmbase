@@ -1,0 +1,148 @@
+{
+  "suite": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "14",
+    "skipped": "8",
+    "tests": "632",
+    "time": "36.059",
+    "timestamp": "2026-10-12T17:09:06.988478+08:00",
+    "hostname": "ai-studio"
+  },
+  "passed": 610,
+  "failed": [
+    {
+      "class": "tests.test_prerender",
+      "name": "test_other_large_hubs_truncate_only_at_complete_items[wiki-/api/articles-articles]",
+      "category": "registered_view_replaced_by_fixture",
+      "message": "assert 0 < 0\n +  where 0 = len([])"
+    },
+    {
+      "class": "tests.test_visibility_dynamic",
+      "name": "test_mixed_library_blocks_all_api_posts_and_keeps_bake_read_only",
+      "category": "mixed_post_401_instead_of_403",
+      "message": "AssertionError: /api/entities/extract\nassert 401 == 403\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_dynamic",
+      "name": "test_private_raw_source_blocks_ask_and_file_back_then_file_changes_reopen",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "AssertionError: assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code\n +    where <WrapperTestResponse streamed [401 UNAUTHORIZED]> = post('/api/ask', json={'question': 'needle alpha', 'file_back': False})\n +      where post = <FlaskClient <PublicProjectionFlask 'llmwiki.web'>>.post"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_api_ask_uses_only_public_context_and_can_file_public_answer[False-False]",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_api_ask_uses_only_public_context_and_can_file_public_answer[False-True]",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_api_ask_uses_only_public_context_and_can_file_public_answer[True-False]",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_api_ask_uses_only_public_context_and_can_file_public_answer[True-True]",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_deep_selection_without_fallback_never_reads_private_index",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_file_back_refuses_unknown_context_and_direct_filing",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_file_back_refuses_source_changed_during_answer",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_deep_context_changed_during_selection_is_not_sent_to_answer",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_deep_prefilter_receives_public_entries_only",
+      "category": "anonymous_model_write_requires_credentials",
+      "message": "AssertionError: assert 401 == 200\n +  where 401 = <WrapperTestResponse streamed [401 UNAUTHORIZED]>.status_code\n +    where <WrapperTestResponse streamed [401 UNAUTHORIZED]> = post('/api/ask', json={'question': 'alpha beta', 'deep': True})\n +      where post = <FlaskClient <PublicProjectionFlask 'llmwiki.web'>>.post"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_upstream_imported_first_refreshes_cached_aliases[False]",
+      "category": "mixed_post_401_instead_of_403",
+      "message": "AssertionError: Traceback (most recent call last):\n    File \"<string>\", line 38, in <module>\n  AssertionError\n  \nassert 1 == 0\n +  where 1 = CompletedProcess(args=['/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/bin/python', '-...e=1, stdout='', stderr='Traceback (most recent call last):\\n  File \"<string>\", line 38, in <module>\\nAssertionError\\n').returncode"
+    },
+    {
+      "class": "tests.test_visibility_qa",
+      "name": "test_upstream_imported_first_refreshes_cached_aliases[True]",
+      "category": "mixed_post_401_instead_of_403",
+      "message": "AssertionError: Traceback (most recent call last):\n    File \"<string>\", line 38, in <module>\n  AssertionError\n  \nassert 1 == 0\n +  where 1 = CompletedProcess(args=['/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/bin/python', '-...e=1, stdout='', stderr='Traceback (most recent call last):\\n  File \"<string>\", line 38, in <module>\\nAssertionError\\n').returncode"
+    }
+  ],
+  "categories": {
+    "registered_view_replaced_by_fixture": 1,
+    "mixed_post_401_instead_of_403": 3,
+    "anonymous_model_write_requires_credentials": 10
+  },
+  "skipped": [
+    {
+      "class": "tests.test_deploy_frontend",
+      "name": "test_skip_rejects_missing_deep_page_assets[assets/index-deep.js]",
+      "reason": "此驗須 zsh、rsync。"
+    },
+    {
+      "class": "tests.test_deploy_frontend",
+      "name": "test_skip_rejects_missing_deep_page_assets[fonts/song/font.css]",
+      "reason": "此驗須 zsh、rsync。"
+    },
+    {
+      "class": "tests.test_deploy_frontend",
+      "name": "test_skip_rejects_missing_recursive_css_asset_before_copy",
+      "reason": "此驗須 zsh、rsync。"
+    },
+    {
+      "class": "tests.test_deploy_frontend",
+      "name": "test_skip_preserves_mixed_builds_and_syncs_fonts",
+      "reason": "此驗須 zsh、rsync。"
+    },
+    {
+      "class": "tests.test_guides",
+      "name": "test_published_guides_resolve_against_real_corpus_when_available[taixu-wenku-fo]",
+      "reason": "本機無此實庫"
+    },
+    {
+      "class": "tests.test_guides",
+      "name": "test_published_guides_resolve_against_real_corpus_when_available[siwen-wenku]",
+      "reason": "本機無此實庫"
+    },
+    {
+      "class": "tests.test_i18n_data",
+      "name": "test_against_live_read_only_inputs_when_available",
+      "reason": "本機無兩站原題錄；另有倉內鍵目之全驗"
+    },
+    {
+      "class": "tests.test_i18n_data",
+      "name": "test_taixu_generation_matches_curated_output_when_inputs_available",
+      "reason": "本機無太虛原題錄；彙编產物另驗"
+    }
+  ],
+  "unchanged_tests": true,
+  "site_change": "primary/siwen-public-read.patch only"
+}
