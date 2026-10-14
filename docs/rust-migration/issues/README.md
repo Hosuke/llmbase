@@ -1,5 +1,11 @@
 # Rust major handoff — 2026-09-27
 
+2026-10-14 bounded repair: [C7 visibility headers](../results/c7-visibility-headers-2026-10-14/README.md)
+fixes [#26](https://github.com/Hosuke/llmbase/issues/26). 365 native and 727
+installed Python tests / 18 subtests pass. On a real-corpus copy with synthetic
+body growth to 83.4 MB, old public 503s become 200s and response bytes match.
+Latest-corpus dual-site bake and final release gates remain pending.
+
 2026-10-12 R2 integration repair: [C6 explicit public read projections](../results/c6-public-projections-2026-10-12/README.md)
 addresses [#25](https://github.com/Hosuke/llmbase/issues/25), with a saved Siwen
 7198482 adapter patch. Engine 719 tests and frozen Siwen GET/privacy 136 tests pass;

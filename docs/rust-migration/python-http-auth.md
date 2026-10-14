@@ -42,12 +42,24 @@ their declared capability and data boundaries.
 The default legacy read handlers now obtain a current native filesystem
 visibility snapshot without indexing or creating a database. `private: true` and
 any non-public `visibility` hide a source from visitor lists, direct article/raw
-reads, search, aliases, backlinks and whole-wiki export. The snapshot is limited
-to 20,000 Markdown files or 64 MiB across configured roots. Malformed documents
-are not classified public; symlink/root violations and unavailable snapshots
-fail closed. Private reads require the separate `private` scope. The public lite
-index ETag includes current visibility/revision hashes, so a private flag edited
-without index rebuilding cannot reuse the old public 304 response.
+reads, search, aliases, backlinks and whole-wiki export. The visibility snapshot
+reads frontmatter instead of entire Markdown bodies. It retains a 20,000-file
+limit, a 1 MiB limit per header, and a 64 MiB total read budget (including failed
+parses and at most 1 KiB of buffered read-ahead per file). A body larger than
+64 MiB is therefore not itself a visibility error. Headerless files need only a
+4–5-byte probe. Framing matches `Document::parse` exactly; this is not a new
+normalization of BOM, whitespace or Python's different delimiter rules.
+
+Unreadable, malformed, unterminated or oversized headers are not classified
+public; symlink/root violations and unavailable snapshots fail closed. Body
+UTF-8 validity and full-document read limits belong to the downstream content
+reader, not this visibility projection. Private reads still require the separate
+`private` scope. Snapshot entries expose `metadata_hash` (SHA-256 of the framed
+header, or the empty byte string for a headerless document), replacing their old
+full-document `content_hash`. The public lite index ETag includes these current
+metadata hashes, so same-size/mtime privacy edits invalidate old public 304s
+without index rebuilding. Body-only edits need not invalidate the lite response,
+whose titles and slugs come from `index.json`.
 
 The full web, agent and search-only Flask factories scope default retrieval
 before tokenization and ranking. A context-local public scope becomes

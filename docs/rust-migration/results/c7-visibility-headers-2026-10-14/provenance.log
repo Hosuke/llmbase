@@ -1,0 +1,11 @@
+{
+  "version": "0.9.0",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "package": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "extension": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "wheel": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/wheels/llmwiki-0.9.0-cp311-abi3-linux_x86_64.whl",
+  "sha256": "331bd0ad93818eadbeaaf58a60aec3df34dbd14cdd00d3c0dd46ceb947ee0bdb",
+  "extension_sha256": "3c0ff958cb9c6d96974ff84e238a26fb858a90febfa2235803cea903de530435",
+  "matching_python_files": 49,
+  "backend": "{\"core\":\"rust\",\"crate\":\"llmbase-python\",\"crate_version\":\"0.1.0\",\"abi\":\"abi3-py311\",\"application\":\"llmbase_core::application::Application\",\"successful_dispatches\":0,\"writer_sessions\":0}"
+}

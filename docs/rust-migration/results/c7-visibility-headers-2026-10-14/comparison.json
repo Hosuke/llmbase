@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "all_corpus_hashes_unchanged": true,
+  "small_public_responses_unchanged": true,
+  "grown_public_responses_match_small": true,
+  "grown_old_statuses": [
+    503,
+    503,
+    503
+  ],
+  "grown_new_statuses": [
+    200,
+    200,
+    200
+  ],
+  "real_copy_markdown_bytes": 40723744,
+  "synthetic_growth_markdown_bytes": 83391106
+}

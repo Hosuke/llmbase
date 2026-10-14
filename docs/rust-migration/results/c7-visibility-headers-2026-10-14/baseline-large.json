@@ -1,0 +1,70 @@
+{
+  "label": "5cd2177-synthetic-growth",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "executable": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/bin/python",
+  "prefix": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate",
+  "llmwiki_module": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "core_module": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so",
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/root/llmbase-rust-migration-20260920/c6-public-projections-20261012/candidate/lib/python3.12/site-packages/llmwiki/_core.cpython-312-x86_64-linux-gnu.so"
+  },
+  "corpus": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/corpus-large",
+  "before": {
+    "files": 587,
+    "bytes": 83486114,
+    "markdown_files": 580,
+    "markdown_bytes": 83391106,
+    "aggregate_sha256": "bd0df7f385ee678b168281388149a7b7cd8a610f7ab307a27568fd33a4d4d350"
+  },
+  "snapshot": {
+    "ok": false,
+    "error": {
+      "type": "RuntimeError",
+      "message": "capability unavailable: visibility snapshot exceeds supported limits"
+    },
+    "elapsed_ms": 124.04435873031616
+  },
+  "requests": [
+    {
+      "route": "/api/trails",
+      "status": 503,
+      "content_type": "application/json",
+      "bytes": 70,
+      "body_sha256": "dfab5623e6ef9fff35d2785b082afea4f43f1b80292615c9cc575b5316f7973e",
+      "elapsed_ms": 122.81607277691364
+    },
+    {
+      "route": "/api/taxonomy?lang=zh",
+      "status": 503,
+      "content_type": "application/json",
+      "bytes": 70,
+      "body_sha256": "dfab5623e6ef9fff35d2785b082afea4f43f1b80292615c9cc575b5316f7973e",
+      "elapsed_ms": 120.7811702042818
+    },
+    {
+      "route": "/api/xici?lang=zh",
+      "status": 503,
+      "content_type": "application/json",
+      "bytes": 70,
+      "body_sha256": "dfab5623e6ef9fff35d2785b082afea4f43f1b80292615c9cc575b5316f7973e",
+      "elapsed_ms": 122.23045527935028
+    }
+  ],
+  "boundary": "One snapshot and three anonymous Flask GETs on a copy; no write, index or bake.",
+  "after": {
+    "files": 587,
+    "bytes": 83486114,
+    "markdown_files": 580,
+    "markdown_bytes": 83391106,
+    "aggregate_sha256": "bd0df7f385ee678b168281388149a7b7cd8a610f7ab307a27568fd33a4d4d350"
+  },
+  "source_unchanged": true
+}

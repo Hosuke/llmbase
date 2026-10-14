@@ -1,4 +1,17 @@
-# Status — 2026-10-12
+# Status — 2026-10-14
+
+C7 fixes #26's large-body visibility outage: bounded frontmatter reads replace
+full-document reads, preserving fail-closed privacy and current metadata ETags.
+365 native tests, 727 installed Python tests / 18 subtests, and independent
+review pass. On an isolated copy grown to 83,391,106 Markdown bytes, the old
+wheel's three public 503s become 200s with unchanged public response bytes.
+The available real Taixu copy is only 40.7 MB; this is not acceptance of the
+reporter's latest corpus or a full bake. See
+[C7 evidence and limits](results/c7-visibility-headers-2026-10-14/README.md).
+Hand this candidate to downstream retesting; no release, production switch or
+broader Goal resume is implied.
+
+## Earlier checkpoint — C6
 
 C6 resolves R2's explicit public-projection integration gap (#25): reviewed Flask
 host pipelines can register anonymous public aggregate views and bounded detail

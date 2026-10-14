@@ -14,7 +14,7 @@ use sha1::{Digest, Sha1};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -514,10 +514,73 @@ pub fn raw_write(config: &LibraryConfig, args: &Value) -> Result<Value> {
     Ok(json!({"path":path,"content_hash":hash(&content)}))
 }
 
+const MAX_VISIBILITY_HEADER_BYTES: u64 = 1024 * 1024;
+const MAX_VISIBILITY_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
+struct VisibilityReadBudget<'a, R> {
+    reader: R,
+    bytes_read: &'a mut u64,
+}
+impl<R: Read> Read for VisibilityReadBudget<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let count = self.reader.read(buf)?;
+        *self.bytes_read += count as u64;
+        Ok(count)
+    }
+}
+
+/// Read only the frontmatter framing understood by Document::parse. The body
+/// is irrelevant to visibility, including when it is larger than the ordinary
+/// full-document read limit. Limit even unterminated headers and long lines.
+fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document> {
+    let limit =
+        MAX_VISIBILITY_HEADER_BYTES.min(MAX_VISIBILITY_TOTAL_BYTES.saturating_sub(*bytes_read));
+    let mut reader = VisibilityReadBudget {
+        reader: reader.take(limit + 1),
+        bytes_read,
+    };
+    let mut header = Vec::new();
+    reader.by_ref().take(4).read_to_end(&mut header)?;
+    if header == b"---\r" {
+        reader.by_ref().take(1).read_to_end(&mut header)?;
+    }
+    if header.len() as u64 > limit {
+        return Err(Error::Invalid(
+            "visibility frontmatter exceeds supported limits".into(),
+        ));
+    }
+    if header != b"---\n" && header != b"---\r\n" {
+        return Document::parse(Vec::new());
+    }
+    // Charge read-ahead too, but keep it small: even 20,000 tiny headers must
+    // fit within the total budget regardless of their bodies' lengths.
+    let mut reader = BufReader::with_capacity(1024, reader);
+    loop {
+        let start = header.len();
+        let count = reader.read_until(b'\n', &mut header)?;
+        if header.len() as u64 > limit {
+            return Err(Error::Invalid(
+                "visibility frontmatter exceeds supported limits".into(),
+            ));
+        }
+        if count == 0 {
+            return Err(Error::Invalid("unterminated frontmatter".into()));
+        }
+        let line = &header[start..];
+        let end = line
+            .iter()
+            .rposition(|b| !matches!(b, b'\r' | b'\n'))
+            .map_or(0, |i| i + 1);
+        if matches!(&line[..end], b"---" | b"...") {
+            return Document::parse(header);
+        }
+    }
+}
+
 fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
     let mut result = json!({"compiled":{},"raw":{},"note":{},"has_nonpublic":false});
     let mut count = 0usize;
-    let mut size = 0u64;
+    let mut header_bytes = 0u64;
     for (kind, root) in [
         ("compiled", &config.concepts),
         ("raw", &config.raw),
@@ -545,13 +608,7 @@ fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
                 continue;
             }
             count += 1;
-            size = size.saturating_add(
-                entry
-                    .metadata()
-                    .map_err(|_| Error::Invalid("cannot inspect source metadata".into()))?
-                    .len(),
-            );
-            if count > 20_000 || size > 64 * 1024 * 1024 {
+            if count > 20_000 {
                 return Err(Error::Capability(
                     "visibility snapshot exceeds supported limits".into(),
                 ));
@@ -566,15 +623,24 @@ fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
             if kind == "raw" && slug.ends_with("/index") {
                 slug.truncate(slug.len() - 6);
             }
-            let doc = read(entry.path());
-            // An unreadable or malformed document is never public by default.
+            let doc = File::open(entry.path())
+                .map_err(Error::from)
+                .and_then(|file| visibility_header(file, &mut header_bytes));
+            if header_bytes > MAX_VISIBILITY_TOTAL_BYTES {
+                return Err(Error::Capability(
+                    "visibility snapshot exceeds supported limits".into(),
+                ));
+            }
+            // An unreadable, malformed or oversized header is never public.
             let public = doc
                 .as_ref()
                 .is_ok_and(|doc| crate::visibility::is_public(&doc.metadata));
             if !public {
                 result["has_nonpublic"] = json!(true);
             }
-            result[kind][slug] = json!({"public":public,"content_hash":doc.ok().map(|d|d.hash)});
+            // This fingerprint covers the visibility input, not the body. The
+            // lite-list ETag consumes this map and still sees same-stat edits.
+            result[kind][slug] = json!({"public":public,"metadata_hash":doc.ok().map(|d|d.hash)});
         }
     }
     Ok(result)
@@ -672,4 +738,138 @@ pub fn execute(config: &LibraryConfig, operation: &str, args: &Value) -> Result<
     Ok(
         json!({"result":result,"trace":{"core":"rust","operation":operation,"library_id":config.library_id,"storage":"native_filesystem","indexed":false,"writer_lock":write}}),
     )
+}
+
+#[cfg(test)]
+mod visibility_header_tests {
+    use super::*;
+    use std::io::{Cursor, repeat};
+
+    struct CountReads<R> {
+        inner: R,
+        bytes: usize,
+    }
+    impl<R: Read> Read for CountReads<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let count = self.inner.read(buf)?;
+            self.bytes += count;
+            Ok(count)
+        }
+    }
+
+    #[test]
+    fn header_framing_and_metadata_match_document_parser() {
+        for text in [
+            "",
+            "plain body",
+            "---",
+            "---\r",
+            "---\rbody",
+            "\u{feff}---\nprivate: true\n---",
+            "---\n---\nbody",
+            "---\r\nprivate: true\r\n---\r\nbody",
+            "---\nvisibility: internal\n...",
+            "---\nprivate: false\n---",
+            "---\n{\"private\":null}\n---\nbody",
+            "---\nprivate: 0\n---\nbody",
+            "---\n[not, mapping]\n---",
+            "---\nprivate: [bad\n---",
+            "---\nprivate: true",
+        ] {
+            let expected = Document::parse(text.as_bytes().to_vec());
+            let actual = visibility_header(text.as_bytes(), &mut 0);
+            assert_eq!(actual.is_ok(), expected.is_ok(), "{text:?}");
+            if let (Ok(actual), Ok(expected)) = (actual, expected) {
+                assert_eq!(actual.metadata, expected.metadata, "{text:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn body_is_never_scanned_or_hashed_even_without_frontmatter() {
+        for prefix in [
+            b"---\nprivate: false\n---\n".as_slice(),
+            b"---\r\n---\r\n",
+            b"body",
+            b"---\rx",
+        ] {
+            let mut reader = CountReads {
+                inner: Cursor::new(prefix).chain(repeat(b'x')),
+                bytes: 0,
+            };
+            let mut charged = 0;
+            let doc = visibility_header(&mut reader, &mut charged).unwrap();
+            let framed = prefix.starts_with(b"---\n") || prefix.starts_with(b"---\r\n");
+            assert_eq!(doc.hash, hash(if framed { prefix } else { b"" }));
+            assert_eq!(charged, prefix.len() as u64);
+            // BufReader may read one buffer beyond the closing delimiter.
+            assert!(reader.bytes <= prefix.len() + 1024);
+            if !framed {
+                assert_eq!(reader.bytes, prefix.len());
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_utf8_in_header_fails_closed_but_body_is_not_parsed() {
+        assert!(visibility_header(b"---\ntitle: \xff\n---\n".as_slice(), &mut 0).is_err());
+        assert!(visibility_header(b"---\nprivate: false\n---\n\xff".as_slice(), &mut 0).is_ok());
+    }
+
+    #[test]
+    fn unterminated_header_and_unbounded_line_stop_at_the_limit() {
+        let mut reader = CountReads {
+            inner: Cursor::new(b"---\n#").chain(repeat(b'x')),
+            bytes: 0,
+        };
+        let mut charged = 0;
+        assert!(visibility_header(&mut reader, &mut charged).is_err());
+        assert_eq!(charged, MAX_VISIBILITY_HEADER_BYTES + 1);
+        assert_eq!(reader.bytes as u64, charged);
+    }
+
+    #[test]
+    fn complete_header_at_limit_is_accepted_but_one_byte_over_is_not() {
+        let mut header = b"---\n#".to_vec();
+        header.resize(MAX_VISIBILITY_HEADER_BYTES as usize - 4, b'x');
+        header.extend_from_slice(b"\n---");
+        assert!(visibility_header(header.as_slice(), &mut 0).is_ok());
+        header.insert(5, b'x');
+        assert!(visibility_header(header.as_slice(), &mut 0).is_err());
+    }
+
+    #[test]
+    fn total_budget_includes_malformed_headers_and_stops_before_overreading() {
+        let mut charged = MAX_VISIBILITY_TOTAL_BYTES - 8;
+        assert!(visibility_header(b"---\n---\n".as_slice(), &mut charged).is_ok());
+        assert_eq!(charged, MAX_VISIBILITY_TOTAL_BYTES);
+        assert!(visibility_header(b"body".as_slice(), &mut charged).is_err());
+        assert_eq!(charged, MAX_VISIBILITY_TOTAL_BYTES + 1);
+        let mut charged = 0;
+        let malformed = b"---\n[broken\n---\n";
+        assert!(visibility_header(malformed.as_slice(), &mut charged).is_err());
+        assert_eq!(charged, malformed.len() as u64);
+    }
+
+    #[test]
+    fn contiguous_files_charge_read_ahead_against_the_shared_budget() {
+        let mut file = b"---\n---\n".to_vec();
+        file.resize(4096, b'x');
+        let initial = MAX_VISIBILITY_TOTAL_BYTES - 2 * (4 + 1024);
+        let mut charged = initial;
+        let mut actual = 0;
+        for expected_ok in [true, true, false] {
+            let mut reader = CountReads {
+                inner: Cursor::new(&file),
+                bytes: 0,
+            };
+            assert_eq!(
+                visibility_header(&mut reader, &mut charged).is_ok(),
+                expected_ok
+            );
+            actual += reader.bytes as u64;
+            assert_eq!(charged - initial, actual);
+        }
+        assert_eq!(charged, MAX_VISIBILITY_TOTAL_BYTES + 1);
+    }
 }

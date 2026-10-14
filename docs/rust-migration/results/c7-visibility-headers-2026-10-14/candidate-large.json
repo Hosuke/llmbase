@@ -1,0 +1,72 @@
+{
+  "label": "c7-synthetic-growth",
+  "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+  "executable": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/bin/python",
+  "prefix": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate",
+  "llmwiki_module": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/lib/python3.12/site-packages/llmwiki/__init__.py",
+  "core_module": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so",
+  "backend": {
+    "core": "rust",
+    "crate": "llmbase-python",
+    "crate_version": "0.1.0",
+    "abi": "abi3-py311",
+    "application": "llmbase_core::application::Application",
+    "successful_dispatches": 0,
+    "writer_sessions": 0,
+    "native": true,
+    "extension_path": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/candidate/lib/python3.12/site-packages/llmwiki/_core.abi3.so"
+  },
+  "corpus": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/corpus-large",
+  "before": {
+    "files": 587,
+    "bytes": 83486114,
+    "markdown_files": 580,
+    "markdown_bytes": 83391106,
+    "aggregate_sha256": "bd0df7f385ee678b168281388149a7b7cd8a610f7ab307a27568fd33a4d4d350"
+  },
+  "snapshot": {
+    "ok": true,
+    "has_nonpublic": false,
+    "counts": {
+      "compiled": 140,
+      "raw": 393,
+      "note": 46
+    },
+    "elapsed_ms": 27.612557634711266
+  },
+  "requests": [
+    {
+      "route": "/api/trails",
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 14,
+      "body_sha256": "b6b319a6dba9d58284b34000c973680c767bad6d122d207473e20fbb7bc47c70",
+      "elapsed_ms": 34.5891360193491
+    },
+    {
+      "route": "/api/taxonomy?lang=zh",
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 3209,
+      "body_sha256": "c851d155127fbe5713b97125edea7313096e9caad50ad3cee2ebb025201a5b20",
+      "elapsed_ms": 46.4743971824646
+    },
+    {
+      "route": "/api/xici?lang=zh",
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 3929,
+      "body_sha256": "fd3429052c263fc3bfd18453fc3acee11b4a5355ff84f8df061f6563549e7605",
+      "elapsed_ms": 36.32407262921333
+    }
+  ],
+  "boundary": "One snapshot and three anonymous Flask GETs on a copy; no write, index or bake.",
+  "after": {
+    "files": 587,
+    "bytes": 83486114,
+    "markdown_files": 580,
+    "markdown_bytes": 83391106,
+    "aggregate_sha256": "bd0df7f385ee678b168281388149a7b7cd8a610f7ab307a27568fd33a4d4d350"
+  },
+  "source_unchanged": true
+}

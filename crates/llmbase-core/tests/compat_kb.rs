@@ -54,6 +54,40 @@ fn visibility_snapshot_is_current_scoped_and_does_not_initialize_storage() {
 }
 
 #[test]
+fn visibility_snapshot_ignores_large_bodies_and_observes_header_changes() {
+    let (_temp, config) = fixture();
+    let path = config.raw.join("book/index.md");
+    let initial = op(&config, "compat_kb_visibility", json!({}));
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(83_391_106)
+        .unwrap();
+    assert_eq!(op(&config, "compat_kb_visibility", json!({})), initial);
+    fs::write(&path, "---\nprivate: true\n---\n").unwrap();
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(83_391_106)
+        .unwrap();
+    let private = op(&config, "compat_kb_visibility", json!({}));
+    assert_eq!(private["raw"]["book"]["public"], false);
+    assert_eq!(private["has_nonpublic"], true);
+    assert_ne!(
+        private["raw"]["book"]["metadata_hash"],
+        initial["raw"]["book"]["metadata_hash"]
+    );
+    assert!(private["raw"]["book"].get("content_hash").is_none());
+    fs::write(&path, "---\nprivate: [invalid\n---\n").unwrap();
+    let broken = op(&config, "compat_kb_visibility", json!({}));
+    assert_eq!(broken["raw"]["book"]["public"], false);
+    assert!(broken["raw"]["book"]["metadata_hash"].is_null());
+    assert!(!config.database().exists());
+}
+
+#[test]
 fn public_trails_report_true_empty_only_and_never_hide_parse_errors() {
     let (_temp, config) = fixture();
     let args = json!({"public_only":true});

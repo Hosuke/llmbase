@@ -1,0 +1,8 @@
+{
+  "source": "/srv/siwen/wenku-fo",
+  "target": "/root/llmbase-rust-migration-20260920/c7-visibility-headers-20261014/corpus",
+  "copied_files": 586,
+  "source_unchanged": true,
+  "copy_matches": true,
+  "aggregate_sha256": "9e8b3394781c810bc4d2dba8bd6faa76b6ea0ab7352c56c0e29611fc937a00cb"
+}

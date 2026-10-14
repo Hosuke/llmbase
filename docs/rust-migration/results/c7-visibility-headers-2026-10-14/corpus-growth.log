@@ -1,0 +1,21 @@
+{
+  "kind": "synthetic body growth on a real copied corpus, not the latest site corpus",
+  "original": {
+    "files": 587,
+    "bytes": 40818722,
+    "markdown_files": 580,
+    "markdown_bytes": 40723744,
+    "aggregate_sha256": "1447fb00ddbe92601a9d865311d015cc6bbcfd021b2917c21e1757f85cbe07b6"
+  },
+  "grown": {
+    "files": 587,
+    "bytes": 83486114,
+    "markdown_files": 580,
+    "markdown_bytes": 83391106,
+    "aggregate_sha256": "bd0df7f385ee678b168281388149a7b7cd8a610f7ab307a27568fd33a4d4d350"
+  },
+  "source_unchanged": true,
+  "grown_path": "raw/cbeta-\u592a\u865b-\u7b2c\u5341\u4e09\u7de8-\u4e2d\u570b\u61c9\u52aa\u529b\u4e16\u754c\u65b0\u6587\u5316/index.md",
+  "old_file_bytes": 2500,
+  "new_file_bytes": 42669862
+}
