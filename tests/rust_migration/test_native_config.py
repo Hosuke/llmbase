@@ -1,5 +1,6 @@
 """Real config IO/ordering through the installed native candidate."""
 import builtins
+import errno
 import os
 from pathlib import Path
 
@@ -161,6 +162,18 @@ def test_non_utf8_path_bytes_are_not_replaced(tmp_path):
     cfg = config._read_config(base)
     assert cfg["base_dir"] == str(base)
     assert cfg["paths"]["raw"] == str(base / "raw")
+    # Some POSIX filesystems (including macOS APFS) reject these bytes. The
+    # bridge must preserve that OS error and the original path, not replace it.
+    try:
+        (tmp_path / os.fsdecode(b"probe-\xff")).mkdir()
+    except OSError as platform_error:
+        assert platform_error.errno == errno.EILSEQ
+        with pytest.raises(OSError) as caught:
+            config.ensure_dirs(cfg)
+        assert caught.value.errno == platform_error.errno
+        assert caught.value.filename == str(base)
+        assert _native.last_trace() is None
+        return
     config.ensure_dirs(cfg)
     (base / "config.yaml").write_text("paths: {raw: raw}\n")
     assert config._read_config(base)["paths"]["raw"] == str(base / "raw")
