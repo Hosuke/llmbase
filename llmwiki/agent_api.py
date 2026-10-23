@@ -193,7 +193,8 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
     import os
     from flask import g
     from .http_auth import (authorize, can_read_private, operation_scopes, private_metadata,
-                            private_response_headers, runtime_config, visibility_snapshot)
+                            private_response_headers, runtime_config, visibility_snapshot,
+                            visibility_snapshot_error)
     app.config["llmbase"] = runtime_config(kb.base_dir, kb.cfg,
         api_secret=os.getenv("LLMBASE_API_SECRET", ""))
     app.after_request(private_response_headers)
@@ -217,8 +218,8 @@ def create_agent_server(base_dir: str | Path | None = None, port: int = 5556):
             return None
         try:
             snapshot = visibility_snapshot(kb.base_dir, kb.cfg)
-        except (OSError, ValueError, RuntimeError):
-            return jsonify({"status": "error", "message": "public visibility snapshot unavailable"}), 503
+        except (OSError, ValueError, RuntimeError) as error:
+            return jsonify(visibility_snapshot_error(error)), 503
         g.llmbase_visibility = snapshot
         opaque = {"kb_lint", "kb_health", "kb_stats", "kb_taxonomy", "kb_backlinks", "kb_export", "kb_export_article",
                   "kb_export_tag", "kb_export_graph", "kb_xici"}

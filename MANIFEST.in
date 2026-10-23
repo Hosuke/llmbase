@@ -1,3 +1,8 @@
-include Cargo.toml Cargo.lock rust-toolchain.toml setup.cfg
+include Cargo.toml Cargo.lock rust-toolchain.toml setup.cfg SOURCE_COMMIT
+include docs/rust-migration/contracts/baseline.json
 recursive-include crates *.toml *.rs *.json
 recursive-include crates *.html
+recursive-include examples/rust-extension *.toml *.rs *.md
+recursive-include scripts/release *.py
+recursive-include scripts/rust-migration *.py
+recursive-include tests *.py *.json *.yaml *.md

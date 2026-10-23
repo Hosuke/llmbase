@@ -43,15 +43,18 @@ The default legacy read handlers now obtain a current native filesystem
 visibility snapshot without indexing or creating a database. `private: true` and
 any non-public `visibility` hide a source from visitor lists, direct article/raw
 reads, search, aliases, backlinks and whole-wiki export. The visibility snapshot
-reads frontmatter instead of entire Markdown bodies. It retains a 20,000-file
+reads frontmatter instead of entire Markdown bodies. Defaults are a 20,000-file
 limit, a 1 MiB limit per header, and a 64 MiB total read budget (including failed
 parses and at most 1 KiB of buffered read-ahead per file). A body larger than
 64 MiB is therefore not itself a visibility error. Headerless files need only a
 4–5-byte probe. Framing matches `Document::parse` exactly; this is not a new
 normalization of BOM, whitespace or Python's different delimiter rules.
 
-Unreadable, malformed, unterminated or oversized headers are not classified
-public; symlink/root violations and unavailable snapshots fail closed. Body
+Operators can change these [visibility limits](visibility-limits.md) in
+`config.yaml`. Exceeding any limit returns an actionable HTTP 503 with the limit
+name and configuration key; it never makes content public. Unreadable, malformed
+or unterminated headers within budget are not classified public; symlink/root
+violations and unavailable snapshots fail closed. Body
 UTF-8 validity and full-document read limits belong to the downstream content
 reader, not this visibility projection. Private reads still require the separate
 `private` scope. Snapshot entries expose `metadata_hash` (SHA-256 of the framed

@@ -399,6 +399,8 @@ fn safe_error(error: &Error) -> &'static str {
         Error::Conflict(_) => "resource conflicts with current state",
         Error::Busy => "another writer is active; explicit retry is available",
         Error::Capability(_) => "required operation capability is unavailable",
+        Error::VisibilityLimit { .. } => "configured visibility snapshot limit exceeded",
+        Error::VisibilityConfig(_) => "invalid visibility snapshot configuration",
         Error::Io(_) | Error::Sql(_) => "storage operation failed",
         Error::Model(_) => "model operation failed",
     }

@@ -194,6 +194,44 @@ web.BEFORE_REQUEST_HOOKS.append(log_requests)
 app = web.create_web_app(base_dir)
 ```
 
+### Public Read Projections (stable v1)
+
+`register_public_read_projection(app, endpoint, view) -> None` is a stable public
+API imported from `llmwiki.web`. It installs the final callable for a supported
+built-in content-read endpoint on an app created by `create_web_app`, including
+apps returned by downstream factories built on it. The host attests that the
+complete view and hook pipeline filters every returned field against current
+source visibility.
+
+```python
+from llmwiki.web import create_web_app, register_public_read_projection
+
+app = create_web_app(base_dir)
+install_site_routes(app)
+install_site_privacy_hooks(app)
+install_site_views_and_wrappers(app)
+# Complete all route/hook/wrapper setup before registering; no requests yet.
+register_public_read_projection(app, "api_article", app.view_functions["api_article"])
+```
+
+Register before the first request and after all routes, view wrappers and
+before/after hooks are installed. The binding records the exact callable,
+the endpoint's route rules and ordered app/blueprint hook chains. Only `GET`,
+`HEAD` and `OPTIONS` qualify; duplicate registrations, unsafe route methods and
+unsupported endpoints are rejected. Changing a recorded component invalidates
+the binding and returns 503 until a fresh app is built and registered.
+`functools.wraps` and `__wrapped__` do not preserve registration authority.
+
+Registration preserves the caller's scopes and requires `read`; it grants no
+private, model or write authority. Registered responses use `no-store`, and
+conditional request headers are removed before downstream hooks. See the
+[v1 public read projection contract](rust-migration/public-read-projections.md)
+for the supported endpoints, filtering responsibilities and response safeguards.
+
+The documented v1 contract remains stable throughout llmwiki 0.10.x. A breaking
+change requires a release outside 0.10.x with explicit migration documentation
+describing the changes and required downstream updates.
+
 ### Protected Extra Routes
 
 `require_auth` is a module-level decorator that enforces the same

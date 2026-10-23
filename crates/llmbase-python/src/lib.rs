@@ -21,6 +21,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static SUCCESSFUL_DISPATCHES: AtomicU64 = AtomicU64::new(0);
 static WRITER_SESSIONS: AtomicU64 = AtomicU64::new(0);
 
+pyo3::create_exception!(_core, VisibilitySnapshotLimitError, PyRuntimeError);
+pyo3::create_exception!(_core, VisibilitySnapshotConfigError, PyValueError);
+
 fn configured_library(
     base_dir: &str,
     library_id: &str,
@@ -56,6 +59,33 @@ fn configured_library(
 fn python_error(error: Error) -> PyErr {
     let message = error.to_string();
     match error {
+        Error::VisibilityLimit {
+            resource,
+            limit,
+            observed,
+        } => Python::attach(|py| {
+            let error = VisibilitySnapshotLimitError::new_err(message);
+            let value = error.value(py);
+            if let Err(error) = value
+                .setattr("code", "visibility_snapshot_limit_exceeded")
+                .and_then(|()| value.setattr("resource", resource))
+                .and_then(|()| value.setattr("limit", limit))
+                .and_then(|()| value.setattr("observed", observed))
+            {
+                return error;
+            }
+            error
+        }),
+        Error::VisibilityConfig(_) => Python::attach(|py| {
+            let error = VisibilitySnapshotConfigError::new_err(message);
+            if let Err(error) = error
+                .value(py)
+                .setattr("code", "visibility_snapshot_config_invalid")
+            {
+                return error;
+            }
+            error
+        }),
         Error::Invalid(_) | Error::Json(_) | Error::Yaml(_) => PyValueError::new_err(message),
         Error::NotFound(_) => PyFileNotFoundError::new_err(message),
         Error::Scope => PyPermissionError::new_err(message),
@@ -119,8 +149,14 @@ fn with_writer(
 
 #[pyfunction]
 fn backend_info() -> String {
+    let build_dirty = match env!("LLMBASE_BUILD_DIRTY") {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    };
     json!({"core":"rust", "crate":"llmbase-python", "crate_version":env!("CARGO_PKG_VERSION"),
         "abi":"abi3-py311", "application":"llmbase_core::application::Application",
+        "build_commit":env!("LLMBASE_BUILD_COMMIT"), "build_dirty":build_dirty,
         "successful_dispatches":SUCCESSFUL_DISPATCHES.load(Ordering::Relaxed),
         "writer_sessions":WRITER_SESSIONS.load(Ordering::Relaxed)})
     .to_string()
@@ -128,6 +164,14 @@ fn backend_info() -> String {
 
 #[pymodule]
 fn _core(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add(
+        "VisibilitySnapshotLimitError",
+        module.py().get_type::<VisibilitySnapshotLimitError>(),
+    )?;
+    module.add(
+        "VisibilitySnapshotConfigError",
+        module.py().get_type::<VisibilitySnapshotConfigError>(),
+    )?;
     module.add_function(wrap_pyfunction!(dispatch, module)?)?;
     module.add_function(wrap_pyfunction!(backend_info, module)?)?;
     module.add_function(wrap_pyfunction!(with_writer, module)?)?;

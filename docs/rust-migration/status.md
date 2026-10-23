@@ -1,4 +1,20 @@
-# Status — 2026-10-14
+# Status — 2026-10-23
+
+0.10.0 packages the Rust-backed Python compatibility engine, with configurable
+visibility budgets, actionable errors, build commit identity, stable public
+projection API v1, and sdist-based macOS arm64 / manylinux x86_64 wheels.
+The [release guide](release-0.10.0.md) defines its scope and publication gates.
+The broader native lifecycle/worker issues and paused Goal remain separate.
+
+Siwen/Taixu's downstream request reports production use of `c17f3eb` since
+2026-10-15, repeated ~94,000-file bakes equal to Python 0.8.0 except for the new
+`api/languages.json`, and zero private-fixture leaks. This supersedes the earlier
+request for downstream C7 testing, but is not upstream verification of the final
+0.10.0 wheel on the latest production corpora. The release Actions and artifact
+receipts record the final build checks; GitHub, PyPI and ClawHub must all agree
+before publication is complete.
+
+## Earlier checkpoint — C7 (2026-10-14)
 
 C7 fixes #26's large-body visibility outage: bounded frontmatter reads replace
 full-document reads, preserving fail-closed privacy and current metadata ETags.

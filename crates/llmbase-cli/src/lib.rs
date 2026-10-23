@@ -630,6 +630,8 @@ pub fn error_payload(error: &Error) -> Value {
         Error::Scope => ("forbidden", "library or capability denied".into()),
         Error::Busy => ("busy", "another write operation is running".into()),
         Error::Capability(message) => ("capability_unavailable", message.clone()),
+        Error::VisibilityLimit { .. } => ("visibility_snapshot_limit_exceeded", error.to_string()),
+        Error::VisibilityConfig(_) => ("visibility_snapshot_config_invalid", error.to_string()),
         Error::Json(_) | Error::Yaml(_) => ("invalid_data", "invalid structured data".into()),
         Error::Io(_) | Error::Sql(_) => ("storage_error", "storage operation failed".into()),
         Error::Model(_) => ("model_error", "model operation failed".into()),

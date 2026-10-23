@@ -262,7 +262,7 @@ def create_web_app(base_dir: Path | None = None):
     # middleware) and for the module-level ``require_auth`` decorator. Reach
     # these via ``flask.current_app.config["llmbase"]``.
     from .http_auth import (authorize, can_read_private, private_metadata, private_response_headers,
-                            runtime_config, visibility_snapshot)
+                            runtime_config, visibility_snapshot, visibility_snapshot_error)
     app.config["llmbase"] = runtime_config(base, cfg, api_secret=API_SECRET, session_token=SESSION_TOKEN)
     app.after_request(private_response_headers)
 
@@ -338,8 +338,11 @@ def create_web_app(base_dir: Path | None = None):
             return None
         try:
             has_private = _visibility()["has_nonpublic"]
-        except (OSError, ValueError, RuntimeError):
-            return jsonify({"status": "error", "message": "public visibility snapshot unavailable"}), 503
+        except (OSError, ValueError, RuntimeError) as error:
+            diagnostic = visibility_snapshot_error(error)
+            if diagnostic.get("code"):
+                app.logger.warning("%s: %s", diagnostic["code"], diagnostic.get("limit", "check visibility_snapshot configuration"))
+            return jsonify(diagnostic), 503
         # Legacy aggregate artifacts lack per-field provenance. Mixed visibility
         # requires a private principal rather than guessing which prose is public.
         opaque = {"api_taxonomy", "api_entities", "api_xici", "api_export_article", "api_export_tag",

@@ -65,6 +65,8 @@ customize behavior without forking functions. This is a **stable contract**.
 | llmwiki/web.py         | app.config["llmbase"]     | Runtime dict: base_dir, cfg, api_secret, session_token |
 | llmwiki/web.py         | EXTRA_ROUTES              | List of (rule, handler, options) tuples  |
 | llmwiki/web.py         | BEFORE/AFTER_REQUEST_HOOKS| Request middleware lists                  |
+| llmwiki/web.py         | register_public_read_projection(app, endpoint, view) | Stable v1 registration for reviewed public read views; see docs/rust-migration/public-read-projections.md |
+| config.yaml           | visibility_snapshot      | Operator-only file/header/read budgets; see docs/rust-migration/visibility-limits.md |
 | llmwiki/web.py        | GET /api/languages         | Public endpoint returning the normalized language profile; frontend lang.tsx derives LANG options/markers from it; ?lang= on taxonomy/xici validates against profile codes |
 | llmwiki/worker.py      | LEARN_SOURCES             | Dict of source_name → learn handler      |
 | llmwiki/worker.py      | CUSTOM_JOBS               | List of custom background jobs           |

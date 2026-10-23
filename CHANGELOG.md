@@ -2,13 +2,23 @@
 
 All notable changes to LLMBase (llmwiki) will be documented in this file.
 
-## Unreleased — Rust migration candidate
+## [0.10.0] — Rust-backed compatibility engine
 
-This candidate is still completing acceptance. No new package version or release
-is implied by the entries below. Full coverage and receipts are tracked in
-[the migration status](docs/rust-migration/status.md).
+This version packages the Rust-backed `llmwiki` compatibility engine. Python
+factories, callbacks and scheduling remain supported boundaries. The broader
+all-native migration continues separately. See the [release guide](docs/rust-migration/release-0.10.0.md)
+for artifacts and verification; publication is confirmed by the matching release,
+PyPI package and ClawHub skill, not by this changelog alone.
 
 ### Added
+
+- Native CPython 3.11 ABI3 wheel pipeline for macOS arm64 and manylinux 2.28
+  x86_64, built from the same source distribution and Git commit.
+- `backend_info()` exposes `build_commit` and `build_dirty` for provenance.
+- Configurable `visibility_snapshot.max_files`, `max_read_bytes` and
+  `max_header_bytes`, with typed native exceptions and actionable HTTP 503
+  responses. Limits never grant access to private content.
+- Stable public v1 contract for `register_public_read_projection`.
 
 - Native Rust storage and application services, CLI, HTTP and MCP stdio; SQLite
   revision history, transactional lexical indexes, exact original-byte evidence,
@@ -44,6 +54,10 @@ is implied by the entries below. Full coverage and receipts are tracked in
   rather than treating any returned JSON object as success.
 - Existing frontend TypeScript diagnostics were independently reproduced against
   the original commit and fixed without a UI redesign.
+- Visibility snapshots read frontmatter rather than entire Markdown bodies;
+  libraries whose bodies exceed 64 MiB no longer fail solely for that reason.
+  Builtin detail reads and registered public projections avoid whole-library
+  scans. Unavailable or over-budget visibility checks still fail closed.
 
 ### Verification limits
 

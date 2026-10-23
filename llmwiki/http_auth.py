@@ -112,6 +112,25 @@ def public_search_hit(snapshot, cfg, row, *, raw=False):
     return snapshot["compiled"].get(row.get("slug", ""), {}).get("public", False)
 
 
+def visibility_snapshot_error(error):
+    """Expose actionable capacity diagnostics without source paths or metadata."""
+    code = getattr(error, "code", None)
+    if code == "visibility_snapshot_limit_exceeded":
+        resource = getattr(error, "resource", None)
+        limit, observed = getattr(error, "limit", None), getattr(error, "observed", None)
+        if (resource in {"max_files", "max_read_bytes", "max_header_bytes"}
+                and type(limit) is int and type(observed) is int and 0 < limit < observed):
+            return {"status": "error", "code": code,
+                    "message": f"Public visibility snapshot exceeds configured {resource} limit",
+                    "limit": {"resource": resource, "configured": limit, "observed": observed},
+                    "config_key": f"visibility_snapshot.{resource}"}
+    if code == "visibility_snapshot_config_invalid":
+        return {"status": "error", "code": code,
+                "message": "Invalid visibility_snapshot configuration; check its documented positive integer limits",
+                "config_key": "visibility_snapshot"}
+    return {"status": "error", "message": "public visibility snapshot unavailable"}
+
+
 def visibility_snapshot(base, cfg):
     from . import _native
     if _native.available():

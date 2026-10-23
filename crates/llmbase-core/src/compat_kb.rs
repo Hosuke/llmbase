@@ -517,6 +517,76 @@ pub fn raw_write(config: &LibraryConfig, args: &Value) -> Result<Value> {
 const MAX_VISIBILITY_HEADER_BYTES: u64 = 1024 * 1024;
 const MAX_VISIBILITY_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 
+#[derive(Clone, Copy)]
+struct VisibilityLimits {
+    max_files: u64,
+    max_read_bytes: u64,
+    max_header_bytes: u64,
+}
+impl Default for VisibilityLimits {
+    fn default() -> Self {
+        Self {
+            max_files: 20_000,
+            max_read_bytes: MAX_VISIBILITY_TOTAL_BYTES,
+            max_header_bytes: MAX_VISIBILITY_HEADER_BYTES,
+        }
+    }
+}
+impl VisibilityLimits {
+    fn configured(settings: &Value) -> Result<Self> {
+        let mut limits = Self::default();
+        let Some(value) = settings.get("visibility_snapshot") else {
+            return Ok(limits);
+        };
+        let values = value
+            .as_object()
+            .ok_or(Error::VisibilityConfig("must be a mapping"))?;
+        if values.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "max_files" | "max_read_bytes" | "max_header_bytes"
+            )
+        }) {
+            return Err(Error::VisibilityConfig("contains an unsupported field"));
+        }
+        for (key, target) in [
+            ("max_files", &mut limits.max_files),
+            ("max_read_bytes", &mut limits.max_read_bytes),
+            ("max_header_bytes", &mut limits.max_header_bytes),
+        ] {
+            if let Some(value) = values.get(key) {
+                *target = value
+                    .as_u64()
+                    .filter(|value| *value > 0 && *value < u64::MAX)
+                    .ok_or(Error::VisibilityConfig(
+                        "limits must be positive integers below u64::MAX",
+                    ))?;
+            }
+        }
+        if limits.max_header_bytes > limits.max_read_bytes {
+            return Err(Error::VisibilityConfig(
+                "max_header_bytes must not exceed max_read_bytes",
+            ));
+        }
+        Ok(limits)
+    }
+    fn header_exceeded(self, remaining: u64) -> Error {
+        if remaining < self.max_header_bytes {
+            Error::VisibilityLimit {
+                resource: "max_read_bytes",
+                limit: self.max_read_bytes,
+                observed: self.max_read_bytes + 1,
+            }
+        } else {
+            Error::VisibilityLimit {
+                resource: "max_header_bytes",
+                limit: self.max_header_bytes,
+                observed: self.max_header_bytes + 1,
+            }
+        }
+    }
+}
+
 struct VisibilityReadBudget<'a, R> {
     reader: R,
     bytes_read: &'a mut u64,
@@ -532,9 +602,13 @@ impl<R: Read> Read for VisibilityReadBudget<'_, R> {
 /// Read only the frontmatter framing understood by Document::parse. The body
 /// is irrelevant to visibility, including when it is larger than the ordinary
 /// full-document read limit. Limit even unterminated headers and long lines.
-fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document> {
-    let limit =
-        MAX_VISIBILITY_HEADER_BYTES.min(MAX_VISIBILITY_TOTAL_BYTES.saturating_sub(*bytes_read));
+fn visibility_header(
+    reader: impl Read,
+    bytes_read: &mut u64,
+    limits: VisibilityLimits,
+) -> Result<Document> {
+    let remaining = limits.max_read_bytes.saturating_sub(*bytes_read);
+    let limit = limits.max_header_bytes.min(remaining);
     let mut reader = VisibilityReadBudget {
         reader: reader.take(limit + 1),
         bytes_read,
@@ -545,9 +619,7 @@ fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document
         reader.by_ref().take(1).read_to_end(&mut header)?;
     }
     if header.len() as u64 > limit {
-        return Err(Error::Invalid(
-            "visibility frontmatter exceeds supported limits".into(),
-        ));
+        return Err(limits.header_exceeded(remaining));
     }
     if header != b"---\n" && header != b"---\r\n" {
         return Document::parse(Vec::new());
@@ -559,9 +631,7 @@ fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document
         let start = header.len();
         let count = reader.read_until(b'\n', &mut header)?;
         if header.len() as u64 > limit {
-            return Err(Error::Invalid(
-                "visibility frontmatter exceeds supported limits".into(),
-            ));
+            return Err(limits.header_exceeded(remaining));
         }
         if count == 0 {
             return Err(Error::Invalid("unterminated frontmatter".into()));
@@ -578,8 +648,9 @@ fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document
 }
 
 fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
+    let limits = VisibilityLimits::configured(&config.settings)?;
     let mut result = json!({"compiled":{},"raw":{},"note":{},"has_nonpublic":false});
-    let mut count = 0usize;
+    let mut count = 0u64;
     let mut header_bytes = 0u64;
     for (kind, root) in [
         ("compiled", &config.concepts),
@@ -608,10 +679,12 @@ fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
                 continue;
             }
             count += 1;
-            if count > 20_000 {
-                return Err(Error::Capability(
-                    "visibility snapshot exceeds supported limits".into(),
-                ));
+            if count > limits.max_files {
+                return Err(Error::VisibilityLimit {
+                    resource: "max_files",
+                    limit: limits.max_files,
+                    observed: count,
+                });
             }
             let relative = entry
                 .path()
@@ -625,13 +698,19 @@ fn visibility_snapshot(config: &LibraryConfig) -> Result<Value> {
             }
             let doc = File::open(entry.path())
                 .map_err(Error::from)
-                .and_then(|file| visibility_header(file, &mut header_bytes));
-            if header_bytes > MAX_VISIBILITY_TOTAL_BYTES {
-                return Err(Error::Capability(
-                    "visibility snapshot exceeds supported limits".into(),
-                ));
+                .and_then(|file| visibility_header(file, &mut header_bytes, limits));
+            if header_bytes > limits.max_read_bytes {
+                return Err(Error::VisibilityLimit {
+                    resource: "max_read_bytes",
+                    limit: limits.max_read_bytes,
+                    observed: header_bytes,
+                });
             }
-            // An unreadable, malformed or oversized header is never public.
+            if let Err(error @ Error::VisibilityLimit { .. }) = doc {
+                return Err(error);
+            }
+            // An unreadable or malformed header is never public. Capacity
+            // exhaustion is reported separately, never hidden as private data.
             let public = doc
                 .as_ref()
                 .is_ok_and(|doc| crate::visibility::is_public(&doc.metadata));
@@ -744,6 +823,10 @@ pub fn execute(config: &LibraryConfig, operation: &str, args: &Value) -> Result<
 mod visibility_header_tests {
     use super::*;
     use std::io::{Cursor, repeat};
+
+    fn visibility_header(reader: impl Read, bytes_read: &mut u64) -> Result<Document> {
+        super::visibility_header(reader, bytes_read, VisibilityLimits::default())
+    }
 
     struct CountReads<R> {
         inner: R,

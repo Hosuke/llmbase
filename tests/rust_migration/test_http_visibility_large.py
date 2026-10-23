@@ -152,6 +152,21 @@ def test_lite_etag_tracks_live_metadata_instead_of_body_bytes(public_library):
 def test_large_body_does_not_hide_private_or_invalid_frontmatter(public_library, header):
     base = public_library
     write_sparse_raw(base, header)
+    exceeds_header = len(header) > HEADER_LIMIT or header == b"---\nprivate: false\n"
+    if exceeds_header:
+        # The sparse body's NUL bytes form an oversized unterminated header.
+        # Capacity exhaustion now has an explicit diagnostic, still fail-closed.
+        with pytest.raises(RuntimeError) as captured:
+            snapshot(base)
+        assert captured.value.code == "visibility_snapshot_limit_exceeded"
+        assert captured.value.resource == "max_header_bytes"
+        client = web.create_web_app(base).test_client()
+        for route in PUBLIC_ROUTES[1:]:
+            response = client.get(route)
+            assert response.status_code == 503
+            assert response.json["code"] == "visibility_snapshot_limit_exceeded"
+            assert "PUBLIC_XICI_BODY" not in response.get_data(as_text=True)
+        return
     visibility = snapshot(base)
     assert visibility["raw"]["large"]["public"] is False
     assert visibility["has_nonpublic"] is True

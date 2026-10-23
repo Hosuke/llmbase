@@ -61,6 +61,16 @@ pub enum Error {
     Busy,
     #[error("capability unavailable: {0}")]
     Capability(String),
+    #[error(
+        "visibility snapshot exceeds {resource}: limit={limit}, observed={observed}; configure visibility_snapshot.{resource}"
+    )]
+    VisibilityLimit {
+        resource: &'static str,
+        limit: u64,
+        observed: u64,
+    },
+    #[error("invalid visibility_snapshot configuration: {0}")]
+    VisibilityConfig(&'static str),
     #[error("storage I/O failed: {0}")]
     Io(#[from] std::io::Error),
     #[error("database operation failed: {0}")]

@@ -1,6 +1,6 @@
 ---
 name: llmwiki
-version: "0.9.0"
+version: "0.10.0"
 description: "Use LLMBase to ingest sources, compile a linked knowledge library, retrieve evidence, and answer questions through CLI or MCP. Supports the native Rust runtime and the Python compatibility package with configurable language profiles."
 author: Hosuke
 homepage: https://github.com/Hosuke/llmbase
@@ -36,10 +36,10 @@ requires:
 
 # LLMBase
 
-> Migration candidate: this document is being updated alongside the Rust core.
-> Its version stays at the published package version until release acceptance.
-> Check the repository README and compatibility matrix before relying on a
-> candidate-only native command.
+> Version 0.10.0 packages the Rust-backed Python compatibility engine. Flask
+> factories, Python callbacks and scheduling remain supported boundaries.
+> Consult the release guide and compatibility matrix for the separate native
+> executable and remaining all-native migration work.
 
 LLMBase keeps original sources, accepted knowledge articles, revisions, aliases,
 and backlinks. The native executable runs without Python. The Python package

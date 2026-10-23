@@ -435,6 +435,9 @@ impl From<Error> for HttpError {
             Error::Scope => StatusCode::FORBIDDEN,
             Error::Conflict(_) | Error::Busy => StatusCode::CONFLICT,
             Error::Capability(_) => StatusCode::NOT_IMPLEMENTED,
+            Error::VisibilityLimit { .. } | Error::VisibilityConfig(_) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             Error::Model(_) => StatusCode::BAD_GATEWAY,
             Error::Io(_) | Error::Sql(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };

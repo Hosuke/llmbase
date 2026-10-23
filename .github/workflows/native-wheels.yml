@@ -1,0 +1,191 @@
+name: Native wheel artifacts
+
+on:
+  push:
+    branches: [rust-core-rebuild]
+    paths:
+      - .github/workflows/native-wheels.yml
+      - MANIFEST.in
+      - pyproject.toml
+      - setup.cfg
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/**
+      - examples/rust-extension/**
+      - llmwiki/**
+      - scripts/release/**
+      - scripts/rust-migration/**
+      - tests/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-wheels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Export source and build sdist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      sdist_name: ${{ steps.source.outputs.sdist_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install pinned Rust for sdist metadata
+        run: rustup toolchain install 1.98.0 --profile minimal
+      - name: Assert and export the exact tracked source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/input-status"
+          test ! -s "$RUNNER_TEMP/input-status"
+          git rev-parse HEAD > "$RUNNER_TEMP/source-sha"
+          read -r SOURCE_SHA < "$RUNNER_TEMP/source-sha"
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
+          EXPORT_ROOT="$RUNNER_TEMP/source-export"
+          mkdir -p "$EXPORT_ROOT" dist
+          git archive --format=tar --output="$RUNNER_TEMP/source.tar" HEAD
+          tar -xf "$RUNNER_TEMP/source.tar" -C "$EXPORT_ROOT"
+          printf '%s\n' "$SOURCE_SHA" > "$EXPORT_ROOT/SOURCE_COMMIT"
+          python -m pip install --disable-pip-version-check build==1.3.0
+          python -m build --sdist --outdir "$GITHUB_WORKSPACE/dist" "$EXPORT_ROOT"
+          sdists=(dist/*.tar.gz)
+          test "${#sdists[@]}" -eq 1
+          python scripts/release/verify_sdist.py "${sdists[0]}" \
+            --expected-commit "$SOURCE_SHA" --expected-version 0.10.0 \
+            --receipt "$RUNNER_TEMP/sdist-receipt.json"
+          mkdir -p release-artifact
+          cp "${sdists[0]}" "$RUNNER_TEMP/sdist-receipt.json" release-artifact/
+          python scripts/release/write_checksums.py --output release-artifact/SHA256SUMS \
+            "${sdists[0]}"
+          printf 'commit=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          printf 'sdist_name=%s\n' "$(basename "${sdists[0]}")" >> "$GITHUB_OUTPUT"
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: native-sdist
+          path: release-artifact/
+          if-no-files-found: error
+
+  wheels:
+    name: ${{ matrix.label }} wheel
+    needs: source
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: manylinux 2.28 x86_64
+            runner: ubuntu-24.04
+            build: cp311-manylinux_x86_64
+            arch: x86_64
+            platform: manylinux_2_28_x86_64
+            artifact: linux-x86_64
+            macos_target: ''
+          - label: macOS 11 arm64
+            runner: macos-15
+            build: cp311-macosx_arm64
+            arch: arm64
+            platform: macosx_11_0_arm64
+            artifact: macos-arm64
+            macos_target: '11.0'
+    env:
+      LLMBASE_BUILD_COMMIT: ${{ needs.source.outputs.commit }}
+      LLMBASE_EXPECT_BUILD_COMMIT: ${{ needs.source.outputs.commit }}
+      LLMBASE_EXPECT_VERSION: 0.10.0
+      RUSTUP_TOOLCHAIN: 1.98.0
+      CARGO_BUILD_JOBS: '2'
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_target }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Assert wheel job source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$LLMBASE_BUILD_COMMIT"
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/input-status"
+          test ! -s "$RUNNER_TEMP/input-status"
+      - name: Download the verified sdist
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: native-sdist
+          path: release-input
+      - name: Recheck the sdist boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/release/verify_sdist.py \
+            "release-input/${{ needs.source.outputs.sdist_name }}" \
+            --expected-commit "$LLMBASE_BUILD_COMMIT" --expected-version "$LLMBASE_EXPECT_VERSION" \
+            --receipt "$RUNNER_TEMP/input-sdist-receipt.json"
+      - name: Install pinned Rust on macOS
+        if: runner.os == 'macOS'
+        run: rustup toolchain install 1.98.0 --profile minimal
+      - name: Build and test the wheel from the sdist
+        uses: pypa/cibuildwheel@v4.3.4
+        with:
+          package-dir: release-input/${{ needs.source.outputs.sdist_name }}
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: ${{ matrix.build }}
+          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel repair --plat manylinux_2_28_x86_64 -w {dest_dir} {wheel}
+          CIBW_BEFORE_ALL_LINUX: >-
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+            sh -s -- -y --profile minimal --default-toolchain 1.98.0
+          CIBW_ENVIRONMENT_LINUX: >-
+            PATH="$HOME/.cargo/bin:$PATH" RUSTUP_TOOLCHAIN="1.98.0" CARGO_BUILD_JOBS="2"
+          CIBW_ENVIRONMENT_PASS_LINUX: >-
+            LLMBASE_BUILD_COMMIT LLMBASE_EXPECT_BUILD_COMMIT LLMBASE_EXPECT_VERSION
+          CIBW_TEST_REQUIRES: >-
+            pytest pytest-timeout mcp>=1.0.0 pymupdf>=1.24.0
+            opencc-python-reimplemented>=0.1.7
+          CIBW_TEST_COMMAND: >-
+            python {package}/scripts/release/test_installed_wheel.py
+            --tests {package}/tests
+            --support-scripts {package}/scripts/rust-migration
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Smoke-test ABI3 on Python 3.13 and record provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheels=(wheelhouse/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m pip install --disable-pip-version-check --force-reinstall "${wheels[0]}"
+          mkdir -p release-artifact
+          cd "$RUNNER_TEMP"
+          python "$GITHUB_WORKSPACE/scripts/release/test_installed_wheel.py" \
+            --wheel "$GITHUB_WORKSPACE/${wheels[0]}" --platform "${{ matrix.platform }}" \
+            --receipt "$GITHUB_WORKSPACE/release-artifact/wheel-receipt.json"
+          cd "$GITHUB_WORKSPACE"
+          cp "release-input/${{ needs.source.outputs.sdist_name }}" release-artifact/
+          cp "${wheels[0]}" release-artifact/
+          python scripts/release/write_checksums.py --output release-artifact/SHA256SUMS \
+            "release-input/${{ needs.source.outputs.sdist_name }}" "${wheels[0]}"
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: native-wheel-${{ matrix.artifact }}
+          path: release-artifact/
+          if-no-files-found: error

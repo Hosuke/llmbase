@@ -12,9 +12,9 @@
 
 </div>
 
-> **Rust migration candidate — not yet released.** This branch contains the native Rust core and the Python compatibility package. Public package badges reflect the published Python release, not this candidate. Follow the [acceptance status](docs/rust-migration/status.md) and [compatibility matrix](docs/rust-migration/parity.md) for implementation and verification coverage.
+> **0.10.0: Rust-backed Python compatibility engine.** This release retains `llmwiki.*`, Flask factories, Python callbacks and the existing scheduler while moving core work into Rust. See the [release guide](docs/rust-migration/release-0.10.0.md) for installation, supported wheels, build provenance and migration boundaries. Publication status is recorded on [GitHub Releases](https://github.com/Hosuke/llmbase/releases).
 
-The [issue handoff](docs/rust-migration/issues/README.md) tracks the remaining work toward the [clean-major design](docs/adr/0002-clean-rust-major-and-extensions.md): per-library profiles and explicit Rust extensions, with a documented optional Python transition layer. The candidate now includes a [minimal Rust extension API v1](docs/rust-migration/extensions.md) and an [external example](examples/rust-extension/README.md); no major release has been published.
+The [issue handoff](docs/rust-migration/issues/README.md) tracks the remaining work toward the [clean-major design](docs/adr/0002-clean-rust-major-and-extensions.md): per-library profiles and explicit Rust extensions, with a documented optional Python transition layer. A [minimal Rust extension API v1](docs/rust-migration/extensions.md) and an [external example](examples/rust-extension/README.md) are included. The broader native lifecycle and worker migration remains separate from this compatibility release.
 
 ## What it does
 
@@ -27,7 +27,7 @@ LLMBase keeps source documents, accepted knowledge articles, and their relations
 - **Explicit writes.** Native evidence-first answers are read-only by default. Saving an answer, compiling a source, and accepting or promoting a draft are separate operations.
 - **Live Python customization.** The compatibility package preserves supported imports, runtime prompt and language overrides, callbacks, Flask factories, and static-site baking. See the matrix for boundaries still under migration.
 
-The project is domain-agnostic. Existing downstream projects include [斯文](https://siwen.ink) and [華藏閣](https://huazangge-production.up.railway.app); their production deployments are separate from this migration.
+The project is domain-agnostic. [斯文](https://siwen.ink) and Taixu report production use of the Rust compatibility engine at `c17f3eb` since 2026-10-15. Their repeated two-site bakes compared about 94,000 files with Python 0.8.0: unchanged output apart from the added `api/languages.json`, with zero private-fixture leaks. This is downstream-reported acceptance of that commit; the 0.10.0 packaging and configuration additions have separate release checks.
 
 ## How the pieces fit
 
@@ -45,17 +45,17 @@ CLI · native HTTP · MCP · Python compatibility
 
 Native interfaces use English defaults. Unicode and CJK source text remain first-class data: normalization is confined to retrieval representations, while original text and citation offsets are preserved. Language profiles can select English, multiple languages, or a single Classical Chinese section with a bare body.
 
-## Try the native candidate
+## Try the native executable
 
 Use a separate test library. The native executable requires Rust to build, but does not require Python to run. The repository pins its Rust toolchain and dependency lockfile.
 
 ~~~bash
-git clone --branch rust-core-rebuild https://github.com/Hosuke/llmbase.git
+git clone --branch v0.10.0 https://github.com/Hosuke/llmbase.git
 cd llmbase
 cargo build --locked --release -p llmbase-cli
 ~~~
 
-Until the migration is published, the commands below apply to the migration worktree and its built binary. They are not an installation recipe for the current PyPI release.
+The commands below use the source-built native executable. The Python wheel provides the compatibility CLI instead.
 
 ~~~bash
 mkdir -p /tmp/llmbase-example/raw
@@ -120,7 +120,9 @@ New native question answering is read-only by default. Legacy `deep`, `file_back
 - [Compile overrides and source preservation](docs/rust-migration/python-compile.md)
 - [Siwen candidate installation and bake checks](docs/rust-migration/downstream.md)
 
-Python 3.11+ is required for the compatibility package. Build and install the candidate wheel using the [runbook](docs/rust-migration/runbook.md); `pip install llmwiki` installs the currently published release, not unpublished branch changes.
+Python 3.11+ is required for the compatibility package. Install the published version with `pip install llmwiki==0.10.0`. Release wheels target macOS 11+ arm64 and Linux x86_64 with glibc 2.28+; both use CPython ABI3. Other platforms require a Rust source build. See the [release guide](docs/rust-migration/release-0.10.0.md) and [runbook](docs/rust-migration/runbook.md).
+
+Custom public Flask views use the stable v1 [`register_public_read_projection`](docs/rust-migration/public-read-projections.md) API. Large libraries can set [visibility snapshot limits](docs/rust-migration/visibility-limits.md) without weakening private-content protection.
 
 ## HTTP, MCP, jobs, and extensions
 
@@ -168,11 +170,11 @@ A release is complete only after its acceptance gates pass and the matching git 
 
 LLMBase 以原典為本，編為相聯之知識條目；檢索與問答皆可回查來源版本及原句。
 
-本輪重建以 **Rust 核心、英文接口與文檔為先**，漢字、文言及多語 profile 並存。文言可作單節裸正文；Rust 關鍵字仍循官方語法。後續擴展以 profile、提示詞及明示 Rust 接口為方向；Rust 擴展註冊接口尚待實作，現有 Python callback 由相容層承接。
+本輪重建以 **Rust 核心、英文接口與文檔為先**，漢字、文言及多語 profile 並存。文言可作單節裸正文；Rust 關鍵字仍循官方語法。後續擴展以 profile、提示詞及明示 Rust 接口為方向；最小 Rust 擴展接口 v1 已實作，現有 Python callback 由相容層承接。
 
 原生問答預設不落盤；保存、編纂及升條皆為明確操作。舊 Python 入口之寫回與動態覆寫契約，另由相容層承接。遷移先複本、後驗證，不改生產文庫。
 
-此分支尚為候選版；安裝、驗收及發布實況，見[遷移手冊](docs/rust-migration/runbook.md)、[相容表](docs/rust-migration/parity.md)與[進度紀錄](docs/rust-migration/status.md)。
+`0.10.0` 交付 Rust 驅動的 Python 相容引擎，保留兩站既有 Flask、callback 與排程入口；全原生大版本另循公開 issue 推進。安裝、驗收及發布實況，見[發版指南](docs/rust-migration/release-0.10.0.md)、[相容表](docs/rust-migration/parity.md)與[進度紀錄](docs/rust-migration/status.md)。
 
 ## License
 
