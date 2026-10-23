@@ -48,7 +48,10 @@ def installed_backend() -> tuple[dict, str]:
 
 def run_tests(tests: Path, support_scripts: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="llmbase-wheel-tests-") as temporary:
-        harness = Path(temporary)
+        # macOS exposes temporary paths through /var -> /private/var. Keep
+        # pytest's absolute test paths and its resolved cwd under one root so
+        # tests/conftest.py is discovered for the focused projection suite.
+        harness = Path(temporary).resolve()
         copied_tests = harness / "tests"
         shutil.copytree(tests, copied_tests)
         shutil.copytree(support_scripts, harness / "scripts" / "rust-migration")
